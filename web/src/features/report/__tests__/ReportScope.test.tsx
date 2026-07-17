@@ -93,8 +93,8 @@ describe("ReportWorkspace scope contract", () => {
     await waitFor(() =>
       expect(onScopeChange).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          scopeInstanceId: "issue_main",
-          scopeKind: "revision_diff",
+          scopeInstanceId: "section:revision_changes:issue_main",
+          scopeKind: "section",
         }),
       ),
     );

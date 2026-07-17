@@ -48,7 +48,11 @@ export function ExpertPackets({
       ) : (
         <div className={styles.packetList}>
           {packets.map((packet, index) => (
-            <article className={styles.packet} key={packet.expert_packet_id}>
+            <article
+              className={styles.packet}
+              id={`expert-packet-${packet.expert_packet_id}`}
+              key={packet.expert_packet_id}
+            >
               <header className={styles.packetHeader}>
                 <div>
                   <p className={styles.sectionKicker}>

@@ -142,7 +142,11 @@ export function EvidenceWorkbench({
           <h3>출처</h3>
           <ul className={styles.sourceList}>
             {sources.map((source) => (
-              <li className={styles.sourceCard} key={source.source_ref}>
+                <li
+                  className={styles.sourceCard}
+                  id={`source-${source.source_ref}`}
+                  key={source.source_ref}
+                >
                 <strong>{source.display_name_ko}</strong>
                 <p className={styles.metricMeta}>{source.access_policy}</p>
                 <ul className={styles.trustList}>

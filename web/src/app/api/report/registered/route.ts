@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { activateRegisteredReport } from "@/lib/server/registered-report-service";
+import { activateRegisteredReportForQuestions } from "@/lib/server/questions/question-context-activation";
 import { handleRegisteredReportActivation } from "@/lib/server/registered-report-route-handler";
 import { getReportRuntime } from "@/lib/server/report-runtime";
 import { RunRegistry } from "@/lib/server/run-registry";
@@ -28,7 +28,7 @@ export async function POST(request: Request): Promise<Response> {
   return handleRegisteredReportActivation(request, {
     security: reportRuntime.security,
     activate: async (registrationId) =>
-      activateRegisteredReport(registrationId, {
+      activateRegisteredReportForQuestions(registrationId, {
         registry: configuredRegistry(),
         store: reportRuntime.store,
       }),

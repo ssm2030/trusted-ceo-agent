@@ -721,7 +721,7 @@ def _prepare_result_question(args: argparse.Namespace) -> tuple[int, dict[str, A
         )
     return 0, response(
         command="prepare-result-question", ok=True, code=0,
-        message="result question prepared", run_id=args.run_id,
+        message="result question job prepared", run_id=args.run_id,
         revision=args.revision, state="finalized", data={"job": job},
     )
 

@@ -9,6 +9,10 @@ import {
 
 import type { Issue } from "../../../../contracts/web-report/v1/generated/types";
 
+import {
+  QuestionExperience,
+  type QuestionReferenceKind,
+} from "@/features/questions/QuestionExperience";
 import { DecisionBrief } from "@/features/report/DecisionBrief";
 import { EvidenceWorkbench } from "@/features/report/EvidenceWorkbench";
 import { ExpertPackets } from "@/features/report/ExpertPackets";
@@ -25,6 +29,7 @@ import { TrustManifest } from "@/features/report/TrustManifest";
 import styles from "@/features/report/ReportWorkspace.module.css";
 
 type ReportWorkspaceProps = {
+  csrfToken?: string | null;
   onScopeChange?: (scope: ReportScope) => void;
   payload: ReportClientPayload;
 };
@@ -35,6 +40,7 @@ type PreviewState = {
 };
 
 export function ReportWorkspace({
+  csrfToken = null,
   onScopeChange,
   payload,
 }: ReportWorkspaceProps) {
@@ -71,20 +77,32 @@ export function ReportWorkspace({
       : report.expert_packet_view.filter(
           (packet) => packet.target_issue_ref === activeIssue.issue_id,
         );
-
-  useEffect(() => {
-    if (onScopeChange === undefined || activeIssue === null) {
-      return;
+  const currentScope = useMemo<ReportScope | null>(() => {
+    if (activeIssue === null) {
+      return null;
     }
-    onScopeChange({
+    const scopeInstanceId =
+      activeScopeKind === "run"
+        ? "run"
+        : activeScopeKind === "section"
+          ? `section:${activeSection}:${activeRef ?? "all"}`
+          : (activeRef ?? activeIssue.issue_id);
+    return {
       activeRef,
       issueId: activeIssue.issue_id,
-      scopeInstanceId: activeRef ?? activeIssue.issue_id,
+      scopeInstanceId,
       scopeKind: activeScopeKind,
-    });
-  }, [activeIssue, activeRef, activeScopeKind, onScopeChange]);
+    };
+  }, [activeIssue, activeRef, activeScopeKind, activeSection]);
 
-  if (activeIssue === null) {
+  useEffect(() => {
+    if (onScopeChange === undefined || currentScope === null) {
+      return;
+    }
+    onScopeChange(currentScope);
+  }, [currentScope, onScopeChange]);
+
+  if (activeIssue === null || currentScope === null) {
     return (
       <section className={styles.section}>
         <h2>표시할 결과 문제가 없습니다.</h2>
@@ -113,9 +131,7 @@ export function ReportWorkspace({
     setActiveScopeKind(
       section === "expert_packets"
         ? "expert_packet"
-        : section === "revision_changes"
-          ? "revision_diff"
-          : section === "trust"
+        : section === "revision_changes" || section === "trust"
             ? "section"
             : "issue",
     );
@@ -125,6 +141,58 @@ export function ReportWorkspace({
     setActiveRef(evidenceLinkId);
     setActiveScopeKind("evidence");
     setActiveSection("evidence");
+  };
+  const handleQuestionReference = (
+    kind: QuestionReferenceKind,
+    reference: string,
+  ) => {
+    if (kind === "claim" || kind === "evidence" || kind === "source") {
+      const closure = report.evidence_view.issue_claim_closure.find(
+        (candidate) =>
+          (kind === "claim" && candidate.claim_refs.includes(reference)) ||
+          (kind === "evidence" &&
+            candidate.evidence_link_ids.includes(reference)) ||
+          (kind === "source" && candidate.source_refs.includes(reference)),
+      );
+      if (closure === undefined || !issueMap.has(closure.issue_ref)) {
+        return;
+      }
+      setActiveIssueRef(closure.issue_ref);
+      setActiveSection("evidence");
+      setActiveRef(reference);
+      setActiveScopeKind(kind);
+      const targetId =
+        kind === "evidence"
+          ? `evidence-${reference}`
+          : kind === "source"
+            ? `source-${reference}`
+            : "evidence-title";
+      queueMicrotask(() =>
+        document.getElementById(targetId)?.scrollIntoView?.({ block: "center" }),
+      );
+      return;
+    }
+    if (kind === "expert_packet") {
+      const packet = report.expert_packet_view.find(
+        (candidate) => candidate.expert_packet_id === reference,
+      );
+      if (packet === undefined || !issueMap.has(packet.target_issue_ref)) {
+        return;
+      }
+      setActiveIssueRef(packet.target_issue_ref);
+      setActiveSection("expert_packets");
+      setActiveRef(reference);
+      setActiveScopeKind("expert_packet");
+      queueMicrotask(() =>
+        document
+          .getElementById(`expert-packet-${reference}`)
+          ?.scrollIntoView?.({ block: "center" }),
+      );
+      return;
+    }
+    setActiveSection("revision_changes");
+    setActiveRef(reference);
+    setActiveScopeKind("revision_diff");
   };
   const badgeClass =
     eligibility.mode === "trusted_final"
@@ -201,6 +269,16 @@ export function ReportWorkspace({
           revisionView={report.revision_view}
         />
       )}
+
+      <QuestionExperience
+        csrfToken={csrfToken}
+        enabled={eligibility.questionsAllowed}
+        onReferenceSelect={handleQuestionReference}
+        previousRevision={report.revision_view.base_revision}
+        revision={report.run.revision}
+        runId={report.run.run_id}
+        scope={currentScope}
+      />
 
       <SourcePreviewDialog
         onClose={() => setPreviewState(null)}

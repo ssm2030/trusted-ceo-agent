@@ -135,7 +135,7 @@ export function ReportLoader() {
           setState({ kind: "ready", payload, csrfToken: state.csrfToken });
         }}
       />
-      <ReportWorkspace payload={state.payload} />
+      <ReportWorkspace csrfToken={state.csrfToken} payload={state.payload} />
     </>
   );
 }

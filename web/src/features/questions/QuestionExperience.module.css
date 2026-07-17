@@ -1,0 +1,389 @@
+.launcher {
+  position: fixed;
+  z-index: 72;
+  right: 24px;
+  bottom: 24px;
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  color: #fffdf7;
+  background: #102733;
+  box-shadow: 0 0.9rem 2.5rem rgba(16, 39, 51, 0.28);
+  font: inherit;
+  cursor: pointer;
+}
+
+.launcher::after {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #102733;
+  border-radius: 50%;
+  background: #26b9c8;
+  content: "";
+}
+
+.launcher:hover,
+.launcher:focus-visible {
+  color: #102733;
+  background: #dff7f6;
+  transform: translateY(-2px);
+}
+
+.launcherIcon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.drawer {
+  position: fixed;
+  z-index: 71;
+  right: 24px;
+  bottom: 88px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: clamp(360px, 30vw, 440px);
+  max-width: 40vw;
+  max-height: min(640px, 72vh);
+  border: 1px solid rgba(16, 39, 51, 0.18);
+  border-radius: 1.15rem;
+  color: #102733;
+  background: #fffdf7;
+  box-shadow: 0 1.5rem 4.5rem rgba(8, 28, 36, 0.27);
+  overflow: hidden;
+}
+
+.drawerHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: start;
+  padding: 1rem;
+  color: #fffdf7;
+  background:
+    linear-gradient(90deg, rgba(38, 185, 200, 0.18), transparent 65%),
+    #102733;
+}
+
+.eyebrow {
+  margin: 0 0 0.3rem;
+  color: #70d7df;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+}
+
+.drawerTitle {
+  margin: 0;
+  font-size: 1.02rem;
+  letter-spacing: -0.02em;
+}
+
+.scope {
+  display: inline-flex;
+  max-width: 100%;
+  margin-top: 0.45rem;
+  color: #c9d8dc;
+  font-size: 0.72rem;
+}
+
+.closeButton,
+.secondaryButton,
+.referenceButton,
+.voiceButton {
+  border: 1px solid rgba(16, 39, 51, 0.18);
+  border-radius: 0.65rem;
+  color: #102733;
+  background: #fffdf7;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.closeButton {
+  min-width: 2.5rem;
+  min-height: 2.35rem;
+}
+
+.drawerBody {
+  padding: 0.9rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.status {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-left: 3px solid #26b9c8;
+  color: #3d5b64;
+  background: #edf9f8;
+  font-size: 0.75rem;
+}
+
+.mode {
+  display: inline-flex;
+  margin-left: 0.4rem;
+  padding: 0.15rem 0.42rem;
+  border-radius: 999px;
+  color: #6d4b08;
+  background: #fff0c7;
+  font-size: 0.67rem;
+  font-weight: 800;
+}
+
+.timeline {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message {
+  padding: 0.78rem;
+  border: 1px solid rgba(16, 39, 51, 0.12);
+  border-radius: 0.8rem;
+  background: white;
+}
+
+.questionMessage {
+  margin-left: 1.75rem;
+  border-color: rgba(38, 185, 200, 0.35);
+  background: #eff9f8;
+}
+
+.answerMessage {
+  margin-right: 1.75rem;
+  border-left: 3px solid #e7a92b;
+}
+
+.previousMessage {
+  opacity: 0.76;
+}
+
+.previousLabel {
+  display: inline-flex;
+  margin-bottom: 0.5rem;
+  padding: 0.16rem 0.4rem;
+  color: #72520f;
+  background: #fff2cc;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.messageMeta {
+  margin: 0 0 0.35rem;
+  color: #667b83;
+  font-size: 0.65rem;
+}
+
+.answerText {
+  margin: 0;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.validation {
+  display: inline-flex;
+  margin-top: 0.65rem;
+  color: #087b88;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.referenceList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.referenceButton {
+  min-height: 2rem;
+  padding: 0.35rem 0.52rem;
+  color: #075d67;
+  background: #eef9f8;
+}
+
+.empty {
+  margin: 1rem 0;
+  color: #667b83;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.composer {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.85rem;
+  border-top: 1px solid rgba(16, 39, 51, 0.13);
+  background: #f8f5ed;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 5rem;
+  resize: vertical;
+  border: 1px solid rgba(16, 39, 51, 0.2);
+  border-radius: 0.75rem;
+  padding: 0.7rem;
+  color: #102733;
+  background: #fffefb;
+  font: inherit;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.composerActions,
+.voiceActions,
+.consentActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.primaryButton {
+  min-height: 2.45rem;
+  padding: 0.5rem 0.8rem;
+  border: 0;
+  border-radius: 0.7rem;
+  color: #fffdf7;
+  background: #102733;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primaryButton:disabled,
+.voiceButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.secondaryButton,
+.voiceButton {
+  min-height: 2.35rem;
+  padding: 0.45rem 0.65rem;
+}
+
+.voicePanel {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.voiceDisclosure {
+  margin: 0;
+  color: #596e76;
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.checkLabel {
+  display: flex;
+  gap: 0.45rem;
+  align-items: start;
+  color: #405961;
+  font-size: 0.72rem;
+}
+
+.consentBackdrop {
+  position: fixed;
+  z-index: 75;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(4, 17, 23, 0.62);
+}
+
+.consentDialog {
+  width: min(31rem, 100%);
+  max-height: calc(100vh - 2rem);
+  padding: 1.1rem;
+  border-radius: 1rem;
+  color: #102733;
+  background: #fffdf7;
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.28);
+  overflow: auto;
+}
+
+.consentDialog h2 {
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+
+.disclosureList {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem 0;
+  padding-left: 1.2rem;
+  color: #405961;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .drawer {
+    width: min(380px, calc(100vw - 32px));
+    max-width: none;
+    max-height: 70vh;
+  }
+}
+
+@media (max-width: 767px) {
+  .launcher {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .drawer {
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    max-height: 85vh;
+    border-radius: 1rem 1rem 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .launcher {
+    transition:
+      transform 150ms ease,
+      background 150ms ease;
+  }
+
+  .drawer {
+    animation: drawer-enter 180ms ease-out;
+  }
+}
+
+@keyframes drawer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@media print {
+  .launcher,
+  .drawer,
+  .consentBackdrop {
+    display: none !important;
+  }
+}
