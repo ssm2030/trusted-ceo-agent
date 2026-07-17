@@ -77,7 +77,7 @@ HDF-01
   ├─ 필수 계산이 없음
   │    └─ HD-04 최대 1건 → HD-05
   ├─ 핵심 열과 필수 계산이 모두 없음
-  │    └─ HD-02 최대 1건 → HD-04 최대 1건 → HD-05
+  │    └─ HD-02 최대 1건 → HDF-01 재진단 → HD-04 최대 1건 → HD-05
   ├─ 핵심 경제적 의미 확인 필요
   │    └─ USER_RESPONSE → HDF-01 재진단
   └─ 예외 예산으로도 핵심 결과 불성립
@@ -140,12 +140,40 @@ fast_path:
   excluded_gap_ids: []
   excluded_analysis_scopes: []
   exception_sequence: []
+  resume_prompt_id: null
+  resume_prompt_path: null
+  post_exception_prompt_id: null
+  post_exception_prompt_path: null
+  pending_exception:
+    gap_id: null
+    gap_type: null
+    evidence_refs: []
+    proposed_write_paths: []
+    component_contract_refs: []
+    canonical_fact_refs: []
+    pack_procedure_refs: []
+  diagnostic_context:
+    company: null
+    industry: null
+    analysis_goal: null
+    ceo_question: null
+    analysis_period: null
+    as_of_date: null
+    known_constraints: []
+    core_ceo_question: null
+    minimum_useful_result: null
+    core_columns: []
+    core_calculations: []
+    excluded_by_default: []
+    resolved_field_meanings: {}
 ```
 
 Fast Path 후속 입력은 Fast Path Runbook, 기존 Runbook, 대상 Prompt를 함께
-읽고 이 블록을 다음 Handoff에 보존한다. 예산을 모두 사용한 뒤 추가 변경이
-필요하면 관련 분석을 제외해도 핵심 결과가 성립하는지 확인하고, 불가능하면
-`STOP`한다.
+읽고 이 블록을 다음 Handoff에 보존한다. 원본 Handoff hash를 먼저 검증한 뒤
+resume/post-exception overlay에서 effective Prompt ID/path를 파생한다. overlay는
+base `next_prompt_id/path` 또는 `prompts_after_success`에 기록하지 않아 기존 HD
+Prompt enum을 바꾸지 않는다. 예산을 모두 사용한 뒤 추가 변경이 필요하면 관련
+분석을 제외해도 핵심 결과가 성립하는지 확인하고, 불가능하면 `STOP`한다.
 
 ## 8. 성능 규칙
 
@@ -184,7 +212,7 @@ Fast Path 후속 입력은 Fast Path Runbook, 기존 Runbook, 대상 Prompt를 �
    - `HDF-01 → HD-05`
    - `HDF-01 → HD-02 → HD-05`
    - `HDF-01 → HD-04 → HD-05`
-   - `HDF-01 → HD-02 → HD-04 → HD-05`
+   - `HDF-01 → HD-02 → HDF-01 → HD-04 → HD-05`
    - `HDF-01 → USER_RESPONSE → HDF-01`
    - `HDF-01 → STOP`
 5. 입력 placeholder 밖에 `TBD`, `TODO` 또는 단순 숫자 Prompt 참조가 없다.
