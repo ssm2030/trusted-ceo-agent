@@ -19,6 +19,9 @@ export { MAX_REPORT_IMPORT_BYTES };
 export const MAX_REPORT_JSON_DEPTH = 64;
 export const MAX_REPORT_ARRAY_ITEMS = 5_000;
 const MAX_SOURCE_PREVIEW_JCS_BYTES = 10 * 1024 * 1024;
+const ABSOLUTE_PATH_PATTERN =
+  /(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|(?:^|[\s"='(),])[\\/]+(?=[^\\/]|$)|file:(?:\/{1,3}|\\\\))/i;
+const RFC6901_JSON_POINTER_PATTERN = /^(?:\/(?:[^~/]|~[01])*)*$/;
 
 type ContractValidators = Readonly<{
   bundle: ValidateFunction;
@@ -31,6 +34,51 @@ export class WebReportValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "WebReportValidationError";
+  }
+}
+
+function assertNoAbsolutePaths(
+  value: unknown,
+  inheritedJsonPointerLocator = false,
+): void {
+  if (typeof value === "string") {
+    if (ABSOLUTE_PATH_PATTERN.test(value)) {
+      throw new WebReportValidationError("absolute path leak");
+    }
+    return;
+  }
+  if (value === null || typeof value !== "object") {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const child of value) {
+      assertNoAbsolutePaths(child, inheritedJsonPointerLocator);
+    }
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  const isJsonPointerLocator =
+    inheritedJsonPointerLocator || record.locator_type === "json_pointer";
+  for (const [field, child] of Object.entries(record)) {
+    const isJsonPointerField =
+      isJsonPointerLocator &&
+      (field === "display_locator" ||
+        field === "json_pointer" ||
+        field === "pointer");
+    if (isJsonPointerField) {
+      if (
+        typeof child !== "string" ||
+        !RFC6901_JSON_POINTER_PATTERN.test(child)
+      ) {
+        throw new WebReportValidationError("invalid RFC 6901 JSON Pointer");
+      }
+      continue;
+    }
+    assertNoAbsolutePaths(
+      child,
+      record.locator_type === "json_pointer" && field === "locator",
+    );
   }
 }
 
@@ -385,14 +433,7 @@ function validateSemantic(bundle: WebReportBundleV1): void {
   if (bundle.bundle_hash !== jcsHash(bundle, "bundle_hash")) {
     throw new WebReportValidationError("bundle hash mismatch");
   }
-  const serialized = JSON.stringify(bundle);
-  if (
-    /(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|file:\/\/|\/Users\/|\/home\/|\\\\[^\\]+\\[^\\]+)/.test(
-      serialized,
-    )
-  ) {
-    throw new WebReportValidationError("absolute path leak");
-  }
+  assertNoAbsolutePaths(bundle);
 }
 
 export async function validateBundleBytes(
