@@ -1,0 +1,16 @@
+logs/
+artifacts/
+.venv/
+__pycache__/
+*.py[cod]
+.coverage
+htmlcov/
+.pytest_cache/
+web/node_modules/
+web/.next/
+web/coverage/
+web/playwright-report/
+web/test-results/
+web/var/
+web/.tmp/
+web/*.tsbuildinfo
