@@ -14,6 +14,7 @@ from trusted_ceo_agent.errors import ContractError, IntegrityError
 from trusted_ceo_agent.filesystem import ensure_within
 from trusted_ceo_agent.intake.adapters.csv import CsvAdapter
 from trusted_ceo_agent.intake.adapters.json import JsonAdapter
+from trusted_ceo_agent.intake.adapters.selection import select_adapter
 from trusted_ceo_agent.intake.adapters.xlsx import XlsxAdapter
 from trusted_ceo_agent.intake.models import ParsedDataset, ParsedRecord
 from trusted_ceo_agent.web_report.canonical import jcs_bytes, jcs_sha256
@@ -112,7 +113,9 @@ def _parse_dataset(path: Path, source: Mapping[str, Any]) -> ParsedDataset:
             )
             if not isinstance(pointer, str):
                 raise IntegrityError("JSON records pointer must be a string")
-            return JsonAdapter(records_pointer=pointer).parse(path, source_id)
+            if pointer:
+                return JsonAdapter(records_pointer=pointer).parse(path, source_id)
+            return select_adapter("snapshot.json", path).parse(path, source_id)
         if media_type == (
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         ):

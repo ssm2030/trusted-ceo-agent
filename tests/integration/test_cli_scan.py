@@ -21,6 +21,50 @@ def call(arguments: list[str]) -> tuple[int, dict]:
 
 
 class CliScanIntegrationTests(unittest.TestCase):
+    def test_scan_parses_accounting_multitable_snapshot(self) -> None:
+        source = (
+            ROOT
+            / "evaluation"
+            / "synthetic"
+            / "analysis-input"
+            / "clean-baseline"
+            / "dataset.json"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            root = Path(directory)
+            mission = root / "mission.json"
+            artifacts = root / "artifacts"
+            mission.write_text(json.dumps(confirmed_mission()), "utf-8")
+
+            code, started = call([
+                "start", "--artifact-root", str(artifacts),
+                "--mission-contract", str(mission), "--input", str(source),
+            ])
+            self.assertEqual(0, code, started)
+            code, scanned = call([
+                "scan", "--artifact-root", str(artifacts),
+                "--run-id", started["run_id"], "--expected-revision", "1",
+            ])
+
+            self.assertEqual(0, code, scanned)
+            self.assertEqual("evidence_ready", scanned["state"])
+            self.assertEqual(1, scanned["data"]["parsed_source_count"])
+            snapshot = artifacts / started["run_id"] / "snapshots" / "r0002"
+            core = json.loads(
+                (snapshot / "evidence" / "core.json").read_text("utf-8")
+            )
+            source_id = core["source_registry"][0]["source_id"]
+            dataset = json.loads(
+                (snapshot / "intake" / "datasets" / f"{source_id}.json")
+                .read_text("utf-8")
+            )
+            self.assertEqual(
+                "accounting-multitable-json",
+                dataset["metadata"]["adapter_id"],
+            )
+            self.assertEqual(33, len(dataset["metadata"]["table_row_counts"]))
+            self.assertEqual(360, len(dataset["records"]))
+
     def test_scan_parses_snapshot_and_stops_at_mapping_gate_before_facts(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             root = Path(directory)
