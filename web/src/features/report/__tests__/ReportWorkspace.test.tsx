@@ -86,4 +86,45 @@ describe("ReportWorkspace", () => {
       screen.queryByText(/검토 완료|답변 업로드|결과 반영/),
     ).not.toBeInTheDocument();
   });
+
+  it("shows contract enums only through approved Korean labels", async () => {
+    const user = userEvent.setup();
+    render(<ReportWorkspace payload={makeClientReportPayload()} />);
+    const navigation = screen.getByRole("navigation", {
+      name: "결과 리포트 화면",
+    });
+
+    await user.click(
+      within(navigation).getByRole("button", { name: "컨설턴트 근거 분석" }),
+    );
+    expect(screen.getByText("뒷받침 · 관찰")).toBeInTheDocument();
+    expect(screen.getByText("허용")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/supports|observation|permitted/),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(navigation).getByRole("button", { name: "실행·신뢰 기록" }),
+    );
+    expect(screen.getByText("최종 확정")).toBeInTheDocument();
+    expect(screen.getByText("최종 승인")).toBeInTheDocument();
+    expect(
+      screen.getByText("현재 유효 · 터미널 직접 입력"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("터미널 결정 · 리비전 2 · 사람"),
+    ).toBeInTheDocument();
+    for (const rawValue of [
+      "finalized",
+      "final",
+      "current",
+      "interactive_tty",
+      "decide-interactive",
+      "human",
+    ]) {
+      expect(
+        screen.queryByText(rawValue, { exact: true }),
+      ).not.toBeInTheDocument();
+    }
+  });
 });

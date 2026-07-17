@@ -12,6 +12,62 @@ type TrustManifestProps = {
   report: ClientReportBundle;
 };
 
+const WORKFLOW_STATE_LABELS = {
+  finalized: "최종 확정",
+} as const;
+
+const APPROVAL_GATE_LABELS: Readonly<Record<string, string>> = {
+  context: "맥락 확인",
+  data: "데이터 확인",
+  diagnostic: "진단 검토",
+  final: "최종 승인",
+  scope_narrowing: "범위 조정",
+};
+
+const APPROVAL_STATUS_LABELS: Readonly<Record<string, string>> = {
+  current: "현재 유효",
+  invalidated: "무효화됨",
+};
+
+const INPUT_METHOD_LABELS: Readonly<Record<string, string>> = {
+  interactive_tty: "터미널 직접 입력",
+  test_fixture: "테스트용 입력",
+};
+
+const TRUST_COMMAND_LABELS: Readonly<Record<string, string>> = {
+  "approval-request": "승인 요청",
+  "approve-interactive": "터미널 승인",
+  cancel: "취소",
+  "decide-interactive": "터미널 결정",
+  finalize: "최종 확정",
+  "ingest-result": "결과 수집",
+  "prepare-finalization": "최종화 준비",
+  "prepare-jobs": "작업 준비",
+  "reduce-stage": "단계 통합",
+  resume: "재개",
+  "run-components": "구성요소 실행",
+  scan: "자료 점검",
+  stop: "중단",
+  "submit-human-response": "사람 응답 제출",
+};
+
+const ACTOR_KIND_LABELS = {
+  human: "사람",
+  runtime: "실행 엔진",
+} as const;
+
+function contractLabel(
+  value: string | null,
+  labels: Readonly<Record<string, string>>,
+  missingLabel: string,
+  unknownLabel: string,
+) {
+  if (value === null) {
+    return missingLabel;
+  }
+  return labels[value] ?? unknownLabel;
+}
+
 export function TrustManifest({
   activeIssue,
   eligibility,
@@ -58,7 +114,7 @@ export function TrustManifest({
               </div>
               <div className={styles.dataRow}>
                 <dt>실행 상태</dt>
-                <dd>{report.run.workflow_state}</dd>
+                <dd>{WORKFLOW_STATE_LABELS[report.run.workflow_state]}</dd>
               </div>
               <div className={styles.dataRow}>
                 <dt>검증기 버전</dt>
@@ -99,10 +155,28 @@ export function TrustManifest({
           <ul className={styles.trustList}>
             {report.trust_view.approval_summary.map((approval, index) => (
               <li key={`${approval.approval_id ?? "approval"}:${index}`}>
-                <strong>{approval.gate ?? "승인 단계 미제공"}</strong>
+                <strong>
+                  {contractLabel(
+                    approval.gate,
+                    APPROVAL_GATE_LABELS,
+                    "승인 단계 미제공",
+                    "기타 승인 단계",
+                  )}
+                </strong>
                 <span className={styles.metricMeta}>
-                  {approval.status ?? "상태 미제공"} ·{" "}
-                  {approval.input_method ?? "입력 방식 미제공"}
+                  {contractLabel(
+                    approval.status,
+                    APPROVAL_STATUS_LABELS,
+                    "상태 미제공",
+                    "기타 승인 상태",
+                  )}{" "}
+                  ·{" "}
+                  {contractLabel(
+                    approval.input_method,
+                    INPUT_METHOD_LABELS,
+                    "입력 방식 미제공",
+                    "기타 입력 방식",
+                  )}
                 </span>
               </li>
             ))}
@@ -127,7 +201,14 @@ export function TrustManifest({
             <li className={styles.event} key={event.event_id}>
               <strong>#{event.sequence}</strong>
               <span>
-                {event.command} · 리비전 {event.revision} · {event.actor_kind}
+                {contractLabel(
+                  event.command,
+                  TRUST_COMMAND_LABELS,
+                  "명령 미제공",
+                  "기타 실행 명령",
+                )}{" "}
+                · 리비전 {event.revision} ·{" "}
+                {ACTOR_KIND_LABELS[event.actor_kind]}
               </span>
             </li>
           ))}

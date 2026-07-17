@@ -20,6 +20,30 @@ type EvidenceWorkbenchProps = {
   report: ClientReportBundle;
 };
 
+const EVIDENCE_POLARITY_LABELS = {
+  contradicts: "반박",
+  supports: "뒷받침",
+} satisfies Record<EvidenceLink["polarity"], string>;
+
+const EVIDENCE_ROLE_LABELS = {
+  boundary: "적용 경계",
+  corroboration: "교차 확인",
+  counter_evidence: "반대 근거",
+  mechanism: "작동 원리",
+  observation: "관찰",
+} satisfies Record<EvidenceLink["role"], string>;
+
+const EVIDENCE_KIND_LABELS = {
+  fact: "사실",
+  signal: "신호",
+} satisfies Record<EvidenceLink["evidence_kind"], string>;
+
+const SOURCE_ACCESS_POLICY_LABELS = {
+  permitted: "허용",
+  prohibited: "금지",
+  restricted: "제한",
+} as const;
+
 function EvidenceCard({
   active,
   evidence,
@@ -35,14 +59,15 @@ function EvidenceCard({
       id={`evidence-${evidence.evidence_link_id}`}
     >
       <p className={styles.sectionKicker}>
-        {evidence.polarity} · {evidence.role}
+        {EVIDENCE_POLARITY_LABELS[evidence.polarity]} ·{" "}
+        {EVIDENCE_ROLE_LABELS[evidence.role]}
       </p>
       <h3 className={styles.evidenceHeading}>{evidence.evidence_link_id}</h3>
       <p className={styles.issueReason}>{evidence.rationale_template}</p>
       <dl className={styles.dataList}>
         <div className={styles.dataRow}>
           <dt>근거 종류</dt>
-          <dd>{evidence.evidence_kind}</dd>
+          <dd>{EVIDENCE_KIND_LABELS[evidence.evidence_kind]}</dd>
         </div>
         <div className={styles.dataRow}>
           <dt>근거 참조</dt>
@@ -148,7 +173,9 @@ export function EvidenceWorkbench({
                   key={source.source_ref}
                 >
                 <strong>{source.display_name_ko}</strong>
-                <p className={styles.metricMeta}>{source.access_policy}</p>
+                <p className={styles.metricMeta}>
+                  {SOURCE_ACCESS_POLICY_LABELS[source.access_policy]}
+                </p>
                 <ul className={styles.trustList}>
                   {source.locator_summaries.map((locator) => (
                     <li key={locator.extraction_hash}>

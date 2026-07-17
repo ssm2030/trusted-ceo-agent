@@ -13,7 +13,7 @@ export function TerminalApprovalNotice({
         &gt;_
       </div>
       <div>
-        <p className="eyebrow">HUMAN GATE</p>
+        <p className="eyebrow">사람 확인 단계</p>
         <h3>터미널 승인 필요</h3>
         <p>{instruction}</p>
         {requestId ? (
