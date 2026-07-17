@@ -28,7 +28,7 @@
 - `plugin/trusted-ceo-agent/trusted_ceo_agent/intake/adapters/accounting_json.py` — structural schema recognition, strict loading, field namespacing, JSON-pointer locators, Adapter metadata.
 - `plugin/trusted-ceo-agent/trusted_ceo_agent/intake/adapters/selection.py` — the only content-aware Adapter selection function.
 - `plugin/trusted-ceo-agent/trusted_ceo_agent/accounting/input_adapter.py` — accounting-domain validation and deterministic seven-field request construction.
-- `tests/support/accounting_multitable.py` — independent minimal valid 33-table test document.
+- `tests/support_accounting_multitable.py` — independent minimal valid 33-table test document.
 - `tests/unit/intake/test_accounting_json_adapter.py` — structural Adapter tests.
 - `tests/unit/intake/test_adapter_selection.py` — selector and fail-closed fallback tests.
 - `tests/unit/accounting/test_input_adapter.py` — domain validation, safe mapping, provenance, and missing-data tests.
@@ -86,14 +86,14 @@ The request output has exactly these keys:
 
 **Files:**
 
-- Create: `tests/support/accounting_multitable.py`
+- Create: `tests/support_accounting_multitable.py`
 - Create: `tests/unit/intake/test_accounting_json_adapter.py`
 - Create: `plugin/trusted-ceo-agent/trusted_ceo_agent/intake/adapters/accounting_json.py`
 - Modify: `plugin/trusted-ceo-agent/trusted_ceo_agent/intake/adapters/__init__.py`
 
 - [ ] **Step 1: Add an independent 33-table fixture**
 
-Add this table-name literal to `tests/support/accounting_multitable.py`; do not import the production constant so a production omission cannot make the test pass.
+Add this table-name literal to `tests/support_accounting_multitable.py`; do not import the production constant so a production omission cannot make the test pass.
 
 ```python
 from __future__ import annotations
@@ -367,7 +367,7 @@ Expected: PASS, including existing flat JSON tests.
 - [ ] **Step 6: Commit Task 1**
 
 ```powershell
-git add plugin/trusted-ceo-agent/trusted_ceo_agent/intake/adapters tests/support/accounting_multitable.py tests/unit/intake/test_accounting_json_adapter.py
+git add plugin/trusted-ceo-agent/trusted_ceo_agent/intake/adapters tests/support_accounting_multitable.py tests/unit/intake/test_accounting_json_adapter.py
 git commit -m "feat: add multitable accounting json adapter"
 ```
 
