@@ -869,10 +869,12 @@ _PERIOD_FIELDS = {
     "allocation_results": {"period"},
     "budgets": {"period"},
     "payroll_costs": {"payroll_period"},
-    "management_kpis": {"period"},
     "journal_headers": {"period"},
     "journal_lines": {"period"},
     "trial_balance": {"period"},
+}
+_HALF_YEAR_FIELDS = {
+    "management_kpis": {"period"},
 }
 _INTEGER_FIELDS = {
     "customers": {"credit_terms_days"},
@@ -1056,7 +1058,7 @@ For `direct_costs`, separately require `source_table` to name one of
 `payroll_costs`, `vendor_costs`, `work_logs`, or `allocation_results`, and
 require `source_row_id` in that table's primary-key index.
 
-Parse exact decimals with `Decimal`, reject booleans and non-finite values, validate dates with `date.fromisoformat`, timestamps with a timezone-aware ISO parser, and periods with `YYYY-MM`. Because `strict_loads` represents JSON integers as `Decimal`, integer fields accept either Python `int` or a finite integral `Decimal`, reject booleans/fractions, and normalize to `int` only in the procedure request. Preserve original source values in the intake Adapter. The request builder may emit canonical decimal strings only for calculated procedure inputs.
+Parse exact decimals with `Decimal`, reject booleans and non-finite values, validate dates with `date.fromisoformat`, timestamps with a timezone-aware ISO parser, monthly periods with `YYYY-MM`, and only `management_kpis.period` with `YYYY-H1` or `YYYY-H2`. Because `strict_loads` represents JSON integers as `Decimal`, integer fields accept either Python `int` or a finite integral `Decimal`, reject booleans/fractions, and normalize to `int` only in the procedure request. Preserve original source values in the intake Adapter. The request builder may emit canonical decimal strings only for calculated procedure inputs.
 
 For each journal, require at least two lines, nonnegative debit/credit, no line with both sides positive, and equal debit/credit sums.
 
