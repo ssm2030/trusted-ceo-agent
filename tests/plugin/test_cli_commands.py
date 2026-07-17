@@ -20,7 +20,8 @@ class CliCommandTests(unittest.TestCase):
             {
                 "preflight", "start", "scan", "prepare-jobs", "ingest-result",
                 "reduce-stage", "approval-request", "approve-interactive", "decide-interactive",
-                "run-components", "prepare-finalization", "finalize", "status",
+                "run-components", "prepare-accounting-input",
+                "prepare-finalization", "finalize", "status",
                 "validate", "render", "export-web-report", "validate-web-report",
                 "prepare-result-question", "validate-result-answer", "resume", "stop", "cancel",
                 "pending-action", "preview-human-response", "submit-human-response",
@@ -93,6 +94,29 @@ class CliCommandTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parser.parse_args(["scan", "--artifact-root", "x", "--run-id", "run_x"])
 
+
+    def test_prepare_accounting_input_is_read_only_and_requires_its_contract(self) -> None:
+        parser = cli.build_parser()
+        arguments = [
+            "prepare-accounting-input",
+            "--artifact-root", "artifacts",
+            "--run-id", "run_x",
+            "--revision", "3",
+            "--source-id", "source_" + "a" * 24,
+            "--scope-ref", "scope_x",
+            "--output", "accounting.json",
+        ]
+
+        parsed = parser.parse_args(arguments)
+        self.assertEqual("prepare-accounting-input", parsed.command)
+        self.assertFalse(hasattr(parsed, "expected_revision"))
+        with self.assertRaises(SystemExit):
+            parser.parse_args(arguments + ["--expected-revision", "3"])
+        for option in ("--revision", "--source-id", "--scope-ref", "--output"):
+            with self.subTest(option=option):
+                index = arguments.index(option)
+                with self.assertRaises(SystemExit):
+                    parser.parse_args(arguments[:index] + arguments[index + 2 :])
 
 if __name__ == "__main__":
     unittest.main()

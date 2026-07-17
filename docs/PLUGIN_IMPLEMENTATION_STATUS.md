@@ -34,7 +34,7 @@ vNext 플러그인의 로컬 구현과 고정 입력 기반 검증을 완료했�
 - Skill validator: 통과 (`PYTHONUTF8=1`)
 - Python compileall: 통과
 - offline preflight: Python `3.11.15`, jsonschema `4.26.0`, openpyxl `3.1.5`
-- `uv.lock` SHA-256: `880c5afff2fc05339b0b6f71c552700183590211c2a75edff72f2108f3084986`
+- `uv.lock` SHA-256: `46ddbe6fbe503c475c1db475f83bbd084e004139dfcca35970b58cdba98b75ca`
 - 고정 POC 네 시나리오를 독립된 두 디렉터리에서 각 2회 실행: 모두 합격
 - 두 독립 POC 결과: 각각 41개 파일, 파일 단위 SHA-256 byte-equivalent
 - 구현 범위 secret pattern 검사: 발견 0건

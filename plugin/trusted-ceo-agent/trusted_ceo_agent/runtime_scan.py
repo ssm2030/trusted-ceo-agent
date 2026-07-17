@@ -12,9 +12,7 @@ from trusted_ceo_agent.contracts.schema_store import SchemaStore
 from trusted_ceo_agent.errors import ContractError
 from trusted_ceo_agent.evidence.core import EvidenceCoreValidator, assemble_evidence_core
 from trusted_ceo_agent.evidence.revalidation import revalidate_component_artifacts
-from trusted_ceo_agent.intake.adapters.csv import CsvAdapter
-from trusted_ceo_agent.intake.adapters.json import JsonAdapter
-from trusted_ceo_agent.intake.adapters.xlsx import XlsxAdapter
+from trusted_ceo_agent.intake.adapters.selection import select_adapter
 from trusted_ceo_agent.intake.capability import build_capability_map
 from trusted_ceo_agent.intake.mapping import (
     ResolvedFieldMapping,
@@ -57,17 +55,6 @@ def _dataset_document(dataset: ParsedDataset) -> dict[str, Any]:
         "quality_issues": dataset.quality_issues,
         "semantic_rows_hash": dataset.semantic_rows_hash,
     }
-
-
-def _adapter(display_name: str) -> Any:
-    suffix = Path(display_name).suffix.lower()
-    if suffix == ".csv":
-        return CsvAdapter()
-    if suffix == ".json":
-        return JsonAdapter()
-    if suffix == ".xlsx":
-        return XlsxAdapter()
-    raise ContractError(f"unsupported input format: {suffix or '<none>'}")
 
 
 def _mapping_document(mapping: ResolvedFieldMapping) -> dict[str, Any]:
@@ -177,7 +164,8 @@ def build_scan_artifacts(
         source_id = str(source["source_id"])
         blob = source_root / str(source["snapshot_ref"])
         try:
-            dataset = _adapter(str(source["display_name"])).parse(blob, source_id)
+            adapter = select_adapter(str(source["display_name"]), blob)
+            dataset = adapter.parse(blob, source_id)
         except ContractError as error:
             quality_register.append(quality_issue(
                 issue_code="unsupported_type",
