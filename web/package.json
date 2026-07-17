@@ -12,6 +12,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:focused": "vitest run --reporter=dot --passWithNoTests",
+    "test:changed": "vitest related --run --reporter=dot --passWithNoTests",
     "test:watch": "vitest",
     "test:e2e": "playwright test"
   },
