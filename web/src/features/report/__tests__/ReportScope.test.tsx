@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -40,6 +40,14 @@ describe("ReportWorkspace scope contract", () => {
     await user.click(
       screen.getByRole("button", { name: "2026년 5월 근거 보기" }),
     );
+    const consultantTabs = screen.getByRole("tablist", {
+      name: "컨설턴트 분석 보기",
+    });
+    expect(
+      within(consultantTabs).getByRole("tab", { name: "근거·출처" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("뒷받침 · 관찰")).toBeInTheDocument();
+
     await waitFor(() =>
       expect(onScopeChange).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -64,6 +72,36 @@ describe("ReportWorkspace scope contract", () => {
     );
 
     vi.unstubAllGlobals();
+  });
+
+  it("does not change the question scope when only the consultant subview changes", async () => {
+    const user = userEvent.setup();
+    const onScopeChange = vi.fn();
+    render(
+      <ReportWorkspace
+        onScopeChange={onScopeChange}
+        payload={makeClientReportPayload()}
+      />,
+    );
+    const navigation = screen.getByRole("navigation", {
+      name: "결과 리포트 화면",
+    });
+
+    await user.click(
+      within(navigation).getByRole("button", {
+        name: "컨설턴트 근거 분석",
+      }),
+    );
+    const consultantTabs = screen.getByRole("tablist", {
+      name: "컨설턴트 분석 보기",
+    });
+    const scopeCallCount = onScopeChange.mock.calls.length;
+
+    await user.click(
+      within(consultantTabs).getByRole("tab", { name: "검증 계획" }),
+    );
+
+    expect(onScopeChange).toHaveBeenCalledTimes(scopeCallCount);
   });
 
   it("uses the supplied packet and revision as distinct scope instances", async () => {

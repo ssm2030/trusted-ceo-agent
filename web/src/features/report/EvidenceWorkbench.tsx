@@ -6,7 +6,7 @@ import type {
 import type { ClientReportBundle } from "@/features/report/report-model";
 import styles from "@/features/report/ReportWorkspace.module.css";
 
-type PreviewRequest = {
+export type PreviewRequest = {
   previewRef: string;
   sourceRef: string;
   sourceName: string;
@@ -56,6 +56,7 @@ function EvidenceCard({
       className={`${styles.evidenceCard} ${
         active ? styles.evidenceCardActive : ""
       }`}
+      aria-current={active ? "true" : undefined}
       id={`evidence-${evidence.evidence_link_id}`}
     >
       <p className={styles.sectionKicker}>
@@ -91,8 +92,7 @@ export function EvidenceWorkbench({
   const closure = report.evidence_view.issue_claim_closure.find(
     (candidate) => candidate.issue_ref === activeIssue.issue_id,
   );
-  const evidenceIds =
-    closure?.evidence_link_ids ?? activeIssue.evidence_link_ids;
+  const evidenceIds = closure?.evidence_link_ids ?? [];
   const evidenceLinks = report.evidence_view.evidence_links.filter((link) =>
     evidenceIds.includes(link.evidence_link_id),
   );
@@ -106,24 +106,7 @@ export function EvidenceWorkbench({
   );
 
   return (
-    <section aria-labelledby="evidence-title" className={styles.section}>
-      <header className={styles.sectionHeader}>
-        <div>
-          <p className={styles.sectionKicker}>근거 분석 작업대</p>
-          <h2 className={styles.sectionTitle} id="evidence-title">
-            {activeIssue.title_template} 근거 분석
-          </h2>
-          <p className={styles.sectionDescription}>
-            플러그인이 닫힌 근거 범위로 제공한 사실, 근거 연결, 출처만
-            표시합니다.
-          </p>
-        </div>
-        <span className={styles.scopeBand}>
-          현재 범위: {activeIssue.title_template}
-        </span>
-      </header>
-
-      <div className={styles.evidenceGrid}>
+    <div className={styles.evidenceGrid}>
         <div className={styles.evidenceMain}>
           {evidenceLinks.length === 0 ? (
             <p className={styles.empty}>표시할 근거 연결이 없습니다.</p>
@@ -218,7 +201,6 @@ export function EvidenceWorkbench({
             ))}
           </ul>
         </aside>
-      </div>
-    </section>
+    </div>
   );
 }

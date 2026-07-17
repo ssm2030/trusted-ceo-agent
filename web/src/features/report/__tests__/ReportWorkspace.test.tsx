@@ -2,7 +2,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { ReportWorkspace } from "@/features/report/ReportWorkspace";
+import {
+  consultantViewForQuestionReference,
+  ReportWorkspace,
+} from "@/features/report/ReportWorkspace";
 import { makeClientReportPayload } from "@/features/report/__tests__/report-fixture";
 
 vi.mock("@/features/report/charts/EChartCanvas", () => ({
@@ -28,6 +31,7 @@ describe("ReportWorkspace", () => {
         within(navigation).getByRole("button", { name: label }),
       ).toBeInTheDocument();
     }
+    expect(within(navigation).getAllByRole("button")).toHaveLength(5);
 
     await user.click(
       screen.getByRole("button", { name: "현금 회수 지연 선택" }),
@@ -38,14 +42,40 @@ describe("ReportWorkspace", () => {
       }),
     );
 
+    const consultantTabs = screen.getByRole("tablist", {
+      name: "컨설턴트 분석 보기",
+    });
+    expect(within(consultantTabs).getAllByRole("tab")).toHaveLength(3);
     expect(
-      screen.getByRole("heading", { name: "현금 회수 지연 근거 분석" }),
+      within(consultantTabs).getByRole("tab", { name: "분석 결론" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("tabpanel", { name: "분석 결론" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "현금 회수 지연 분석 검토" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(consultantTabs).getByRole("tab", { name: "검증 계획" }),
+    );
+    expect(
+      screen.getByRole("tabpanel", { name: "검증 계획" }),
     ).toBeInTheDocument();
 
     await user.click(
       within(navigation).getByRole("button", { name: "실행·신뢰 기록" }),
     );
     expect(screen.getByText("현재 범위: 현금 회수 지연")).toBeInTheDocument();
+
+    await user.click(
+      within(navigation).getByRole("button", {
+        name: "컨설턴트 근거 분석",
+      }),
+    );
+    expect(
+      screen.getByRole("tabpanel", { name: "검증 계획" }),
+    ).toBeInTheDocument();
   });
 
   it("renders only the plugin-selected summary issues and supplied relations", async () => {
@@ -97,6 +127,14 @@ describe("ReportWorkspace", () => {
     await user.click(
       within(navigation).getByRole("button", { name: "컨설턴트 근거 분석" }),
     );
+    const consultantTabs = screen.getByRole("tablist", {
+      name: "컨설턴트 분석 보기",
+    });
+    await user.click(
+      within(consultantTabs).getByRole("tab", {
+        name: "근거·출처",
+      }),
+    );
     expect(screen.getByText("뒷받침 · 관찰")).toBeInTheDocument();
     expect(screen.getByText("허용")).toBeInTheDocument();
     expect(
@@ -126,5 +164,11 @@ describe("ReportWorkspace", () => {
         screen.queryByText(rawValue, { exact: true }),
       ).not.toBeInTheDocument();
     }
+  });
+
+  it("routes claim references to analysis and evidence-bearing references to evidence", () => {
+    expect(consultantViewForQuestionReference("claim")).toBe("analysis");
+    expect(consultantViewForQuestionReference("evidence")).toBe("evidence");
+    expect(consultantViewForQuestionReference("source")).toBe("evidence");
   });
 });
