@@ -10,12 +10,17 @@
 이 문서는 다음 정본을 대체하지 않는 교차 구현계약이다.
 
 1. `docs/superpowers/specs/2026-07-17-trusted-ceo-agent-plugin-design.md`
-2. `docs/superpowers/specs/2026-07-17-trusted-ceo-agent-web-interface-design.md`
-3. `docs/superpowers/specs/2026-07-17-senior-accountant-review-expansion-design.md`
-4. `docs/superpowers/specs/2026-07-17-professional-reasoning-knowledge-foundry-design.md`
-5. `docs/superpowers/specs/2026-07-17-knowledge-foundry-feedback-intake-design.md`
+2. `docs/superpowers/specs/2026-07-17-trusted-ceo-agent-web-design-final.md`
+3. `docs/superpowers/specs/2026-07-17-trusted-ceo-agent-web-design-final-addendum-v2.md`
+4. `docs/superpowers/specs/2026-07-17-senior-accountant-review-expansion-design.md`
+5. `docs/superpowers/specs/2026-07-17-professional-reasoning-knowledge-foundry-design.md`
+6. `docs/superpowers/specs/2026-07-17-knowledge-foundry-feedback-intake-design.md`
+7. `docs/superpowers/specs/2026-07-17-accounting-content-suite-index.md`
+8. `docs/superpowers/specs/2026-07-17-accounting-content-suite-manifest.md`
 
 현재 플러그인 기준선과 기존 리비전·승인·Trust Kernel은 그대로 유지한다. 이 문서는 후속 구현계획이 반드시 포함해야 하는 추가 계약을 고정한다.
+
+회계 범위를 구현할 때는 Suite Index와 Manifest를 제어 문서로 함께 읽고, Manifest §3의 일곱 필수 회계 콘텐츠 파일을 하나의 구현 입력 집합으로 사용한다. Manifest가 Index보다 파일 목록 우선권을 가지며, 일부 파일이나 일부 Cycle만 구현해 전체 회계 전문범위를 주장할 수 없다.
 
 충돌 시 다음 순서를 따른다.
 
@@ -52,6 +57,7 @@
 5. 이상신호 후보를 우선순위 큐로 관리하고, 한 사건씩 단계적으로 심층 분석한 결과를 불변 `FindingRecord`로 축적한다.
 6. 사건별 작업 예산, 단계적 심층화, 체크포인트·재개, 실패·재시도·병렬 제한을 정책과 Artifact로 보존한다.
 7. 모든 중요 신호가 명시적 종결 상태에 도달한 뒤에만 전체 통합과 종료 판정을 수행하고, 검증된 결론 데이터만 결정적 변환기를 거쳐 탭 2에 투영한다.
+8. 회계 구현은 Suite의 64개 Issue Family, Account Universe, Coverage Matrix, 네 Pack, Norm & Procedure Catalog를 생략할 수 없는 입력으로 취급하고 제품 표시는 Suite Index §6을 따른다.
 
 ## 2. 상호작용을 두 경로로 분리
 
@@ -377,6 +383,8 @@ domain + issue_family + jurisdiction + effective_period + industry_scope
 ### 6.2 D1~D12 필수
 
 선택된 Issue Family는 Knowledge Foundry 설계의 D1~D12를 모두 가져야 한다.
+
+회계 Issue Family의 모집단은 Suite Index §7과 각 Pack의 Family 절(Accounting Core §3, Contract & Revenue §3, Cash Flow & Working Capital §2, Project Cost & Allocation §3)에 고정된 AC-01~AC-16, RV-01~RV-16, CF-01~CF-16, CA-01~CA-16이며, 정확한 필수 파일 집합은 Suite Manifest §3을 따른다. Account Universe, Coverage Matrix 또는 Norm & Procedure Catalog를 생략한 구현은 64개 Family 자체를 구현했더라도 이 Gate를 통과하지 못한다.
 
 1. 사건과 모집단
 2. 계정·주장·의사결정 영향
@@ -1012,7 +1020,7 @@ finalized revision 선택
   -> web-report-bundle.json publish
 ```
 
-`WebReportBundle` 최상위 계약은 기존 웹 설계의 다음 필드를 그대로 사용한다.
+`WebReportBundle` 최상위 계약은 `2026-07-17-trusted-ceo-agent-web-design-final.md` §6.3과 필수 보정문 `2026-07-17-trusted-ceo-agent-web-design-final-addendum-v2.md`를 함께 적용해 다음 필드를 그대로 사용한다.
 
 ```text
 bundle_version
@@ -1086,6 +1094,8 @@ bundle_hash
 - Method·Norm·Expectation·Procedure·Counter·Trigger Card compiler
 - jurisdiction·effective-date resolver
 - expert approval와 authority
+- Suite Manifest의 일곱 payload 문서 및 64개 회계 Issue Family 완전성 검사
+- Account Universe·Coverage·Norm & Procedure 누락 시 제품 표시 강등
 
 ### F. Cross-domain Integration
 
@@ -1274,6 +1284,8 @@ bundle_hash
 22. 미종결 required 작업과 무결성 실패는 정상·제한 finalization을 모두 차단한다.
 23. 검증·승인된 결론 데이터만 결정적 Final Result Converter를 거쳐 탭 2에 투영된다.
 24. 변환기와 웹은 새 전문 결론·Grade·관계·근거를 만들지 않는다.
+25. Suite Index·Manifest와 Manifest §3의 일곱 필수 회계 콘텐츠 파일이 모두 구현 입력과 추적표에 연결된다.
+26. 64개 회계 Issue Family·Account Universe·Coverage·Norm & Procedure가 불완전하거나 전문가 승격 전이면 Suite Index §6보다 높은 제품 표시를 사용할 수 없다.
 
 ## 14. HANDOFF
 

@@ -21,13 +21,15 @@
    - 회계 주장, 데이터 Capability, Tier, Cross-cycle, Release Gate
 2. `2026-07-17-accounting-account-universe-gate-design.md`
    - 네 Pack 밖의 중요 계정과 공시영역 누락 차단
-3. `2026-07-17-accounting-core-journal-integrity-pack-design.md`
+3. `2026-07-17-accounting-norm-procedure-seed-catalog.md`
+   - 실제 provisional 규범·예외·반증·공통 절차 초안
+4. `2026-07-17-accounting-core-journal-integrity-pack-design.md`
    - 원장·시산표·보조원장·분개 무결성
-4. `2026-07-17-contract-revenue-pack-design.md`
+5. `2026-07-17-contract-revenue-pack-design.md`
    - 계약·수행의무·수익·계약잔액·채권
-5. `2026-07-17-cash-flow-working-capital-pack-design.md`
+6. `2026-07-17-cash-flow-working-capital-pack-design.md`
    - 현금·현금흐름표·운전자본·유동성
-6. `2026-07-17-project-cost-allocation-pack-design.md`
+7. `2026-07-17-project-cost-allocation-pack-design.md`
    - 프로젝트원가·배부·WIP·계약원가·손실계약
 
 ## 4. 설계 범위
@@ -97,7 +99,7 @@
 ## 8. HANDOFF
 
 ```text
-이 Index를 먼저 읽고 여섯 콘텐츠 설계서를 모두 확인한다.
+이 Index를 먼저 읽고 Manifest가 고정한 일곱 콘텐츠 설계서를 모두 확인한다.
 Accounting Core만으로 전체 회계검토를 주장하지 않는다.
 세 Cycle 구현만으로 회사 전체 회계 Full을 주장하지 않는다.
 64개 Issue Family는 초기 seed이며 Knowledge Foundry로 계속 개선한다.
