@@ -422,17 +422,25 @@ class AccountingInputAdapterTests(unittest.TestCase):
         )
         document["tables"]["allocation_drivers"].append(second_driver)
 
+        document["tables"]["journal_lines"][0]["debit"] = "10000000000.00"
+        document["tables"]["journal_lines"][1]["credit"] = "10000000000.00"
         original_precision = getcontext().prec
+        original_emax = getcontext().Emax
+        original_emin = getcontext().Emin
         values = []
         try:
-            for precision in (6, 28):
+            for precision, exponent_limit in ((6, 999999), (28, 9)):
                 getcontext().prec = precision
+                getcontext().Emax = exponent_limit
+                getcontext().Emin = -exponent_limit
                 row = _build(copy.deepcopy(document))["project_cost_inputs"][
                     "CA-04"
                 ]["rows"][0]
                 values.append(row["metrics"]["causal_driver_allocated_cost"])
         finally:
             getcontext().prec = original_precision
+            getcontext().Emax = original_emax
+            getcontext().Emin = original_emin
 
         self.assertEqual(values[0], values[1])
 

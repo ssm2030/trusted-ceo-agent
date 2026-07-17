@@ -6,7 +6,7 @@ import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
+from decimal import Context, Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
 from typing import Any, cast
 
 from trusted_ceo_agent.accounting.suite import build_machine_draft_suite
@@ -24,6 +24,7 @@ _MONTH = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2])$")
 _HALF_YEAR = re.compile(r"^\d{4}-H[12]$")
 _PLAIN_DECIMAL = re.compile(r"^-?(?:0|[1-9]\d*)(?:\.\d+)?$")
 _MIN_CALCULATION_PRECISION = 28
+_MAX_CALCULATION_EXPONENT = 999_999_999
 
 _TABLE_FIELDS = {
     "allocation_drivers": {
@@ -1516,9 +1517,13 @@ def build_accounting_request(
     snapshot_sha256: str,
 ) -> dict[str, Any]:
     """Build deterministically without inheriting process Decimal context."""
-    with localcontext() as context:
-        context.prec = _calculation_precision(document)
-        context.rounding = ROUND_HALF_EVEN
+    context = Context(
+        prec=_calculation_precision(document),
+        rounding=ROUND_HALF_EVEN,
+        Emin=-_MAX_CALCULATION_EXPONENT,
+        Emax=_MAX_CALCULATION_EXPONENT,
+    )
+    with localcontext(context):
         return _build_accounting_request_in_context(
             document,
             run_id=run_id,
