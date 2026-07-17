@@ -75,6 +75,41 @@ def _native_int(value: Any, label: str) -> int:
     return result
 
 
+def _assert_grade_alignment(
+    final_result: Mapping[str, Any],
+    files: Mapping[str, bytes],
+) -> None:
+    published: dict[str, str] = {}
+    for path, payload in files.items():
+        if not path.startswith("grading/records/") or not path.endswith(".json"):
+            continue
+        record = strict_loads(payload)
+        if not isinstance(record, Mapping) or record.get("publication_status") != "published":
+            continue
+        issue_id = record.get("issue_id")
+        primary_grade = record.get("primary_grade")
+        if not isinstance(issue_id, str) or not isinstance(primary_grade, str):
+            raise IntegrityError("published Grade Record is invalid")
+        if issue_id in published:
+            raise IntegrityError(f"duplicate published Grade Record: {issue_id}")
+        published[issue_id] = primary_grade
+
+    issues = final_result.get("issues", [])
+    if not isinstance(issues, list):
+        raise IntegrityError("Final Result issues must be an array")
+    for issue in issues:
+        if not isinstance(issue, Mapping):
+            raise IntegrityError("Final Result issue is invalid")
+        issue_id = issue.get("issue_id")
+        primary_grade = issue.get("primary_grade")
+        if (
+            not isinstance(issue_id, str)
+            or not isinstance(primary_grade, str)
+            or published.get(issue_id) != primary_grade
+        ):
+            raise IntegrityError(f"Grade Record mismatch: {issue_id}")
+
+
 def _approval_summary(record: Mapping[str, Any]) -> dict[str, Any]:
     fixture_only = record.get("fixture_only", False)
     if fixture_only is not None and not isinstance(fixture_only, bool):
@@ -448,6 +483,7 @@ def export_web_report(
         )
 
     raw_result = _document(files, "final/result.json")
+    _assert_grade_alignment(raw_result, files)
     summary = raw_result.get("run_summary")
     if not isinstance(summary, Mapping):
         raise IntegrityError("Final Result run summary is missing")
