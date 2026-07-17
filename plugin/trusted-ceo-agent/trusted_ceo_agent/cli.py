@@ -30,6 +30,13 @@ from trusted_ceo_agent.mission import (
 from trusted_ceo_agent.outputs.validation import revalidate_package
 from trusted_ceo_agent.outputs.render import render_package
 from trusted_ceo_agent.packs.runtime_index import RuntimePackIndex
+from trusted_ceo_agent.questions import (
+    QuestionIndex,
+    ScopeRequired,
+    build_result_question_job,
+    validate_and_render_answer,
+)
+from trusted_ceo_agent.questions.scope import SCOPE_KINDS
 from trusted_ceo_agent.runtime_scan import build_scan_artifacts
 from trusted_ceo_agent.runtime_components import (
     component_input_documents,
@@ -151,6 +158,24 @@ def build_parser() -> argparse.ArgumentParser:
     _add_run(validate_web_report)
     validate_web_report.add_argument("--revision", type=int, required=True)
     validate_web_report.add_argument("--bundle", type=Path, required=True)
+
+    prepare_question = commands.add_parser("prepare-result-question")
+    _add_run(prepare_question)
+    prepare_question.add_argument("--revision", type=int, required=True)
+    prepare_question.add_argument("--question-file", type=Path, required=True)
+    prepare_question.add_argument("--scope-kind", choices=sorted(SCOPE_KINDS), required=True)
+    prepare_question.add_argument("--scope-instance-id", required=True)
+    prepare_question.add_argument(
+        "--privacy-classification",
+        choices=("poc_deidentified", "company_restricted"),
+        required=True,
+    )
+
+    validate_answer = commands.add_parser("validate-result-answer")
+    _add_run(validate_answer)
+    validate_answer.add_argument("--revision", type=int, required=True)
+    validate_answer.add_argument("--job", type=Path, required=True)
+    validate_answer.add_argument("--draft", type=Path, required=True)
 
     pending_action = commands.add_parser("pending-action")
     _add_run(pending_action)
@@ -668,6 +693,53 @@ def _validate_web_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]
         message="web report eligible" if decision["eligible"] else decision["failure_message"],
         run_id=args.run_id, revision=args.revision,
         data=decision,
+    )
+
+
+def _prepare_result_question(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+    files = _snapshot_payloads(_store_for(args), args.revision)
+    index = QuestionIndex.from_snapshot(files)
+    _, question_payload = _stable_read(args.question_file.resolve(strict=True))
+    question = question_payload.decode("utf-8")
+    try:
+        job = build_result_question_job(
+            index=index,
+            question=question,
+            scope_kind=args.scope_kind,
+            scope_instance_id=args.scope_instance_id,
+            privacy_classification=args.privacy_classification,
+        )
+    except ScopeRequired as error:
+        return 2, response(
+            command="prepare-result-question", ok=True, code=2,
+            message="scope required", run_id=args.run_id,
+            revision=args.revision, state="finalized",
+            data={
+                "error_code": error.code,
+                "suggestions": [dict(item) for item in error.suggestions],
+            },
+        )
+    return 0, response(
+        command="prepare-result-question", ok=True, code=0,
+        message="result question prepared", run_id=args.run_id,
+        revision=args.revision, state="finalized", data={"job": job},
+    )
+
+
+def _validate_result_answer(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+    files = _snapshot_payloads(_store_for(args), args.revision)
+    index = QuestionIndex.from_snapshot(files)
+    _, job_payload = _stable_read(args.job.resolve(strict=True))
+    _, draft_payload = _stable_read(args.draft.resolve(strict=True))
+    job = strict_loads(job_payload)
+    draft = strict_loads(draft_payload)
+    if not isinstance(job, Mapping) or not isinstance(draft, Mapping):
+        raise ContractError("result question Job and answer draft must be objects")
+    answer = validate_and_render_answer(job, draft, index)
+    return 0, response(
+        command="validate-result-answer", ok=True, code=0,
+        message="result answer validated", run_id=args.run_id,
+        revision=args.revision, state="finalized", data={"answer": answer},
     )
 
 
@@ -1716,6 +1788,10 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         return _export_web_report(args)
     if args.command == "validate-web-report":
         return _validate_web_report(args)
+    if args.command == "prepare-result-question":
+        return _prepare_result_question(args)
+    if args.command == "validate-result-answer":
+        return _validate_result_answer(args)
     if args.command == "render":
         return _render(args)
     return _mutation(args)

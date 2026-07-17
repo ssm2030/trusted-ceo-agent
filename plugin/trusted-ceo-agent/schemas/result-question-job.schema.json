@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "result-question-job.schema.json",
+  "title": "ResultQuestionJobV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job_version",
+    "job_id",
+    "job_hash",
+    "run_id",
+    "revision",
+    "question",
+    "response_locale",
+    "privacy_classification",
+    "scope",
+    "allowed_issue_refs",
+    "allowed_claim_refs",
+    "allowed_fact_refs",
+    "allowed_signal_refs",
+    "allowed_evidence_link_ids",
+    "allowed_source_refs",
+    "allowed_value_refs",
+    "allowed_expert_packet_refs",
+    "allowed_revision_diff_refs",
+    "context_blocks",
+    "value_table",
+    "forbidden_conclusions",
+    "data_quality_conditions",
+    "not_assessable_conditions",
+    "deidentification",
+    "privacy",
+    "context_caps",
+    "excluded_summary",
+    "output_schema_version"
+  ],
+  "properties": {
+    "job_version": {"const": "1.0.0"},
+    "job_id": {"type": "string", "minLength": 1},
+    "job_hash": {"$ref": "#/$defs/sha256"},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "question": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "response_locale": {"const": "ko-KR"},
+    "privacy_classification": {
+      "enum": ["poc_deidentified", "company_restricted"]
+    },
+    "scope": {"$ref": "#/$defs/scope"},
+    "allowed_issue_refs": {"$ref": "#/$defs/idSet"},
+    "allowed_claim_refs": {"$ref": "#/$defs/idSet"},
+    "allowed_fact_refs": {"$ref": "#/$defs/idSet"},
+    "allowed_signal_refs": {"$ref": "#/$defs/idSet"},
+    "allowed_evidence_link_ids": {"$ref": "#/$defs/idSet"},
+    "allowed_source_refs": {"$ref": "#/$defs/idSet"},
+    "allowed_value_refs": {"$ref": "#/$defs/idSet"},
+    "allowed_expert_packet_refs": {"$ref": "#/$defs/idSet"},
+    "allowed_revision_diff_refs": {"$ref": "#/$defs/idSet"},
+    "context_blocks": {
+      "type": "array",
+      "maxItems": 2000,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/contextBlock"}
+    },
+    "value_table": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/valueEntry"}
+    },
+    "forbidden_conclusions": {"$ref": "#/$defs/textSet"},
+    "data_quality_conditions": {"$ref": "#/$defs/textSet"},
+    "not_assessable_conditions": {"$ref": "#/$defs/textSet"},
+    "deidentification": {"$ref": "#/$defs/deidentification"},
+    "privacy": {"$ref": "#/$defs/privacy"},
+    "context_caps": {"$ref": "#/$defs/contextCaps"},
+    "excluded_summary": {"$ref": "#/$defs/excludedSummary"},
+    "output_schema_version": {"const": "1.0.0"}
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "idSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "textSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope_kind",
+        "scope_instance_id",
+        "start_refs",
+        "issue_id"
+      ],
+      "properties": {
+        "scope_kind": {
+          "enum": [
+            "run",
+            "issue",
+            "section",
+            "claim",
+            "evidence",
+            "source",
+            "expert_packet",
+            "revision_diff"
+          ]
+        },
+        "scope_instance_id": {"type": "string", "minLength": 1},
+        "start_refs": {"$ref": "#/$defs/idSet"},
+        "issue_id": {"type": ["string", "null"], "minLength": 1}
+      }
+    },
+    "contextBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_ref",
+        "block_kind",
+        "subject_ref",
+        "text",
+        "claim_refs",
+        "evidence_link_ids",
+        "source_refs",
+        "value_refs"
+      ],
+      "properties": {
+        "block_ref": {"type": "string", "minLength": 1},
+        "block_kind": {
+          "enum": [
+            "issue",
+            "claim",
+            "fact",
+            "signal",
+            "evidence",
+            "source",
+            "expert_packet",
+            "revision_diff",
+            "trust"
+          ]
+        },
+        "subject_ref": {"type": "string", "minLength": 1},
+        "text": {"type": "string", "minLength": 1},
+        "claim_refs": {"$ref": "#/$defs/idSet"},
+        "evidence_link_ids": {"$ref": "#/$defs/idSet"},
+        "source_refs": {"$ref": "#/$defs/idSet"},
+        "value_refs": {"$ref": "#/$defs/idSet"}
+      }
+    },
+    "valueEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value_ref",
+        "fact_or_signal_id",
+        "display_field",
+        "display_text"
+      ],
+      "properties": {
+        "value_ref": {"type": "string", "minLength": 1},
+        "fact_or_signal_id": {"type": "string", "minLength": 1},
+        "display_field": {"type": "string", "minLength": 1},
+        "display_text": {"type": "string"}
+      }
+    },
+    "deidentification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "poc_only",
+        "direct_identifiers_removed",
+        "notice_ko"
+      ],
+      "properties": {
+        "poc_only": {"type": "boolean"},
+        "direct_identifiers_removed": {"type": "boolean"},
+        "notice_ko": {"type": "string", "minLength": 1}
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deidentified", "excluded_fields"],
+      "properties": {
+        "deidentified": {"type": "boolean"},
+        "excluded_fields": {"$ref": "#/$defs/textSet"}
+      }
+    },
+    "contextCaps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_context_bytes",
+        "actual_context_bytes",
+        "excluded_block_count",
+        "max_answer_blocks",
+        "max_block_characters"
+      ],
+      "properties": {
+        "max_context_bytes": {"const": 131072},
+        "actual_context_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 131072
+        },
+        "excluded_block_count": {"type": "integer", "minimum": 0},
+        "max_answer_blocks": {"const": 12},
+        "max_block_characters": {"const": 800}
+      }
+    },
+    "excludedSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "excluded",
+        "reason_codes",
+        "available_scope_instance_ids"
+      ],
+      "properties": {
+        "excluded": {"type": "boolean"},
+        "reason_codes": {"$ref": "#/$defs/textSet"},
+        "available_scope_instance_ids": {"$ref": "#/$defs/idSet"}
+      }
+    }
+  }
+}
