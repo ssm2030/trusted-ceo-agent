@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 import type { ResultAnswerV1 } from "../../../contracts/web-report/v1/generated/types";
@@ -230,10 +231,19 @@ test("질문 drawer가 검증 답변과 범위별 대화를 안전하게 유지�
   await page.getByRole("button", {
     name: "2026년 5월 근거 보기",
   }).click();
-  await launcher.click();
+  await launcher.focus();
+  await expect(launcher).toBeFocused();
+  await page.keyboard.press("Enter");
 
   const drawer = page.getByRole("dialog", { name: "결과 질문 창" });
   await expect(drawer).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "질문 창 닫기" }),
+  ).toBeFocused();
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(
+    accessibility.violations.filter((violation) => violation.impact === "critical"),
+  ).toEqual([]);
   const drawerBox = await drawer.boundingBox();
   const viewport = page.viewportSize();
   expect(drawerBox).not.toBeNull();
@@ -242,7 +252,7 @@ test("질문 drawer가 검증 답변과 범위별 대화를 안전하게 유지�
   expect(drawerBox!.width).toBeLessThanOrEqual(viewport!.width * 0.4);
   expect(drawerBox!.height).toBeLessThanOrEqual(viewport!.height * 0.72);
 
-  const composer = page.getByLabel("결과 질문");
+  const composer = page.getByLabel("결과 질문", { exact: true });
   await expect(composer).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "누르고 말하기" }),
@@ -286,7 +296,7 @@ test("질문 drawer가 검증 답변과 범위별 대화를 안전하게 유지�
     name: "질문 창 닫기",
   }).click();
   await launcher.click();
-  await expect(page.getByLabel("결과 질문")).toHaveValue(
+  await expect(page.getByLabel("결과 질문", { exact: true })).toHaveValue(
     "근거 범위 후속 초안",
   );
   await expect(
@@ -300,7 +310,7 @@ test("질문 drawer가 검증 답변과 범위별 대화를 안전하게 유지�
   await page.getByRole("button", { name: "출처 미리보기 닫기" }).click();
   await launcher.click();
   await expect(page.getByText("현재 범위: 출처 · source_main")).toBeVisible();
-  await expect(page.getByLabel("결과 질문")).toHaveValue("");
+  await expect(page.getByLabel("결과 질문", { exact: true })).toHaveValue("");
 
   expect(harness.conversationReads).toEqual(
     expect.arrayContaining([
@@ -318,4 +328,40 @@ test("질문 drawer가 검증 답변과 범위별 대화를 안전하게 유지�
       }),
     ]),
   );
+
+  await drawer.evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map(async (animation) => {
+        try {
+          await animation.finished;
+        } catch {
+          // A cancelled entrance animation is already settled for layout checks.
+        }
+      }),
+    );
+  });
+
+  for (const viewportCase of [
+    { height: 900, maxHeightRatio: 0.7, maxWidth: 380, width: 820 },
+    { height: 844, maxHeightRatio: 0.85, maxWidth: 390, width: 390 },
+  ]) {
+    await page.setViewportSize({
+      height: viewportCase.height,
+      width: viewportCase.width,
+    });
+    const responsiveBox = await drawer.boundingBox();
+    expect(responsiveBox).not.toBeNull();
+    expect(responsiveBox!.x).toBeGreaterThanOrEqual(0);
+    expect(responsiveBox!.y).toBeGreaterThanOrEqual(0);
+    expect(responsiveBox!.x + responsiveBox!.width).toBeLessThanOrEqual(
+      viewportCase.width,
+    );
+    expect(responsiveBox!.y + responsiveBox!.height).toBeLessThanOrEqual(
+      viewportCase.height,
+    );
+    expect(responsiveBox!.width).toBeLessThanOrEqual(viewportCase.maxWidth);
+    expect(responsiveBox!.height).toBeLessThanOrEqual(
+      viewportCase.height * viewportCase.maxHeightRatio,
+    );
+  }
 });
