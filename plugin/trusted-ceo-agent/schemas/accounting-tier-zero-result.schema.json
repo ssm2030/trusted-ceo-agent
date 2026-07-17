@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "accounting-tier-zero-result.schema.json",
+  "title": "Accounting Core Tier 0 Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "revision",
+    "input_hash",
+    "source_manifests",
+    "population_status_counts",
+    "status_populations",
+    "procedure_results",
+    "procedure_status_counts",
+    "coverage_complete",
+    "authority_ceiling",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "input_hash": {"$ref": "#/$defs/sha256"},
+    "source_manifests": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/source_manifest"}
+    },
+    "population_status_counts": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "status_populations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "journal_ids"],
+        "properties": {
+          "status": {"type": "string", "minLength": 1},
+          "journal_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "procedure_results": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {"$ref": "#/$defs/procedure_result"}
+    },
+    "procedure_status_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "passed": {"type": "integer", "minimum": 0},
+        "exceptions_found": {"type": "integer", "minimum": 0},
+        "not_assessable": {"type": "integer", "minimum": 0}
+      }
+    },
+    "coverage_complete": {"type": "boolean"},
+    "authority_ceiling": {"const": "Boundary"},
+    "content_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullable_text": {"type": ["string", "null"]},
+    "source_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "source_sha256",
+        "period_start",
+        "period_end",
+        "header_count",
+        "line_count",
+        "debit_total",
+        "credit_total"
+      ],
+      "properties": {
+        "source_id": {"type": "string", "minLength": 1},
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "period_start": {"type": "string", "minLength": 1},
+        "period_end": {"type": "string", "minLength": 1},
+        "header_count": {"type": "integer", "minimum": 0},
+        "line_count": {"type": "integer", "minimum": 0},
+        "debit_total": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+        "credit_total": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"}
+      }
+    },
+    "exception": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "scope_ref",
+        "entity",
+        "currency",
+        "period",
+        "observed",
+        "expected",
+        "difference"
+      ],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "scope_ref": {"type": "string", "minLength": 1},
+        "entity": {"$ref": "#/$defs/nullable_text"},
+        "currency": {"$ref": "#/$defs/nullable_text"},
+        "period": {"$ref": "#/$defs/nullable_text"},
+        "observed": {"$ref": "#/$defs/nullable_text"},
+        "expected": {"$ref": "#/$defs/nullable_text"},
+        "difference": {"$ref": "#/$defs/nullable_text"}
+      }
+    },
+    "procedure_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue_family_id",
+        "procedure_id",
+        "status",
+        "exception_count",
+        "exceptions"
+      ],
+      "properties": {
+        "issue_family_id": {"enum": ["AC-01", "AC-02", "AC-03", "AC-04", "AC-05"]},
+        "procedure_id": {"enum": ["P-AC-01", "P-AC-02", "P-AC-03", "P-AC-04", "P-AC-05"]},
+        "status": {"enum": ["passed", "exceptions_found", "not_assessable"]},
+        "exception_count": {"type": "integer", "minimum": 0},
+        "exceptions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/exception"}
+        }
+      }
+    }
+  }
+}

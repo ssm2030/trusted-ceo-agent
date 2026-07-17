@@ -1,0 +1,294 @@
+{
+    "schema_version":  "1.0.0",
+    "pack_type":  "problem",
+    "pack_id":  "delivery-capacity-overrun",
+    "pack_version":  "1.0.0",
+    "requested_authority":  "full",
+    "title":  "Delivery Capacity Overrun",
+    "description":  "Tests planned-versus-actual delivery effort and whether overruns are compensated or accepted.",
+    "applicability":  {
+                          "business_models":  [
+                                                  "project_b2b_services",
+                                                  "hybrid_b2b_services"
+                                              ],
+                          "industries":  [
+
+                                         ],
+                          "excluded_industries":  [
+
+                                                  ],
+                          "required_data_roles":  [
+                                                      "monthly_financials"
+                                                  ]
+                      },
+    "dependencies":  [
+                         "trusted-ceo-default@1.0.0",
+                         "b2b-services@1.0.0"
+                     ],
+    "safety":  {
+                   "forbidden_interpretations":  [
+                                                     "Calling all extra effort waste"
+                                                 ],
+                   "safe_stop_rules":  [
+                                           "Require plan, actual, scope change, and billing context"
+                                       ]
+               },
+    "content":  {
+                    "problem_family_code":  "delivery_capacity_overrun",
+                    "domain_pack_refs":  [
+                                             "b2b-services@1.0.0"
+                                         ],
+                    "entry_conditions":  [
+                                             {
+                                                 "op":  "exists",
+                                                 "operand":  {
+                                                                 "fact_ref":  {
+                                                                                  "fact_code":  "delivery_hours_actual",
+                                                                                  "reducer":  "sum"
+                                                                              }
+                                                             }
+                                             }
+                                         ],
+                    "required_capabilities":  [
+                                                  "delivery_hours",
+                                                  "contract_scope"
+                                              ],
+                    "lens_plan":  [
+                                      {
+                                          "lens_id":  "delivery_requested",
+                                          "role":  "requested",
+                                          "required":  true,
+                                          "capability_refs":  [
+                                                                  "delivery_hours"
+                                                              ],
+                                          "allowed_mechanism_refs":  [
+                                                                         "delivery_overrun"
+                                                                     ],
+                                          "max_shards":  1
+                                      },
+                                      {
+                                          "lens_id":  "delivery_challenge",
+                                          "role":  "challenge",
+                                          "required":  true,
+                                          "capability_refs":  [
+                                                                  "contract_scope"
+                                                              ],
+                                          "allowed_mechanism_refs":  [
+                                                                         "delivery_overrun"
+                                                                     ],
+                                          "max_shards":  1
+                                      }
+                                  ],
+                    "analysis_plan":  [
+                                          {
+                                              "component_id":  "ratio",
+                                              "purpose":  "Calculate actual-to-plan effort",
+                                              "parameter_template":  {
+                                                                         "numerator_fact_id":  {
+                                                                                                   "fact_selector":  {
+                                                                                                                         "fact_code":  "delivery_hours_actual",
+                                                                                                                         "cardinality":  "one",
+                                                                                                                         "time_role":  "latest",
+                                                                                                                         "scope_relation":  "any",
+                                                                                                                         "unit_code":  "hour"
+                                                                                                                     }
+                                                                                               },
+                                                                         "denominator_fact_id":  {
+                                                                                                     "fact_selector":  {
+                                                                                                                           "fact_code":  "delivery_hours_planned",
+                                                                                                                           "cardinality":  "one",
+                                                                                                                           "time_role":  "latest",
+                                                                                                                           "scope_relation":  "any",
+                                                                                                                           "unit_code":  "hour"
+                                                                                                                       }
+                                                                                                 },
+                                                                         "output_fact_code":  "delivery_actual_to_plan_ratio",
+                                                                         "output_metric_code":  "delivery_actual_to_plan_ratio",
+                                                                         "output_unit_code":  "ratio"
+                                                                     }
+                                          },
+                                          {
+                                              "component_id":  "compare",
+                                              "purpose":  "Measure actual effort period movement",
+                                              "parameter_template":  {
+                                                                         "baseline_fact_id":  {
+                                                                                                  "fact_selector":  {
+                                                                                                                        "fact_code":  "delivery_hours_actual",
+                                                                                                                        "cardinality":  "one",
+                                                                                                                        "time_role":  "previous",
+                                                                                                                        "scope_relation":  "any",
+                                                                                                                        "unit_code":  "hour"
+                                                                                                                    }
+                                                                                              },
+                                                                         "current_fact_id":  {
+                                                                                                 "fact_selector":  {
+                                                                                                                       "fact_code":  "delivery_hours_actual",
+                                                                                                                       "cardinality":  "one",
+                                                                                                                       "time_role":  "latest",
+                                                                                                                       "scope_relation":  "any",
+                                                                                                                       "unit_code":  "hour"
+                                                                                                                   }
+                                                                                             },
+                                                                         "mode":  "percent_change",
+                                                                         "output_fact_code":  "delivery_hours_actual_change_ratio",
+                                                                         "output_metric_code":  "delivery_hours_actual_change_ratio"
+                                                                     }
+                                          }
+                                      ],
+                    "hypothesis_templates":  [
+                                                 {
+                                                     "hypothesis_key":  "unpriced_effort",
+                                                     "statement":  "Unpriced effort may contribute to margin pressure."
+                                                 },
+                                                 {
+                                                     "hypothesis_key":  "approved_scope_change",
+                                                     "statement":  "Extra effort may reflect an approved and billable scope change."
+                                                 }
+                                             ],
+                    "evidence_requirements":  [
+                                                  {
+                                                      "target_type":  "cause",
+                                                      "required_roles":  [
+                                                                             "planned_hours",
+                                                                             "actual_hours",
+                                                                             "scope_change",
+                                                                             "billing"
+                                                                         ],
+                                                      "minimum_independent_chains":  1
+                                                  }
+                                              ],
+                    "distinguishing_tests":  [
+                                                 {
+                                                     "test_ref":  "scope_change_and_billing",
+                                                     "required_data":  [
+                                                                           "change_orders",
+                                                                           "invoices"
+                                                                       ]
+                                                 }
+                                             ],
+                    "decision_type_catalog":  [
+                                                  {
+                                                      "decision_type_ref":  "delivery_governance",
+                                                      "allowed_decision_unit_types":  [
+                                                                                          "contract",
+                                                                                          "process"
+                                                                                      ]
+                                                  }
+                                              ],
+                    "blocking_counter_evidence_conditions":  [
+                                                                 {
+                                                                     "condition_ref":  "approved_billable_change",
+                                                                     "target_problem_family":  "delivery_capacity_overrun",
+                                                                     "condition_expression":  {
+                                                                                                  "op":  "exists",
+                                                                                                  "operand":  {
+                                                                                                                  "signal_ref":  {
+                                                                                                                                     "signal_code":  "approved_billable_scope_change",
+                                                                                                                                     "outcome":  "triggered"
+                                                                                                                                 }
+                                                                                                              }
+                                                                                              },
+                                                                     "reason_code":  "approved_billable_change"
+                                                                 }
+                                                             ],
+                    "deep_dive_plan":  [
+                                           {
+                                               "component_id":  "reconcile",
+                                               "purpose":  "Reconcile worklogs to recorded delivery hours",
+                                               "parameter_template":  {
+                                                                          "total_fact_id":  {
+                                                                                                "fact_selector":  {
+                                                                                                                      "fact_code":  "delivery_hours_actual",
+                                                                                                                      "cardinality":  "one",
+                                                                                                                      "time_role":  "latest",
+                                                                                                                      "scope_relation":  "issue",
+                                                                                                                      "unit_code":  "hour"
+                                                                                                                  }
+                                                                                            },
+                                                                          "part_fact_ids":  {
+                                                                                                "fact_selector":  {
+                                                                                                                      "fact_code":  "worklog_delivery_hours",
+                                                                                                                      "cardinality":  "many",
+                                                                                                                      "time_role":  "latest",
+                                                                                                                      "scope_relation":  "issue",
+                                                                                                                      "unit_code":  "hour"
+                                                                                                                  }
+                                                                                            },
+                                                                          "tolerance_ref":  "reconciliation_tolerance_ratio",
+                                                                          "output_signal_code":  "worklog_delivery_hours_reconciles"
+                                                                      }
+                                           },
+                                           {
+                                               "component_id":  "flow_aging",
+                                               "purpose":  "Age unresolved delivery backlog",
+                                               "parameter_template":  {
+                                                                          "input_fact_ids":  {
+                                                                                                 "fact_selector":  {
+                                                                                                                       "fact_code":  "unresolved_delivery_backlog_amount",
+                                                                                                                       "cardinality":  "many",
+                                                                                                                       "time_role":  "all",
+                                                                                                                       "scope_relation":  "issue",
+                                                                                                                       "unit_code":  "KRW"
+                                                                                                                   }
+                                                                                             },
+                                                                          "input_fact_code":  "unresolved_delivery_backlog_amount",
+                                                                          "observation_end_fact_id":  {
+                                                                                                          "fact_selector":  {
+                                                                                                                                "fact_code":  "analysis_as_of_date",
+                                                                                                                                "cardinality":  "one",
+                                                                                                                                "time_role":  "latest",
+                                                                                                                                "scope_relation":  "issue"
+                                                                                                                            }
+                                                                                                      },
+                                                                          "bucket_edges_days":  [
+                                                                                                    30,
+                                                                                                    60,
+                                                                                                    90
+                                                                                                ],
+                                                                          "output_fact_code_prefix":  "unresolved_delivery_backlog_age_bucket"
+                                                                      }
+                                           }
+                                       ],
+                    "conditional_response_catalog":  [
+                                                         {
+                                                             "response_ref":  "delivery_controls",
+                                                             "preconditions":  [
+                                                                                   "unpriced overrun verified"
+                                                                               ],
+                                                             "disqualifiers":  [
+                                                                                   "approved billable change"
+                                                                               ]
+                                                         }
+                                                     ],
+                    "expert_trigger_refs":  [
+
+                                            ],
+                    "not_assessable_rules":  [
+                                                 "Plan or scope-change records unavailable"
+                                             ],
+                    "stop_rules":  [
+                                       "Do not infer waste from hours alone"
+                                   ],
+                    "capability_requirements":  [
+                                                    {
+                                                        "capability_code":  "delivery_hours",
+                                                        "required_fact_codes":  [
+                                                                                    "delivery_hours_actual",
+                                                                                    "delivery_hours_planned"
+                                                                                ],
+                                                        "required_observation_roles":  [
+                                                                                           "operations"
+                                                                                       ]
+                                                    },
+                                                    {
+                                                        "capability_code":  "contract_scope",
+                                                        "required_fact_codes":  [
+                                                                                    "delivery_hours_planned"
+                                                                                ],
+                                                        "required_observation_roles":  [
+                                                                                           "operations"
+                                                                                       ]
+                                                    }
+                                                ]
+                }
+}

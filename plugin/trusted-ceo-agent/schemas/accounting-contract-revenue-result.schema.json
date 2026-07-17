@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "accounting-contract-revenue-result.schema.json",
+  "title": "Accounting Contract and Revenue Procedure Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "revision",
+    "input_hash",
+    "procedure_results",
+    "procedure_status_counts",
+    "cross_domain_triggers",
+    "coverage_complete",
+    "implementation_complete",
+    "authority_ceiling",
+    "expert_review_required",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "input_hash": {"$ref": "#/$defs/sha256"},
+    "procedure_results": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "items": {"$ref": "#/$defs/procedure_result"}
+    },
+    "procedure_status_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "exceptions_found", "not_assessable"],
+      "properties": {
+        "passed": {"type": "integer", "minimum": 0},
+        "exceptions_found": {"type": "integer", "minimum": 0},
+        "not_assessable": {"type": "integer", "minimum": 0}
+      }
+    },
+    "cross_domain_triggers": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/cross_domain_trigger"}
+    },
+    "coverage_complete": {"type": "boolean"},
+    "implementation_complete": {"type": "boolean"},
+    "authority_ceiling": {"const": "Boundary"},
+    "expert_review_required": {"type": "boolean"},
+    "content_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullable_text": {"type": ["string", "null"]},
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "severity",
+        "scope_ref",
+        "entity",
+        "currency",
+        "period",
+        "observed",
+        "expected",
+        "difference",
+        "source_refs",
+        "event_ids",
+        "expert_review_required"
+      ],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["info", "exception", "missing_input", "boundary"]},
+        "scope_ref": {"type": "string", "minLength": 1},
+        "entity": {"$ref": "#/$defs/nullable_text"},
+        "currency": {"$ref": "#/$defs/nullable_text"},
+        "period": {"$ref": "#/$defs/nullable_text"},
+        "observed": {"$ref": "#/$defs/nullable_text"},
+        "expected": {"$ref": "#/$defs/nullable_text"},
+        "difference": {"$ref": "#/$defs/nullable_text"},
+        "source_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "event_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "expert_review_required": {"type": "boolean"}
+      }
+    },
+    "procedure_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue_family_id",
+        "procedure_id",
+        "implementation_status",
+        "status",
+        "population_ids",
+        "outcomes"
+      ],
+      "properties": {
+        "issue_family_id": {
+          "enum": [
+            "RV-01", "RV-02", "RV-03", "RV-04",
+            "RV-05", "RV-06", "RV-07", "RV-08",
+            "RV-09", "RV-10", "RV-11", "RV-12",
+            "RV-13", "RV-14", "RV-15", "RV-16"
+          ]
+        },
+        "procedure_id": {
+          "enum": [
+            "P-RV-01", "P-RV-02", "P-RV-03", "P-RV-04",
+            "P-RV-05", "P-RV-06", "P-RV-07", "P-RV-08",
+            "P-RV-09", "P-RV-10", "P-RV-11"
+          ]
+        },
+        "implementation_status": {"const": "implemented_deterministic"},
+        "status": {"enum": ["passed", "exceptions_found", "not_assessable"]},
+        "population_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "outcomes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/outcome"}
+        }
+      }
+    },
+    "cross_domain_trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trigger_id",
+        "scope_ref",
+        "target_domain",
+        "disposition",
+        "source_refs",
+        "event_ids"
+      ],
+      "properties": {
+        "trigger_id": {"type": "string", "minLength": 1},
+        "scope_ref": {"type": "string", "minLength": 1},
+        "target_domain": {"enum": ["foreign_exchange", "legal", "tax"]},
+        "disposition": {"enum": ["further_procedure_required", "expert_review_required"]},
+        "source_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "event_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

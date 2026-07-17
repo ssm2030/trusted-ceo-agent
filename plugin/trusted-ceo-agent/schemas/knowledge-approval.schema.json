@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "knowledge-approval.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "knowledge_approval_id", "approval_request_id",
+    "approval_stage", "object_id", "object_hash", "expected_revision",
+    "requested_action", "approved_by", "approver_role", "approved_at",
+    "request_hash", "nonce_hash", "status", "approval_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "knowledge_approval_id": {"type": "string", "pattern": "^knowledgeapproval_[0-9a-f]{24}$"},
+    "approval_request_id": {"type": "string", "pattern": "^knowledgeapprovalrequest_[0-9a-f]{24}$"},
+    "approval_stage": {"enum": ["feedback_submit", "patch_approve", "release_deploy"]},
+    "object_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "object_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "expected_revision": {"type": "integer", "minimum": 0},
+    "requested_action": {"enum": ["submit_feedback", "approve_patch", "deploy_release", "rollback_release"]},
+    "approved_by": {"type": "string", "minLength": 1, "maxLength": 256},
+    "approver_role": {"type": "string", "minLength": 1, "maxLength": 128},
+    "approved_at": {"type": "string", "format": "date-time"},
+    "request_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nonce_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "status": {"const": "approved"},
+    "approval_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

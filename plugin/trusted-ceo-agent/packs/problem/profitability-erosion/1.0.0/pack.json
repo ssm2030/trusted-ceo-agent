@@ -1,0 +1,274 @@
+{
+    "schema_version":  "1.0.0",
+    "pack_type":  "problem",
+    "pack_id":  "profitability-erosion",
+    "pack_version":  "1.0.0",
+    "requested_authority":  "full",
+    "title":  "Profitability Erosion",
+    "description":  "Tests material margin decline and competing price, mix, and delivery explanations.",
+    "applicability":  {
+                          "business_models":  [
+                                                  "project_b2b_services",
+                                                  "subscription_b2b_services",
+                                                  "hybrid_b2b_services"
+                                              ],
+                          "industries":  [
+
+                                         ],
+                          "excluded_industries":  [
+
+                                                  ],
+                          "required_data_roles":  [
+                                                      "monthly_financials"
+                                                  ]
+                      },
+    "dependencies":  [
+                         "trusted-ceo-default@1.0.0",
+                         "b2b-services@1.0.0"
+                     ],
+    "safety":  {
+                   "forbidden_interpretations":  [
+                                                     "Single-cause attribution without a reconciled bridge"
+                                                 ],
+                   "safe_stop_rules":  [
+                                           "Return Not Assessable when gross profit and revenue cannot be reconciled"
+                                       ]
+               },
+    "content":  {
+                    "problem_family_code":  "profitability_erosion",
+                    "domain_pack_refs":  [
+                                             "b2b-services@1.0.0"
+                                         ],
+                    "entry_conditions":  [
+                                             {
+                                                 "op":  "gte",
+                                                 "left":  {
+                                                              "fact_ref":  {
+                                                                               "fact_code":  "gross_margin",
+                                                                               "reducer":  "count"
+                                                                           }
+                                                          },
+                                                 "right":  {
+                                                               "literal":  {
+                                                                               "type":  "decimal",
+                                                                               "value":  "3"
+                                                                           }
+                                                           }
+                                             },
+                                             {
+                                                 "op":  "exists",
+                                                 "operand":  {
+                                                                 "fact_ref":  {
+                                                                                  "fact_code":  "gross_margin_change_pp",
+                                                                                  "reducer":  "only"
+                                                                              }
+                                                             }
+                                             }
+                                         ],
+                    "required_capabilities":  [
+                                                  "monthly_profitability",
+                                                  "gross_margin"
+                                              ],
+                    "lens_plan":  [
+                                      {
+                                          "lens_id":  "profitability_requested",
+                                          "role":  "requested",
+                                          "required":  true,
+                                          "capability_refs":  [
+                                                                  "monthly_profitability"
+                                                              ],
+                                          "allowed_mechanism_refs":  [
+                                                                         "low_margin_mix_shift",
+                                                                         "delivery_overrun"
+                                                                     ],
+                                          "max_shards":  1
+                                      },
+                                      {
+                                          "lens_id":  "profitability_challenge",
+                                          "role":  "challenge",
+                                          "required":  true,
+                                          "capability_refs":  [
+                                                                  "gross_margin"
+                                                              ],
+                                          "allowed_mechanism_refs":  [
+                                                                         "low_margin_mix_shift",
+                                                                         "delivery_overrun"
+                                                                     ],
+                                          "max_shards":  1
+                                      }
+                                  ],
+                    "analysis_plan":  [
+                                          {
+                                              "component_id":  "compare",
+                                              "purpose":  "Measure margin movement",
+                                              "parameter_template":  {
+                                                                         "baseline_fact_id":  {
+                                                                                                  "fact_selector":  {
+                                                                                                                        "fact_code":  "gross_margin",
+                                                                                                                        "cardinality":  "one",
+                                                                                                                        "time_role":  "previous",
+                                                                                                                        "scope_relation":  "any",
+                                                                                                                        "unit_code":  "ratio"
+                                                                                                                    }
+                                                                                              },
+                                                                         "current_fact_id":  {
+                                                                                                 "fact_selector":  {
+                                                                                                                       "fact_code":  "gross_margin",
+                                                                                                                       "cardinality":  "one",
+                                                                                                                       "time_role":  "latest",
+                                                                                                                       "scope_relation":  "any",
+                                                                                                                       "unit_code":  "ratio"
+                                                                                                                   }
+                                                                                             },
+                                                                         "mode":  "percentage_point_change",
+                                                                         "output_fact_code":  "gross_margin_change_pp",
+                                                                         "output_metric_code":  "gross_margin_change_pp"
+                                                                     }
+                                          },
+                                          {
+                                              "component_id":  "trend_persistence",
+                                              "purpose":  "Test persistence",
+                                              "parameter_template":  {
+                                                                         "input_fact_ids":  {
+                                                                                                "fact_selector":  {
+                                                                                                                      "fact_code":  "gross_margin",
+                                                                                                                      "cardinality":  "many",
+                                                                                                                      "time_role":  "all",
+                                                                                                                      "scope_relation":  "any",
+                                                                                                                      "unit_code":  "ratio"
+                                                                                                                  }
+                                                                                            },
+                                                                         "input_fact_code":  "gross_margin",
+                                                                         "minimum_observations_ref":  "trend_minimum_observations",
+                                                                         "direction":  "decreasing",
+                                                                         "output_signal_code":  "gross_margin_decline_persistent"
+                                                                     }
+                                          }
+                                      ],
+                    "hypothesis_templates":  [
+                                                 {
+                                                     "hypothesis_key":  "mix_shift",
+                                                     "statement":  "Lower-margin mix may explain part of the decline."
+                                                 },
+                                                 {
+                                                     "hypothesis_key":  "delivery_overrun",
+                                                     "statement":  "Unpriced delivery effort may explain part of the decline."
+                                                 }
+                                             ],
+                    "evidence_requirements":  [
+                                                  {
+                                                      "target_type":  "issue",
+                                                      "required_roles":  [
+                                                                             "current_margin",
+                                                                             "prior_margin",
+                                                                             "counter_evidence"
+                                                                         ],
+                                                      "minimum_independent_chains":  1
+                                                  }
+                                              ],
+                    "distinguishing_tests":  [
+                                                 {
+                                                     "test_ref":  "bridge_mix_and_delivery",
+                                                     "required_data":  [
+                                                                           "contract_revenue",
+                                                                           "delivery_hours"
+                                                                       ]
+                                                 }
+                                             ],
+                    "decision_type_catalog":  [
+                                                  {
+                                                      "decision_type_ref":  "portfolio_action",
+                                                      "allowed_decision_unit_types":  [
+                                                                                          "enterprise",
+                                                                                          "customer_portfolio",
+                                                                                          "product_portfolio"
+                                                                                      ]
+                                                  }
+                                              ],
+                    "blocking_counter_evidence_conditions":  [
+                                                                 {
+                                                                     "condition_ref":  "bridge_residual_conflict",
+                                                                     "target_problem_family":  "profitability_erosion",
+                                                                     "condition_expression":  {
+                                                                                                  "op":  "exists",
+                                                                                                  "operand":  {
+                                                                                                                  "signal_ref":  {
+                                                                                                                                     "signal_code":  "bridge_residual_conflict",
+                                                                                                                                     "outcome":  "triggered"
+                                                                                                                                 }
+                                                                                                              }
+                                                                                              },
+                                                                     "reason_code":  "unresolved_bridge_residual"
+                                                                 }
+                                                             ],
+                    "deep_dive_plan":  [
+                                           {
+                                               "component_id":  "bridge_decompose",
+                                               "purpose":  "Reconcile proposed drivers to the margin gap",
+                                               "parameter_template":  {
+                                                                          "gap_fact_id":  {
+                                                                                              "fact_selector":  {
+                                                                                                                    "fact_code":  "gross_margin_change_pp",
+                                                                                                                    "cardinality":  "one",
+                                                                                                                    "time_role":  "latest",
+                                                                                                                    "scope_relation":  "issue",
+                                                                                                                    "unit_code":  "percentage_point"
+                                                                                                                }
+                                                                                          },
+                                                                          "driver_fact_ids":  {
+                                                                                                  "fact_selector":  {
+                                                                                                                        "fact_code":  "margin_driver_contribution_pp",
+                                                                                                                        "cardinality":  "many",
+                                                                                                                        "time_role":  "latest",
+                                                                                                                        "scope_relation":  "issue",
+                                                                                                                        "unit_code":  "percentage_point"
+                                                                                                                    }
+                                                                                              },
+                                                                          "residual_tolerance_ref":  "driver_contribution_plausible",
+                                                                          "output_fact_code":  "gross_margin_bridge_residual_pp",
+                                                                          "output_metric_code":  "gross_margin_bridge_residual_pp"
+                                                                      }
+                                           }
+                                       ],
+                    "conditional_response_catalog":  [
+                                                         {
+                                                             "response_ref":  "portfolio_rebalance",
+                                                             "preconditions":  [
+                                                                                   "mix contribution verified"
+                                                                               ],
+                                                             "disqualifiers":  [
+                                                                                   "bridge residual conflict"
+                                                                               ]
+                                                         }
+                                                     ],
+                    "expert_trigger_refs":  [
+
+                                            ],
+                    "not_assessable_rules":  [
+                                                 "Missing segment or contract profitability roles"
+                                             ],
+                    "stop_rules":  [
+                                       "Do not publish a leading cause when blocking counter evidence is true"
+                                   ],
+                    "capability_requirements":  [
+                                                    {
+                                                        "capability_code":  "monthly_profitability",
+                                                        "required_fact_codes":  [
+                                                                                    "gross_margin"
+                                                                                ],
+                                                        "required_observation_roles":  [
+                                                                                           "calculated"
+                                                                                       ]
+                                                    },
+                                                    {
+                                                        "capability_code":  "gross_margin",
+                                                        "required_fact_codes":  [
+                                                                                    "gross_margin"
+                                                                                ],
+                                                        "required_observation_roles":  [
+                                                                                           "calculated"
+                                                                                       ]
+                                                    }
+                                                ]
+                }
+}

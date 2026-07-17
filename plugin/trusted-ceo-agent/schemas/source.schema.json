@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source_id", "source_type", "access_policy", "evidence_usage", "observation_roles", "display_name", "media_type", "sha256", "size_bytes", "received_at", "snapshot_ref", "original_path_token", "aliases", "metadata"],
+  "properties": {
+    "source_id": {"type": "string", "pattern": "^source_[0-9a-f]{24}$"},
+    "source_type": {"enum": ["uploaded_file", "official_external", "synthetic"]},
+    "access_policy": {"enum": ["permitted", "restricted", "prohibited"]},
+    "evidence_usage": {"enum": ["primary", "corroboration_only", "context_only"]},
+    "observation_roles": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "display_name": {"type": "string", "minLength": 1, "maxLength": 512},
+    "media_type": {"type": "string", "minLength": 1, "maxLength": 128},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "size_bytes": {"type": "integer", "minimum": 0},
+    "received_at": {"type": "string", "format": "date-time"},
+    "snapshot_ref": {"type": "string", "pattern": "^sources/blobs/[0-9a-f]{64}$"},
+    "original_path_token": {"type": "string", "pattern": "^path_[0-9a-f]{24}$"},
+    "aliases": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 512}, "uniqueItems": true},
+    "metadata": {"type": "object", "additionalProperties": {"type": ["string", "integer", "boolean", "null"]}}
+  }
+}

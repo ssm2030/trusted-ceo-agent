@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "completion-assessment.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "assessment_id", "schema_version", "run_id", "revision", "status",
+    "disposition_counts", "blocking_case_refs", "blocking_required_work_refs",
+    "blocking_domain_route_refs", "invalid_finding_refs", "hard_failure_refs",
+    "coverage_gaps", "expert_review_refs", "blind_spot_refs", "gate_results",
+    "limited_basis", "user_confirmed_limitations", "limited_completion_eligible",
+    "completion_limitations", "content_hash"
+  ],
+  "properties": {
+    "assessment_id": {"type": "string", "pattern": "^completion_[0-9a-f]{24}$"},
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "status": {"enum": ["not_ready", "finalization_ready", "limited_completion_ready"]},
+    "disposition_counts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["substantiated", "not_substantiated", "inconclusive", "merged", "out_of_scope", "expert_review_required", "deferred", "failed", "cancelled"],
+      "properties": {
+        "substantiated": {"type": "integer", "minimum": 0},
+        "not_substantiated": {"type": "integer", "minimum": 0},
+        "inconclusive": {"type": "integer", "minimum": 0},
+        "merged": {"type": "integer", "minimum": 0},
+        "out_of_scope": {"type": "integer", "minimum": 0},
+        "expert_review_required": {"type": "integer", "minimum": 0},
+        "deferred": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "cancelled": {"type": "integer", "minimum": 0}
+      }
+    },
+    "blocking_case_refs": {"$ref": "#/$defs/stringSet"},
+    "blocking_required_work_refs": {"$ref": "#/$defs/stringSet"},
+    "blocking_domain_route_refs": {"$ref": "#/$defs/stringSet"},
+    "invalid_finding_refs": {"$ref": "#/$defs/stringSet"},
+    "hard_failure_refs": {"$ref": "#/$defs/stringSet"},
+    "coverage_gaps": {"$ref": "#/$defs/stringSet"},
+    "expert_review_refs": {"$ref": "#/$defs/stringSet"},
+    "blind_spot_refs": {"$ref": "#/$defs/stringSet"},
+    "gate_results": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cross_finding_join_complete", "cross_domain_integrator_complete", "duplicate_merge_complete", "conflicts_disclosed", "coverage_complete", "final_validator_passed", "tty_final_approval_ready"],
+      "properties": {
+        "cross_finding_join_complete": {"type": "boolean"},
+        "cross_domain_integrator_complete": {"type": "boolean"},
+        "duplicate_merge_complete": {"type": "boolean"},
+        "conflicts_disclosed": {"type": "boolean"},
+        "coverage_complete": {"type": "boolean"},
+        "final_validator_passed": {"type": "boolean"},
+        "tty_final_approval_ready": {"type": "boolean"}
+      }
+    },
+    "limited_basis": {"enum": ["none", "data_unavailable", "user_excluded_scope"]},
+    "user_confirmed_limitations": {"type": "boolean"},
+    "limited_completion_eligible": {"type": "boolean"},
+    "completion_limitations": {"$ref": "#/$defs/stringSet"},
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "stringSet": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+  }
+}

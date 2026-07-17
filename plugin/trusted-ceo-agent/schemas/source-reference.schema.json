@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source_id", "observation_role", "locator_type", "locator", "selected_fields", "record_count", "filters", "group_by", "operation", "normalized_rows_hash", "row_multiset_hash", "lineage_set_ref", "extraction_hash"],
+  "properties": {
+    "source_id": {"type": "string", "pattern": "^source_[0-9a-f]{24}$"},
+    "observation_role": {"type": "string", "minLength": 1},
+    "locator_type": {"enum": ["csv_records", "json_pointer", "xlsx_cells"]},
+    "locator": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["record_indices"], "properties": {"record_indices": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1}, "uniqueItems": true}}},
+        {"type": "object", "additionalProperties": false, "required": ["pointer"], "properties": {"pointer": {"type": "string", "pattern": "^(|/.*)$"}}},
+        {"type": "object", "additionalProperties": false, "required": ["sheet", "range"], "properties": {"sheet": {"type": "string", "minLength": 1}, "range": {"type": "string", "pattern": "^[A-Z]+[1-9][0-9]*(:[A-Z]+[1-9][0-9]*)?$"}}}
+      ]
+    },
+    "selected_fields": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "record_count": {"type": "integer", "minimum": 1},
+    "filters": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["field", "operator", "value"], "properties": {"field": {"type": "string"}, "operator": {"type": "string"}, "value": {}}}},
+    "group_by": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "operation": {"type": "string", "minLength": 1},
+    "normalized_rows_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "row_multiset_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "lineage_set_ref": {"type": "string", "pattern": "^lineage/sets/[0-9a-f]{64}\\.json$"},
+    "extraction_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "allOf": [
+    {"if": {"properties": {"locator_type": {"const": "csv_records"}}}, "then": {"properties": {"locator": {"required": ["record_indices"]}}}},
+    {"if": {"properties": {"locator_type": {"const": "json_pointer"}}}, "then": {"properties": {"locator": {"required": ["pointer"]}}}},
+    {"if": {"properties": {"locator_type": {"const": "xlsx_cells"}}}, "then": {"properties": {"locator": {"required": ["sheet", "range"]}}}}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "grading-input.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["issue_id", "assessability", "not_assessable_reason_codes", "evidence_state", "impact_band", "urgency_band", "mission_priority_match", "executive_materiality", "decision_needed", "expert_trigger_state", "pack_authority", "diagnostic_disposition", "verification_authorized", "issue_disposition", "trackable", "response_eligibility", "provenance_refs"],
+  "properties": {
+    "issue_id": {"type": "string"}, "assessability": {"enum": ["assessable", "partial", "not_assessable"]},
+    "not_assessable_reason_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "evidence_state": {"enum": ["sufficient", "limited", "conflicting", "none"]},
+    "impact_band": {"enum": ["critical", "high", "medium", "low", "unknown"]},
+    "urgency_band": {"enum": ["immediate", "near_term", "routine", "unknown"]},
+    "mission_priority_match": {"type": "boolean"}, "executive_materiality": {"oneOf": [{"type": "boolean"}, {"const": "unknown"}]},
+    "decision_needed": {"oneOf": [{"type": "boolean"}, {"const": "unknown"}]},
+    "expert_trigger_state": {"enum": ["required", "possible", "none"]}, "pack_authority": {"enum": ["full", "provisional", "boundary"]},
+    "diagnostic_disposition": {"enum": ["accepted", "rejected", "disputed", "pending"]}, "verification_authorized": {"type": "boolean"},
+    "issue_disposition": {"enum": ["standalone", "absorbed", "duplicate", "isolated_low"]}, "trackable": {"type": "boolean"},
+    "response_eligibility": {"enum": ["eligible", "needs_verification", "prohibited"]},
+    "provenance_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  }
+}

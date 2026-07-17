@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cross-domain-trigger-card.schema.json",
+  "allOf": [
+    {"$ref": "knowledge-artifact.schema.json#/$defs/base"},
+    {
+      "type": "object",
+      "required": ["artifact_type", "content"],
+      "properties": {
+        "artifact_type": {"const": "cross_domain_trigger_card"},
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target_domain", "conditions", "shared_fact_refs",
+            "forbidden_conclusions", "conflict_states"
+          ],
+          "properties": {
+            "target_domain": {"type": "string", "minLength": 1},
+            "conditions": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+            "shared_fact_refs": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+            "forbidden_conclusions": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+            "conflict_states": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"}
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

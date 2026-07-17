@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema-mapping-draft.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mappings"],
+  "properties": {
+    "mappings": {"type": "array", "items": {"$ref": "#/$defs/mapping"}}
+  },
+  "$defs": {
+    "mapping": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mapping_question_ref", "source_field_ref", "candidate_mappings", "ambiguity_reason_code", "required_human_choice"],
+      "properties": {
+        "mapping_question_ref": {"type": "string"}, "source_field_ref": {"type": "string"},
+        "candidate_mappings": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["observation_role", "metric_code", "unit_code", "scale", "time_role", "dimension_code", "supporting_header_refs"], "properties": {"observation_role": {"type": "string"}, "metric_code": {"type": "string"}, "unit_code": {"type": ["string", "null"]}, "scale": {"type": ["string", "null"]}, "time_role": {"type": ["string", "null"]}, "dimension_code": {"type": ["string", "null"]}, "supporting_header_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}}}},
+        "ambiguity_reason_code": {"type": "string"}, "required_human_choice": {"type": "boolean"}
+      }
+    }
+  }
+}

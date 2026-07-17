@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "issue-evidence-packet.schema.json",
+  "title": "Issue Evidence Packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "packet_id", "issue_family_id", "run_id", "revision",
+    "family_hash", "pack_id", "pack_hash", "fact_refs", "signal_refs",
+    "coverage_refs", "procedure_run_refs", "supporting_evidence_refs",
+    "counter_evidence_refs", "missing_evidence_roles", "prohibited_conclusions",
+    "expert_triggers", "packet_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "packet_id": {"type": "string", "pattern": "^issue_packet_[0-9a-f]{24}$"},
+    "issue_family_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "family_hash": {"$ref": "knowledge-artifact.schema.json#/$defs/hash"},
+    "pack_id": {"type": "string", "minLength": 1},
+    "pack_hash": {"$ref": "knowledge-artifact.schema.json#/$defs/hash"},
+    "fact_refs": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+    "signal_refs": {"$ref": "knowledge-artifact.schema.json#/$defs/stringSet"},
+    "coverage_refs": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+    "procedure_run_refs": {"$ref": "knowledge-artifact.schema.json#/$defs/stringSet"},
+    "supporting_evidence_refs": {"$ref": "knowledge-artifact.schema.json#/$defs/stringSet"},
+    "counter_evidence_refs": {"$ref": "knowledge-artifact.schema.json#/$defs/stringSet"},
+    "missing_evidence_roles": {"$ref": "knowledge-artifact.schema.json#/$defs/stringSet"},
+    "prohibited_conclusions": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+    "expert_triggers": {"$ref": "knowledge-artifact.schema.json#/$defs/stringSet"},
+    "packet_hash": {"$ref": "knowledge-artifact.schema.json#/$defs/hash"}
+  }
+}

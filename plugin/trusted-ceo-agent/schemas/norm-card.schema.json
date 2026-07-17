@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "norm-card.schema.json",
+  "allOf": [
+    {"$ref": "knowledge-artifact.schema.json#/$defs/base"},
+    {
+      "type": "object",
+      "required": ["artifact_type", "content"],
+      "properties": {
+        "artifact_type": {"const": "norm_card"},
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "atomic_claim", "requirements", "exceptions", "options",
+            "conflicts", "paragraph_locator"
+          ],
+          "properties": {
+            "atomic_claim": {"type": "string", "minLength": 1},
+            "requirements": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+            "exceptions": {"$ref": "knowledge-artifact.schema.json#/$defs/stringSet"},
+            "options": {"$ref": "knowledge-artifact.schema.json#/$defs/stringSet"},
+            "conflicts": {"$ref": "knowledge-artifact.schema.json#/$defs/stringSet"},
+            "paragraph_locator": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

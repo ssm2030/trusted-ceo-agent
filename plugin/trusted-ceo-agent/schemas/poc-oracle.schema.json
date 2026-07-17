@@ -1,0 +1,15 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"poc-oracle.schema.json",
+  "type":"object","additionalProperties":false,
+  "required":["scenario_id","expected_fact_codes","expected_signal_codes","expected_issue_keys","expected_primary_grades","forbidden_claim_codes","forbidden_professional_conclusions"],
+  "properties":{
+    "scenario_id":{"type":"string","pattern":"^[a-z][a-z0-9_]+$"},
+    "expected_fact_codes":{"type":"array","items":{"type":"string"},"uniqueItems":true},
+    "expected_signal_codes":{"type":"array","items":{"type":"string"},"uniqueItems":true},
+    "expected_issue_keys":{"type":"array","items":{"type":"string"},"uniqueItems":true},
+    "expected_primary_grades":{"type":"object","additionalProperties":{"enum":["Decision Required","Immediate Verification","Expert Review Required","Monitor","Appendix Signal","Not Assessable"]}},
+    "forbidden_claim_codes":{"type":"array","items":{"type":"string"},"uniqueItems":true},
+    "forbidden_professional_conclusions":{"type":"array","items":{"type":"string"},"uniqueItems":true}
+  }
+}

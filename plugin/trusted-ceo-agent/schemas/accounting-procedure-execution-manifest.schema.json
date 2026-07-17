@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "accounting-procedure-execution-manifest.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "suite_id", "release_id", "suite_hash", "run_id",
+    "revision", "family_records", "procedure_records", "coverage_complete",
+    "authority_ceiling", "content_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "suite_id": {"type": "string", "minLength": 1},
+    "release_id": {"type": "string", "minLength": 1},
+    "suite_hash": {"$ref": "#/$defs/sha256"},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "family_records": {
+      "type": "array", "minItems": 64, "maxItems": 64,
+      "items": {"$ref": "#/$defs/family"}
+    },
+    "procedure_records": {
+      "type": "array", "minItems": 59, "maxItems": 59,
+      "items": {"$ref": "#/$defs/procedure"}
+    },
+    "coverage_complete": {"const": true},
+    "authority_ceiling": {"const": "Boundary"},
+    "content_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "refs": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "family": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "issue_family_id", "procedure_id", "status", "parent_result_hash",
+        "selector_hash", "input_hash", "authority_ceiling",
+        "expert_review_required"
+      ],
+      "properties": {
+        "issue_family_id": {"type": "string", "pattern": "^(AC|RV|CF|CA)-(0[1-9]|1[0-6])$"},
+        "procedure_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["passed", "exceptions_found", "not_assessable"]},
+        "parent_result_hash": {"$ref": "#/$defs/sha256"},
+        "selector_hash": {"$ref": "#/$defs/sha256"},
+        "input_hash": {"$ref": "#/$defs/sha256"},
+        "authority_ceiling": {"const": "Boundary"},
+        "expert_review_required": {"type": "boolean"}
+      }
+    },
+    "procedure": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "procedure_id", "family_ids", "result_hashes", "execution_status",
+        "evidence_hash"
+      ],
+      "properties": {
+        "procedure_id": {"type": "string", "minLength": 1},
+        "family_ids": {"$ref": "#/$defs/refs"},
+        "result_hashes": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/sha256"}
+        },
+        "execution_status": {"const": "verified"},
+        "evidence_hash": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

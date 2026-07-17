@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "human-action-resolution.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "action_id", "action_content_hash", "response_id",
+    "result_revision", "workflow_state", "disposition", "created_at",
+    "resolution_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "action_id": {"type": "string", "pattern": "^action_[0-9a-f]{24}$"},
+    "action_content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "response_id": {"type": "string", "pattern": "^response_[0-9a-f]{24}$"},
+    "result_revision": {"type": "integer", "minimum": 0},
+    "workflow_state": {"type": "string", "minLength": 1},
+    "disposition": {
+      "enum": ["terminal_approval_required", "resolved", "stopped"]
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "resolution_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

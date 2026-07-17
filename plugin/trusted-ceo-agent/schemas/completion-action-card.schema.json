@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "completion-action-card.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action_id", "schema_version", "run_id", "base_revision", "assessment_id", "assessment_hash", "completion_status", "disposition_counts", "coverage_gaps", "completion_limitations", "options", "content_hash"],
+  "properties": {
+    "action_id": {"type": "string", "pattern": "^completion_action_[0-9a-f]{24}$"},
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "base_revision": {"type": "integer", "minimum": 0},
+    "assessment_id": {"type": "string", "pattern": "^completion_[0-9a-f]{24}$"},
+    "assessment_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "completion_status": {"enum": ["finalization_ready", "limited_completion_ready"]},
+    "disposition_counts": {"type": "object"},
+    "coverage_gaps": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "completion_limitations": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "options": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["option_id", "response_type", "next_step"],
+        "properties": {
+          "option_id": {"enum": ["finalize", "add_data", "review_finding", "accept_limited", "stop"]},
+          "response_type": {"enum": ["confirm", "provide_data", "choose_one", "proceed_limited", "stop"]},
+          "next_step": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

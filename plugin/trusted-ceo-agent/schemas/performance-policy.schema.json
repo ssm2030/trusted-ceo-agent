@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "performance-policy.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "target_environment",
+    "quality_report_refs",
+    "workload_classes",
+    "min_runs_per_condition",
+    "measured_profile_statistics",
+    "target_slo_ms",
+    "selected_profile_id",
+    "rollback_profile_id",
+    "status",
+    "approval_ref",
+    "approved_by",
+    "approved_at",
+    "rollback_drill_passed",
+    "activation_eligible",
+    "policy_hash"
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "p50_ms", "p95_ms", "max_ms"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 1},
+        "p50_ms": {"type": "integer", "minimum": 0},
+        "p95_ms": {"type": "integer", "minimum": 0},
+        "max_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "stages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intake", "deterministic", "domain_reasoning", "integration", "render", "total"],
+      "properties": {
+        "intake": {"$ref": "#/$defs/metric"},
+        "deterministic": {"$ref": "#/$defs/metric"},
+        "domain_reasoning": {"$ref": "#/$defs/metric"},
+        "integration": {"$ref": "#/$defs/metric"},
+        "render": {"$ref": "#/$defs/metric"},
+        "total": {"$ref": "#/$defs/metric"}
+      }
+    },
+    "conditionStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["condition", "stages"],
+      "properties": {
+        "condition": {"enum": ["cold", "warm"]},
+        "stages": {"$ref": "#/$defs/stages"}
+      }
+    },
+    "profileStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "condition_statistics"],
+      "properties": {
+        "profile_id": {"enum": ["sequential", "parallel_2", "parallel_3", "parallel_4"]},
+        "condition_statistics": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/conditionStats"}
+        }
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "policy_id": {"type": "string", "pattern": "^performancepolicy_[0-9a-f]{24}$"},
+    "target_environment": {"type": "string", "minLength": 1},
+    "quality_report_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["report_id", "report_hash", "candidate_profile_id"],
+        "properties": {
+          "report_id": {"type": "string", "pattern": "^noninferiorityreport_[0-9a-f]{24}$"},
+          "report_hash": {"$ref": "#/$defs/hash"},
+          "candidate_profile_id": {"enum": ["parallel_2", "parallel_3", "parallel_4"]}
+        }
+      }
+    },
+    "workload_classes": {
+      "type": "array",
+      "minItems": 4,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "min_runs_per_condition": {"type": "integer", "minimum": 10},
+    "measured_profile_statistics": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/profileStats"}
+    },
+    "target_slo_ms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intake", "deterministic", "domain_reasoning", "integration", "render", "total"],
+      "properties": {
+        "intake": {"type": "integer", "minimum": 0},
+        "deterministic": {"type": "integer", "minimum": 0},
+        "domain_reasoning": {"type": "integer", "minimum": 0},
+        "integration": {"type": "integer", "minimum": 0},
+        "render": {"type": "integer", "minimum": 0},
+        "total": {"type": "integer", "minimum": 0}
+      }
+    },
+    "selected_profile_id": {"enum": ["sequential", "parallel_2", "parallel_3", "parallel_4"]},
+    "rollback_profile_id": {"const": "sequential"},
+    "status": {"enum": ["proposed", "approved"]},
+    "approval_ref": {"type": ["string", "null"], "minLength": 1},
+    "approved_by": {"type": ["string", "null"], "minLength": 1},
+    "approved_at": {
+      "anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]
+    },
+    "rollback_drill_passed": {"type": "boolean"},
+    "activation_eligible": {"type": "boolean"},
+    "policy_hash": {"$ref": "#/$defs/hash"}
+  }
+}

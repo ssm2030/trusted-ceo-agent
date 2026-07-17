@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "writer-draft.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["structured_output_ref", "claim_templates", "expert_packet_templates", "ceo_brief_section_order"],
+  "properties": {
+    "structured_output_ref": {"type": "string"},
+    "claim_templates": {"type": "array", "items": {"$ref": "#/$defs/template"}},
+    "expert_packet_templates": {"type": "array", "items": {"$ref": "#/$defs/template"}},
+    "ceo_brief_section_order": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  },
+  "$defs": {"template": {"type": "object", "additionalProperties": false, "required": ["claim_id", "template"], "properties": {"claim_id": {"type": "string"}, "template": {"type": "string", "maxLength": 400}}}}
+}

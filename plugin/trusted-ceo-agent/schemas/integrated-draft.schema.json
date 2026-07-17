@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrated-draft.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "join_manifest_ref", "card_refs", "issue_clusters", "integrated_issues",
+    "causal_relation_hypotheses", "cross_issue_conflicts", "blind_spots",
+    "response_type_candidates", "expert_review_candidates"
+  ],
+  "properties": {
+    "join_manifest_ref": {"type": "string", "minLength": 1},
+    "card_refs": {"$ref": "#/$defs/nonEmptyStringSet"},
+    "issue_clusters": {"type": "array", "items": {"$ref": "#/$defs/issueCluster"}},
+    "integrated_issues": {"type": "array", "items": {"$ref": "#/$defs/integratedIssue"}},
+    "causal_relation_hypotheses": {"type": "array", "items": {"$ref": "#/$defs/causalRelation"}},
+    "cross_issue_conflicts": {"type": "array", "items": {"$ref": "#/$defs/conflict"}},
+    "blind_spots": {"type": "array", "items": {"$ref": "#/$defs/blindSpot"}},
+    "response_type_candidates": {"type": "array", "items": {"$ref": "#/$defs/responseCandidate"}},
+    "expert_review_candidates": {"type": "array", "items": {"$ref": "#/$defs/expertCandidate"}}
+  },
+  "$defs": {
+    "stringSet": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "nonEmptyStringSet": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "valueRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["token", "fact_or_signal_id", "display_field", "display_format_ref"],
+      "properties": {
+        "token": {"type": "string", "minLength": 1},
+        "fact_or_signal_id": {"type": "string", "minLength": 1},
+        "display_field": {"type": "string", "minLength": 1},
+        "display_format_ref": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidenceProposal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidence_ref", "polarity", "role"],
+      "properties": {
+        "evidence_ref": {"type": "string", "minLength": 1},
+        "polarity": {"enum": ["supports", "contradicts"]},
+        "role": {"enum": ["observation", "corroboration", "mechanism", "counter_evidence", "boundary"]}
+      }
+    },
+    "issueCluster": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["problem_family_ref", "scope_key", "decision_unit_ref", "source_candidate_ids", "grouping_reason"],
+          "properties": {
+            "problem_family_ref": {"type": "string", "minLength": 1},
+            "scope_key": {"type": "string", "minLength": 1},
+            "decision_unit_ref": {"type": "string", "minLength": 1},
+            "source_candidate_ids": {"$ref": "#/$defs/nonEmptyStringSet"},
+            "grouping_reason": {"enum": ["exact_family_scope_unit", "shared_evidence_candidate"]}
+          }
+        }
+      }
+    },
+    "decisionProposal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["decision_type_ref", "decision_unit_ref", "basis_claim_refs", "rationale_template"],
+      "properties": {
+        "decision_type_ref": {"type": "string", "minLength": 1},
+        "decision_unit_ref": {"type": "string", "minLength": 1},
+        "basis_claim_refs": {"$ref": "#/$defs/nonEmptyStringSet"},
+        "rationale_template": {"type": "string", "minLength": 1, "maxLength": 400}
+      }
+    },
+    "integratedIssue": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": [
+            "problem_family_ref", "scope_key", "decision_unit_ref", "source_candidate_ids",
+            "observation_claim_refs", "cause_hypothesis_refs", "counter_hypothesis_refs",
+            "unresolved_conflict_refs", "impact_evidence_refs", "urgency_evidence_refs", "counter_evidence_refs",
+            "decision_need_proposal", "verification_requirement_refs", "response_type_refs",
+            "expert_trigger_refs"
+          ],
+          "properties": {
+            "problem_family_ref": {"type": "string", "minLength": 1},
+            "scope_key": {"type": "string", "minLength": 1},
+            "decision_unit_ref": {"type": "string", "minLength": 1},
+            "source_candidate_ids": {"$ref": "#/$defs/nonEmptyStringSet"},
+            "observation_claim_refs": {"$ref": "#/$defs/stringSet"},
+            "cause_hypothesis_refs": {"$ref": "#/$defs/stringSet"},
+            "counter_hypothesis_refs": {"$ref": "#/$defs/stringSet"},
+            "unresolved_conflict_refs": {"$ref": "#/$defs/stringSet"},
+            "impact_evidence_refs": {"$ref": "#/$defs/nonEmptyStringSet"},
+            "urgency_evidence_refs": {"$ref": "#/$defs/stringSet"},
+            "counter_evidence_refs": {"$ref": "#/$defs/stringSet"},
+            "decision_need_proposal": {"oneOf": [{"$ref": "#/$defs/decisionProposal"}, {"type": "null"}]},
+            "verification_requirement_refs": {"$ref": "#/$defs/stringSet"},
+            "response_type_refs": {"$ref": "#/$defs/stringSet"},
+            "expert_trigger_refs": {"$ref": "#/$defs/stringSet"}
+          }
+        }
+      }
+    },
+    "causalRelation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["from_issue_local_key", "to_issue_local_key", "status", "mechanism_ref", "supports_evidence_proposals", "contradicts_evidence_proposals", "distinguishing_test_refs"],
+          "properties": {
+            "from_issue_local_key": {"type": "string", "minLength": 1},
+            "to_issue_local_key": {"type": "string", "minLength": 1},
+            "status": {"enum": ["hypothesis", "contradicted", "unresolved"]},
+            "mechanism_ref": {"type": "string", "minLength": 1},
+            "supports_evidence_proposals": {"type": "array", "items": {"$ref": "#/$defs/evidenceProposal"}},
+            "contradicts_evidence_proposals": {"type": "array", "items": {"$ref": "#/$defs/evidenceProposal"}},
+            "distinguishing_test_refs": {"$ref": "#/$defs/stringSet"}
+          }
+        }
+      }
+    },
+    "conflict": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["target_refs", "side_a_evidence_proposals", "side_b_evidence_proposals", "resolution_test_refs", "status"],
+          "properties": {
+            "target_refs": {"$ref": "#/$defs/nonEmptyStringSet"},
+            "side_a_evidence_proposals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidenceProposal"}},
+            "side_b_evidence_proposals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidenceProposal"}},
+            "resolution_test_refs": {"$ref": "#/$defs/stringSet"},
+            "status": {"enum": ["unresolved", "resolved"]}
+          }
+        }
+      }
+    },
+    "blindSpot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["capability_ref", "affected_scope_keys", "reason_codes", "missing_fact_codes", "data_request_refs", "consequence_template"],
+          "properties": {
+            "capability_ref": {"type": "string", "minLength": 1},
+            "affected_scope_keys": {"$ref": "#/$defs/nonEmptyStringSet"},
+            "reason_codes": {"$ref": "#/$defs/nonEmptyStringSet"},
+            "missing_fact_codes": {"$ref": "#/$defs/stringSet"},
+            "data_request_refs": {"$ref": "#/$defs/stringSet"},
+            "consequence_template": {"type": "string", "minLength": 1, "maxLength": 400}
+          }
+        }
+      }
+    },
+    "responseCandidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["target_issue_local_key", "response_ref", "precondition_refs", "disqualifier_refs", "verification_requirement_refs"],
+          "properties": {
+            "target_issue_local_key": {"type": "string", "minLength": 1},
+            "response_ref": {"type": "string", "minLength": 1},
+            "precondition_refs": {"$ref": "#/$defs/stringSet"},
+            "disqualifier_refs": {"$ref": "#/$defs/stringSet"},
+            "verification_requirement_refs": {"$ref": "#/$defs/stringSet"}
+          }
+        }
+      }
+    },
+    "expertCandidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["target_issue_local_key", "expert_trigger_ref", "evidence_proposals", "required_document_refs", "review_question_template"],
+          "properties": {
+            "target_issue_local_key": {"type": "string", "minLength": 1},
+            "expert_trigger_ref": {"type": "string", "minLength": 1},
+            "evidence_proposals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidenceProposal"}},
+            "required_document_refs": {"$ref": "#/$defs/stringSet"},
+            "review_question_template": {"type": "string", "minLength": 1, "maxLength": 400}
+          }
+        }
+      }
+    }
+  }
+}

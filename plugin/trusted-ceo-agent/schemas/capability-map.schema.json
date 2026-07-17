@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["capability_map_id", "capabilities"],
+  "properties": {
+    "capability_map_id": {"type": "string", "pattern": "^capability_map_[0-9a-f]{24}$"},
+    "capabilities": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["capability_id", "capability_code", "status", "available_source_roles", "missing_source_roles", "quality_issue_ids", "reason_codes"], "properties": {
+      "capability_id": {"type": "string", "pattern": "^capability_[0-9a-f]{24}$"}, "capability_code": {"type": "string"}, "status": {"enum": ["available", "partial", "unsupported"]},
+      "available_source_roles": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}, "missing_source_roles": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+      "quality_issue_ids": {"type": "array", "items": {"type": "string", "pattern": "^quality_[0-9a-f]{24}$"}, "uniqueItems": true}, "reason_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+    }}}
+  }
+}

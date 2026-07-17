@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "knowledge-artifact.schema.json",
+  "title": "Professional Knowledge Artifact",
+  "allOf": [
+    {"$ref": "#/$defs/base"},
+    {
+      "type": "object",
+      "required": ["content"],
+      "properties": {"content": {"type": "object"}}
+    }
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "stringSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "nonEmptyStringSet": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id", "source_type", "retrieval", "locator", "source_hash",
+        "verified_hash", "approved"
+      ],
+      "properties": {
+        "source_id": {"type": "string", "minLength": 1},
+        "source_type": {
+          "enum": [
+            "official_primary", "approved_company_policy", "secondary",
+            "web_summary", "llm_memory"
+          ]
+        },
+        "retrieval": {"enum": ["embedded", "remote"]},
+        "locator": {"type": "string", "minLength": 1},
+        "source_hash": {"$ref": "#/$defs/hash"},
+        "verified_hash": {"$ref": "#/$defs/hash"},
+        "approved": {"type": "boolean"}
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref_id", "ref_type", "content_hash"],
+      "properties": {
+        "ref_id": {"type": "string", "pattern": "^knowledge_[0-9a-f]{24}$"},
+        "ref_type": {
+          "enum": [
+            "method_card", "norm_card", "expectation_card", "procedure_card",
+            "counter_hypothesis_card", "cross_domain_trigger_card"
+          ]
+        },
+        "content_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "base": {
+      "type": "object",
+      "required": [
+        "schema_version", "artifact_id", "artifact_type", "domain",
+        "issue_family_id", "version", "status", "trust_level", "jurisdiction",
+        "effective_from", "effective_to", "source_refs", "author",
+        "reviewer_refs", "created_at", "supersedes", "test_refs", "content_hash"
+      ],
+      "properties": {
+        "schema_version": {"const": "1.0.0"},
+        "artifact_id": {"type": "string", "pattern": "^knowledge_[0-9a-f]{24}$"},
+        "artifact_type": {
+          "enum": [
+            "method_card", "norm_card", "expectation_card", "procedure_card",
+            "counter_hypothesis_card", "cross_domain_trigger_card"
+          ]
+        },
+        "domain": {"type": "string", "minLength": 1},
+        "issue_family_id": {"type": "string", "minLength": 1},
+        "version": {"type": "integer", "minimum": 1},
+        "status": {"enum": ["draft", "active", "superseded", "revoked"]},
+        "trust_level": {
+          "enum": [
+            "machine_draft", "source_grounded", "synthetic_tested",
+            "poc_stable", "expert_reviewed", "full"
+          ]
+        },
+        "jurisdiction": {"type": "string", "minLength": 1},
+        "effective_from": {"type": "string", "format": "date"},
+        "effective_to": {
+          "anyOf": [{"type": "string", "format": "date"}, {"type": "null"}]
+        },
+        "source_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/sourceRef"}
+        },
+        "author": {"type": "string", "minLength": 1},
+        "reviewer_refs": {"$ref": "#/$defs/stringSet"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "supersedes": {
+          "anyOf": [
+            {"type": "string", "pattern": "^knowledge_[0-9a-f]{24}$"},
+            {"type": "null"}
+          ]
+        },
+        "test_refs": {"$ref": "#/$defs/stringSet"},
+        "content_hash": {"$ref": "#/$defs/hash"}
+      }
+    }
+  }
+}

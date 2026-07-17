@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "knowledge-release-gate.schema.json",
+  "title": "Professional Knowledge Release Gate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "release_id", "release_hash", "status", "quality_gate_passed",
+    "release_manager_approved", "effective_from", "effective_to",
+    "artifact_hashes"
+  ],
+  "properties": {
+    "release_id": {"type": "string", "minLength": 1},
+    "release_hash": {"$ref": "knowledge-artifact.schema.json#/$defs/hash"},
+    "status": {"enum": ["active", "revoked", "superseded"]},
+    "quality_gate_passed": {"type": "boolean"},
+    "release_manager_approved": {"type": "boolean"},
+    "effective_from": {"type": "string", "format": "date"},
+    "effective_to": {
+      "anyOf": [{"type": "string", "format": "date"}, {"type": "null"}]
+    },
+    "artifact_hashes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "knowledge-artifact.schema.json#/$defs/hash"}
+    }
+  }
+}

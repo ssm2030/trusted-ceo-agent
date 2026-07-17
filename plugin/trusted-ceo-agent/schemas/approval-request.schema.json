@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "approval-request.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["approval_request_id", "gate", "base_revision", "base_artifact_ref", "base_artifact_hash", "patch_operations", "invalidated_approval_ids", "result_preview_hash", "allowed_roles", "nonce_hash", "created_at", "expires_at", "status"],
+  "properties": {
+    "approval_request_id": {"type": "string"}, "gate": {"enum": ["context", "data", "scope_narrowing", "diagnostic", "final", "expert_packet"]},
+    "base_revision": {"type": "integer", "minimum": 0}, "base_artifact_ref": {"type": "string"}, "base_artifact_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "patch_operations": {"type": "array", "items": {"type": "object"}}, "invalidated_approval_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "result_preview_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "allowed_roles": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "nonce_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "created_at": {"type": "string"}, "expires_at": {"type": "string"},
+    "status": {"enum": ["pending", "used", "expired", "cancelled"]}, "used_at": {"type": "string"}, "approval_id": {"type": "string"}
+  }
+}

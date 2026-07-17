@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evaluation-case.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "workload_class",
+    "condition",
+    "scenario_ref",
+    "input_hash",
+    "release_id",
+    "release_hash",
+    "model_profile_id",
+    "oracle_ref",
+    "oracle_hash",
+    "required_metric_names",
+    "case_hash"
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "case_id": {"type": "string", "pattern": "^evaluationcase_[0-9a-f]{24}$"},
+    "workload_class": {"type": "string", "minLength": 1},
+    "condition": {"enum": ["cold", "warm"]},
+    "scenario_ref": {"type": "string", "minLength": 1},
+    "input_hash": {"$ref": "#/$defs/hash"},
+    "release_id": {"type": "string", "minLength": 1},
+    "release_hash": {"$ref": "#/$defs/hash"},
+    "model_profile_id": {"type": "string", "minLength": 1},
+    "oracle_ref": {"type": "string", "minLength": 1},
+    "oracle_hash": {"$ref": "#/$defs/hash"},
+    "required_metric_names": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "authority_state_accuracy",
+          "counter_evidence_coverage",
+          "critical_recall",
+          "cross_domain_trigger_recall",
+          "evidence_role_coverage",
+          "expert_practice_quality",
+          "mandatory_recall"
+        ]
+      }
+    },
+    "case_hash": {"$ref": "#/$defs/hash"}
+  }
+}
+

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "stringList": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "decisionUnit": {"type": "object", "additionalProperties": false, "required": ["decision_unit_ref", "unit_type", "scope_key", "owner_role", "deadline"], "properties": {"decision_unit_ref": {"type": "string"}, "unit_type": {"enum": ["enterprise", "business_unit", "customer_portfolio", "product_portfolio", "contract", "process", "control"]}, "scope_key": {"type": "string"}, "owner_role": {"type": "string"}, "deadline": {"type": ["string", "null"], "format": "date"}}}
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mission_contract_id", "contract_version", "business_question", "business_model", "current_symptoms", "customer_hypotheses", "decision_context", "decision_units", "decision_deadline", "analysis_horizon", "organization_scope", "priority_dimensions", "constraints", "recent_business_changes", "recent_organization_changes", "recent_policy_changes", "included_scopes", "excluded_scopes", "comparison_preferences", "materiality_context", "data_definitions", "confidentiality", "required_human_roles", "confirmation"],
+  "properties": {
+    "mission_contract_id": {"type": "string", "pattern": "^mission_[0-9a-f]{24}$"}, "contract_version": {"type": "string"}, "business_question": {"type": "string", "minLength": 1}, "business_model": {"type": "string", "minLength": 1},
+    "current_symptoms": {"$ref": "#/$defs/stringList"},
+    "customer_hypotheses": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["hypothesis_id", "statement", "status", "source"], "properties": {"hypothesis_id": {"type": "string", "pattern": "^hypothesis_[0-9a-f]{24}$"}, "statement": {"type": "string", "minLength": 1}, "status": {"const": "unverified"}, "source": {"const": "customer"}}}},
+    "decision_context": {"type": "string"}, "decision_units": {"type": "array", "items": {"$ref": "#/$defs/decisionUnit"}}, "decision_deadline": {"type": ["string", "null"], "format": "date"},
+    "analysis_horizon": {"type": "object", "additionalProperties": false, "required": ["start", "end"], "properties": {"start": {"type": "string", "format": "date"}, "end": {"type": "string", "format": "date"}}},
+    "organization_scope": {"$ref": "#/$defs/stringList"}, "priority_dimensions": {"$ref": "#/$defs/stringList"}, "constraints": {"$ref": "#/$defs/stringList"},
+    "recent_business_changes": {"$ref": "#/$defs/stringList"}, "recent_organization_changes": {"$ref": "#/$defs/stringList"}, "recent_policy_changes": {"$ref": "#/$defs/stringList"},
+    "included_scopes": {"$ref": "#/$defs/stringList"}, "excluded_scopes": {"$ref": "#/$defs/stringList"}, "comparison_preferences": {"$ref": "#/$defs/stringList"},
+    "materiality_context": {"type": "object", "additionalProperties": {"type": ["string", "integer", "boolean", "null"]}}, "data_definitions": {"$ref": "#/$defs/stringList"},
+    "confidentiality": {"type": "string"}, "required_human_roles": {"$ref": "#/$defs/stringList"},
+    "confirmation": {"type": "object", "additionalProperties": false, "required": ["confirmed", "actor_id", "actor_role", "confirmed_at", "contract_hash"], "properties": {"confirmed": {"const": true}, "actor_id": {"type": "string"}, "actor_role": {"type": "string"}, "confirmed_at": {"type": "string", "format": "date-time"}, "contract_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}
+  }
+}

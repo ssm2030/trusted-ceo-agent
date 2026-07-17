@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "join-manifest.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["join_manifest_id", "artifact_ref", "mission_contract_hash", "pack_manifest_hash", "cutoff_at", "tasks"],
+  "properties": {
+    "join_manifest_id": {"type": "string"}, "artifact_ref": {"type": "string"},
+    "mission_contract_hash": {"type": "string"}, "pack_manifest_hash": {"type": "string"}, "cutoff_at": {"type": "string"},
+    "tasks": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["job_id", "required", "required_signal_ids"], "properties": {"job_id": {"type": "string"}, "required": {"type": "boolean"}, "required_signal_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}}}}
+  }
+}

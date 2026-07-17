@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "accounting-cashflow-procedure-result.schema.json",
+  "title": "Cash Flow and Working Capital Procedure Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "revision",
+    "as_of_date",
+    "input_hash",
+    "procedure_results",
+    "procedure_status_counts",
+    "coverage_complete",
+    "cross_domain_triggers",
+    "expert_review_required",
+    "authority_ceiling",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "as_of_date": {"type": "string", "minLength": 1},
+    "input_hash": {"$ref": "#/$defs/sha256"},
+    "procedure_results": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "items": {"$ref": "#/$defs/procedure_result"}
+    },
+    "procedure_status_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "passed": {"type": "integer", "minimum": 0},
+        "exceptions_found": {"type": "integer", "minimum": 0},
+        "not_assessable": {"type": "integer", "minimum": 0},
+        "expert_review_required": {"type": "integer", "minimum": 0}
+      }
+    },
+    "coverage_complete": {"type": "boolean"},
+    "cross_domain_triggers": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/cross_domain_trigger"}
+    },
+    "expert_review_required": {"type": "boolean"},
+    "authority_ceiling": {"const": "Boundary"},
+    "content_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullable_text": {"type": ["string", "null"]},
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "scope_ref",
+        "entity",
+        "currency",
+        "period",
+        "observed",
+        "expected",
+        "difference",
+        "disposition",
+        "evidence_refs"
+      ],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "scope_ref": {"type": "string", "minLength": 1},
+        "entity": {"$ref": "#/$defs/nullable_text"},
+        "currency": {"$ref": "#/$defs/nullable_text"},
+        "period": {"$ref": "#/$defs/nullable_text"},
+        "observed": {"$ref": "#/$defs/nullable_text"},
+        "expected": {"$ref": "#/$defs/nullable_text"},
+        "difference": {"$ref": "#/$defs/nullable_text"},
+        "disposition": {
+          "enum": [
+            "no_exception",
+            "exception",
+            "not_assessable",
+            "expert_review_required"
+          ]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "procedure_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue_family_id",
+        "procedure_id",
+        "implementation_status",
+        "status",
+        "outcome_count",
+        "outcomes"
+      ],
+      "properties": {
+        "issue_family_id": {
+          "enum": [
+            "CF-01", "CF-02", "CF-03", "CF-04",
+            "CF-05", "CF-06", "CF-07", "CF-08",
+            "CF-09", "CF-10", "CF-11", "CF-12",
+            "CF-13", "CF-14", "CF-15", "CF-16"
+          ]
+        },
+        "procedure_id": {
+          "enum": [
+            "P-CF-01", "P-CF-02", "P-CF-03", "P-CF-04",
+            "P-CF-05", "P-CF-06", "P-CF-07", "P-CF-08",
+            "P-CF-09", "P-CF-10", "P-CF-11", "P-CF-12",
+            "P-CF-13"
+          ]
+        },
+        "implementation_status": {"const": "implemented_deterministic"},
+        "status": {
+          "enum": [
+            "passed",
+            "exceptions_found",
+            "not_assessable",
+            "expert_review_required"
+          ]
+        },
+        "outcome_count": {"type": "integer", "minimum": 1},
+        "outcomes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/outcome"}
+        }
+      }
+    },
+    "cross_domain_trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trigger_id",
+        "issue_family_id",
+        "target_domain",
+        "scope_ref",
+        "reason_code",
+        "disposition",
+        "evidence_refs"
+      ],
+      "properties": {
+        "trigger_id": {"type": "string", "minLength": 1},
+        "issue_family_id": {
+          "enum": [
+            "CF-02", "CF-06", "CF-11", "CF-12", "CF-13", "CF-16"
+          ]
+        },
+        "target_domain": {
+          "enum": ["accounting", "legal", "tax", "labor", "going_concern"]
+        },
+        "scope_ref": {"type": "string", "minLength": 1},
+        "reason_code": {"type": "string", "minLength": 1},
+        "disposition": {"const": "expert_review_required"},
+        "evidence_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "human-action-card.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "action_id", "schema_version", "run_id", "base_revision", "workflow_state",
+    "gate", "action_type", "title", "question", "why_asked",
+    "current_interpretation", "evidence_refs", "required",
+    "allowed_response_types", "options", "recommended_option_id",
+    "recommendation_reason", "unanswered_effect", "next_step_by_option",
+    "expires_at", "content_hash"
+  ],
+  "properties": {
+    "action_id": {"type": "string", "pattern": "^action_[0-9a-f]{24}$"},
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "base_revision": {"type": "integer", "minimum": 0},
+    "workflow_state": {"type": "string", "minLength": 1},
+    "gate": {"enum": ["context", "data", "scope_narrowing", "diagnostic", "final"]},
+    "action_type": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "question": {"type": "string", "minLength": 1},
+    "why_asked": {"type": "string", "minLength": 1},
+    "current_interpretation": {"type": "string", "minLength": 1},
+    "evidence_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "required": {"type": "boolean"},
+    "allowed_response_types": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"enum": [
+        "confirm", "choose_one", "choose_many", "free_text", "provide_data",
+        "provide_alternative_evidence", "proceed_limited", "exclude_scope",
+        "request_explanation", "request_changes", "stop"
+      ]}
+    },
+    "options": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["option_id", "label", "response_type", "description"],
+        "properties": {
+          "option_id": {"type": "string", "minLength": 1},
+          "label": {"type": "string", "minLength": 1},
+          "response_type": {"enum": [
+            "confirm", "choose_one", "choose_many", "free_text", "provide_data",
+            "provide_alternative_evidence", "proceed_limited", "exclude_scope",
+            "request_explanation", "request_changes", "stop"
+          ]},
+          "description": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "recommended_option_id": {"type": ["string", "null"], "minLength": 1},
+    "recommendation_reason": {"type": ["string", "null"], "minLength": 1},
+    "unanswered_effect": {"type": "string", "minLength": 1},
+    "next_step_by_option": {
+      "type": "object", "additionalProperties": {"type": "string", "minLength": 1}
+    },
+    "expires_at": {"type": ["string", "null"], "format": "date-time"},
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

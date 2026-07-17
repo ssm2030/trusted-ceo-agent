@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "priority-record.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "priority_record_id",
+    "schema_version",
+    "case_id",
+    "policy_ref",
+    "dimensions",
+    "sort_vector",
+    "created_from_hash",
+    "content_hash"
+  ],
+  "properties": {
+    "priority_record_id": {
+      "type": "string",
+      "pattern": "^priority_[0-9a-f]{24}$"
+    },
+    "schema_version": {"const": "1.0.0"},
+    "case_id": {"type": "string", "pattern": "^case_[0-9a-f]{24}$"},
+    "policy_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deterministic_risk",
+        "amount_cash_impact",
+        "legal_human_impact",
+        "control_failure",
+        "urgency",
+        "data_sufficiency",
+        "ceo_question_relevance"
+      ],
+      "properties": {
+        "deterministic_risk": {"type": "integer", "minimum": 0, "maximum": 100},
+        "amount_cash_impact": {"type": "integer", "minimum": 0, "maximum": 100},
+        "legal_human_impact": {"type": "integer", "minimum": 0, "maximum": 100},
+        "control_failure": {"type": "integer", "minimum": 0, "maximum": 100},
+        "urgency": {"type": "integer", "minimum": 0, "maximum": 100},
+        "data_sufficiency": {"type": "integer", "minimum": 0, "maximum": 100},
+        "ceo_question_relevance": {"type": "integer", "minimum": 0, "maximum": 100}
+      }
+    },
+    "sort_vector": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "prefixItems": [
+        {"type": "integer", "minimum": 0, "maximum": 100},
+        {"type": "integer", "minimum": 0, "maximum": 100},
+        {"type": "integer", "minimum": 0, "maximum": 100},
+        {"type": "integer", "minimum": 0, "maximum": 100},
+        {"type": "integer", "minimum": 0, "maximum": 100},
+        {"type": "integer", "minimum": 0, "maximum": 100},
+        {"type": "integer", "minimum": 0, "maximum": 100}
+      ],
+      "items": false
+    },
+    "created_from_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

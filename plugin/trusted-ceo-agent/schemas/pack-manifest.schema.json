@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pack-manifest.schema.json",
+  "type": "object",
+  "required": ["schema_version", "packs", "manifest_hash"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "packs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pack_type", "pack_id", "pack_version", "pack_sha256", "effective_authority"],
+        "properties": {
+          "pack_type": {"enum": ["mission", "domain", "problem"]},
+          "pack_id": {"type": "string"},
+          "pack_version": {"type": "string"},
+          "pack_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "effective_authority": {"enum": ["full", "provisional", "boundary"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "manifest_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": false
+}

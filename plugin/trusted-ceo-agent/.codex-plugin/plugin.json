@@ -1,0 +1,22 @@
+{
+  "name": "trusted-ceo-agent",
+  "version": "0.1.0",
+  "description": "기업 데이터를 근거로 중요한 경영 문제를 진단하고 사람의 의사결정을 보좌하는 로컬 플러그인",
+  "author": {
+    "name": "Trusted CEO Agent Team"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Trusted CEO Agent",
+    "shortDescription": "근거 기반 CEO 경영 트러블슈팅",
+    "longDescription": "원본 데이터와 결정적 계산을 보존하며 원인·반대 가설을 검증하고 승인된 조건부 대응 자료를 만듭니다.",
+    "developerName": "Trusted CEO Agent Team",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": [
+      "이 기업 데이터에서 CEO가 놓친 중요한 경영 문제를 진단해 주세요.",
+      "원인 가설과 반대 가설을 근거별로 검증해 주세요.",
+      "승인이 필요한 조건부 대응 방향과 전문가 검토 사항을 정리해 주세요."
+    ]
+  }
+}

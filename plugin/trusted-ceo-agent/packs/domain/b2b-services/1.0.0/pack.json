@@ -1,0 +1,1217 @@
+{
+    "schema_version":  "1.0.0",
+    "pack_type":  "domain",
+    "pack_id":  "b2b-services",
+    "pack_version":  "1.0.0",
+    "requested_authority":  "full",
+    "title":  "B2B Services Domain",
+    "description":  "Project, subscription, and hybrid B2B services with financial, customer, contract, labor, acceptance, and billing data.",
+    "applicability":  {
+                          "business_models":  [
+                                                  "hybrid_b2b_services",
+                                                  "project_b2b_services",
+                                                  "subscription_b2b_services"
+                                              ],
+                          "industries":  [
+                                             "professional_services",
+                                             "technology_services",
+                                             "business_services"
+                                         ],
+                          "excluded_industries":  [
+                                                      "banking",
+                                                      "insurance",
+                                                      "manufacturing_inventory",
+                                                      "consumer_clinical_healthcare"
+                                                  ],
+                          "required_data_roles":  [
+                                                      "monthly_financials"
+                                                  ]
+                      },
+    "dependencies":  [
+                         "trusted-ceo-default@1.0.0"
+                     ],
+    "safety":  {
+                   "forbidden_interpretations":  [
+                                                     "Treating revenue timing mismatch as an accounting conclusion",
+                                                     "Attributing margin movement to a driver when bridge residual fails"
+                                                 ],
+                   "safe_stop_rules":  [
+                                           "Use generic Boundary when the business model is outside B2B services",
+                                           "Return Not Assessable when required customer, contract, delivery, or timing roles are absent"
+                                       ]
+               },
+    "content":  {
+                    "domain_code":  "b2b-services",
+                    "applicability_dimensions":  [
+                                                     "business_model",
+                                                     "industry",
+                                                     "available_data_roles"
+                                                 ],
+                    "applicability_rules":  [
+                                                {
+                                                    "op":  "in",
+                                                    "left":  {
+                                                                 "mission_ref":  "/business_model"
+                                                             },
+                                                    "values":  [
+                                                                   {
+                                                                       "literal":  {
+                                                                                       "type":  "string",
+                                                                                       "value":  "project_b2b_services"
+                                                                                   }
+                                                                   },
+                                                                   {
+                                                                       "literal":  {
+                                                                                       "type":  "string",
+                                                                                       "value":  "subscription_b2b_services"
+                                                                                   }
+                                                                   },
+                                                                   {
+                                                                       "literal":  {
+                                                                                       "type":  "string",
+                                                                                       "value":  "hybrid_b2b_services"
+                                                                                   }
+                                                                   }
+                                                               ]
+                                                }
+                                            ],
+                    "exclusions":  [
+                                       "manufacturing inventory costing",
+                                       "regulated capital",
+                                       "clinical judgment"
+                                   ],
+                    "terminology":  {
+                                        "acceptance":  "customer confirmation that contracted work was accepted",
+                                        "custom_contract":  "a contract with scope or delivery terms materially tailored to one customer"
+                                    },
+                    "metric_definitions":  [
+                                               {
+                                                   "metric_code":  "revenue",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Recognized service revenue",
+                                                   "accepted_observation_roles":  [
+                                                                                      "ledger"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "single_currency_or_verified_conversion",
+                                                   "time_role":  "recognition_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "service",
+                                                                              "segment"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+                                                                               "revenue_to_ledger"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "gross_margin",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Gross profit divided by revenue",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "ratio",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "service",
+                                                                              "segment"
+                                                                          ],
+                                                   "aggregation_policy":  "recalculate",
+                                                   "reconciliation_refs":  [
+                                                                               "gross_profit_to_revenue"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "delivery_hours",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Hours used to deliver contracted services",
+                                                   "accepted_observation_roles":  [
+                                                                                      "operations"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "hour",
+                                                   "time_role":  "service_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "project",
+                                                                              "employee_group"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+                                                                               "worklog_to_project"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "customer_revenue",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Recognized revenue grouped by customer",
+                                                   "accepted_observation_roles":  [
+                                                                                      "ledger"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "single_currency_or_verified_conversion",
+                                                   "time_role":  "recognition_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+                                                                               "customer_revenue_to_ledger"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "segment_revenue",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Recognized revenue grouped by segment",
+                                                   "accepted_observation_roles":  [
+                                                                                      "ledger"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "single_currency_or_verified_conversion",
+                                                   "time_role":  "recognition_period",
+                                                   "allowed_dimensions":  [
+                                                                              "segment"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+                                                                               "segment_revenue_to_ledger"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "low_margin_segment_share",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Share of revenue from confirmed low-margin segments",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "ratio",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "segment"
+                                                                          ],
+                                                   "aggregation_policy":  "recalculate",
+                                                   "reconciliation_refs":  [
+                                                                               "segment_revenue_to_ledger"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "delivery_hours_actual",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Actual delivery hours for a service period",
+                                                   "accepted_observation_roles":  [
+                                                                                      "operations"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "hour",
+                                                   "time_role":  "service_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "project"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+                                                                               "worklog_to_project"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "delivery_hours_planned",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Planned delivery hours for a service period",
+                                                   "accepted_observation_roles":  [
+                                                                                      "operations"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "hour",
+                                                   "time_role":  "service_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "project"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+                                                                               "plan_to_contract_scope"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "worklog_delivery_hours",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Delivery hours recorded in underlying worklogs",
+                                                   "accepted_observation_roles":  [
+                                                                                      "operations"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "hour",
+                                                   "time_role":  "service_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "project",
+                                                                              "employee_group"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+                                                                               "worklog_to_project"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "unresolved_delivery_backlog_amount",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Amount associated with unresolved delivery backlog",
+                                                   "accepted_observation_roles":  [
+                                                                                      "operations"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "single_currency_or_verified_conversion",
+                                                   "time_role":  "observation_date",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "project"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "analysis_as_of_date",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Confirmed analysis cut-off date",
+                                                   "accepted_observation_roles":  [
+                                                                                      "control"
+                                                                                  ],
+                                                   "data_type":  "date",
+                                                   "unit_policy":  "date",
+                                                   "time_role":  "observation_date",
+                                                   "allowed_dimensions":  [
+                                                                              "enterprise"
+                                                                          ],
+                                                   "aggregation_policy":  "latest",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "margin_driver_contribution_pp",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Independently calculated driver contribution to margin movement",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "percentage_point",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "service",
+                                                                              "segment"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "segment_mix_margin_contribution_pp",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Independently calculated segment mix contribution to margin movement",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "percentage_point",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "segment"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "acceptance_date",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Customer acceptance event date",
+                                                   "accepted_observation_roles":  [
+                                                                                      "contract_event"
+                                                                                  ],
+                                                   "data_type":  "date",
+                                                   "unit_policy":  "date",
+                                                   "time_role":  "event_date",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract"
+                                                                          ],
+                                                   "aggregation_policy":  "latest",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "recognition_date",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Revenue recognition event date for comparison",
+                                                   "accepted_observation_roles":  [
+                                                                                      "contract_event"
+                                                                                  ],
+                                                   "data_type":  "date",
+                                                   "unit_policy":  "date",
+                                                   "time_role":  "event_date",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract"
+                                                                          ],
+                                                   "aggregation_policy":  "latest",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "cross_period_timing_amount",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Revenue amount flagged for cross-period timing review",
+                                                   "accepted_observation_roles":  [
+                                                                                      "ledger"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "single_currency_or_verified_conversion",
+                                                   "time_role":  "recognition_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+                                                                               "timing_amount_to_ledger"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "contract_cross_period_timing_amount",
+                                                   "metric_origin":  "raw_input",
+                                                   "business_definition":  "Contract-level amount flagged for cross-period timing review",
+                                                   "accepted_observation_roles":  [
+                                                                                      "ledger"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "single_currency_or_verified_conversion",
+                                                   "time_role":  "recognition_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+                                                                               "timing_amount_to_ledger"
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "acceptance_to_recognition_lag_days",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic days from acceptance to recognition",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "day",
+                                                   "time_role":  "event_date",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "contract_acceptance_to_recognition_lag_days",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic contract-level days from acceptance to recognition",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "day",
+                                                   "time_role":  "event_date",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "cross_period_timing_amount_share",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic share of revenue flagged for cross-period review",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "ratio",
+                                                   "time_role":  "recognition_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "customer_revenue_hhi",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic customer revenue concentration HHI",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "ratio",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "enterprise"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "delivery_actual_to_plan_ratio",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic ratio of actual to planned delivery hours",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "ratio",
+                                                   "time_role":  "service_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "project"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "delivery_hours_actual_change_ratio",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic period change in actual delivery hours",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "ratio",
+                                                   "time_role":  "service_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "project"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "gross_margin_bridge_residual_pp",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic residual of the gross-margin driver bridge",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "percentage_point",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "service",
+                                                                              "segment"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "gross_margin_change_pp",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic percentage-point change in gross margin",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "percentage_point",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "service",
+                                                                              "segment"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "low_margin_segment_share_change_pp",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic percentage-point change in low-margin segment share",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "percentage_point",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "segment"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "revenue_mix_bridge_residual_pp",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic residual of the revenue-mix margin bridge",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "percentage_point",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "segment"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "segment_revenue_hhi",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic segment revenue concentration HHI",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "ratio",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "enterprise"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "top3_customer_share",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic share of revenue from the top three customers",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "ratio",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "enterprise"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "top3_customer_share_change_pp",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic percentage-point change in top-three customer share",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "percentage_point",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "enterprise"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "top3_segment_revenue_share",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic share of revenue from the top three segments",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "ratio",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "enterprise"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               },
+                                               {
+                                                   "metric_code":  "unresolved_delivery_backlog_age_bucket",
+                                                   "metric_origin":  "derived_output",
+                                                   "business_definition":  "Deterministic aged unresolved delivery backlog amount",
+                                                   "accepted_observation_roles":  [
+                                                                                      "calculated"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "single_currency_or_verified_conversion",
+                                                   "time_role":  "observation_date",
+                                                   "allowed_dimensions":  [
+                                                                              "customer",
+                                                                              "contract",
+                                                                              "project"
+                                                                          ],
+                                                   "aggregation_policy":  "component_output",
+                                                   "reconciliation_refs":  [
+
+                                                                           ]
+                                               }
+                                           ],
+                    "threshold_definitions":  [
+                                                  {
+                                                      "threshold_id":  "margin_decline_high",
+                                                      "value":  "3",
+                                                      "unit_code":  "percentage_point",
+                                                      "condition_expression":  {
+                                                                                   "op":  "lte",
+                                                                                   "left":  {
+                                                                                                "fact_ref":  {
+                                                                                                                 "fact_code":  "gross_margin_change_pp",
+                                                                                                                 "reducer":  "only",
+                                                                                                                 "unit_code":  "percentage_point"
+                                                                                                             }
+                                                                                            },
+                                                                                   "right":  {
+                                                                                                 "literal":  {
+                                                                                                                 "type":  "decimal",
+                                                                                                                 "value":  "-3"
+                                                                                                             }
+                                                                                             }
+                                                                               },
+                                                      "impact_band":  "high",
+                                                      "urgency_band":  "near_term",
+                                                      "provenance":  "design-rc2-9.8",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "margin_decline_critical",
+                                                      "value":  "7",
+                                                      "unit_code":  "percentage_point",
+                                                      "condition_expression":  {
+                                                                                   "op":  "lte",
+                                                                                   "left":  {
+                                                                                                "fact_ref":  {
+                                                                                                                 "fact_code":  "gross_margin_change_pp",
+                                                                                                                 "reducer":  "only",
+                                                                                                                 "unit_code":  "percentage_point"
+                                                                                                             }
+                                                                                            },
+                                                                                   "right":  {
+                                                                                                 "literal":  {
+                                                                                                                 "type":  "decimal",
+                                                                                                                 "value":  "-7"
+                                                                                                             }
+                                                                                             }
+                                                                               },
+                                                      "impact_band":  "critical",
+                                                      "urgency_band":  "immediate",
+                                                      "provenance":  "design-rc2-9.8",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "trend_minimum_observations",
+                                                      "value":  "3",
+                                                      "unit_code":  "count",
+                                                      "condition_expression":  {
+                                                                                   "op":  "exists",
+                                                                                   "operand":  {
+                                                                                                   "fact_ref":  {
+                                                                                                                    "fact_code":  "gross_margin",
+                                                                                                                    "reducer":  "count"
+                                                                                                                }
+                                                                                               }
+                                                                               },
+                                                      "impact_band":  "unknown",
+                                                      "urgency_band":  "unknown",
+                                                      "provenance":  "design-runtime-component-parameter",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "reconciliation_tolerance_ratio",
+                                                      "value":  "0.01",
+                                                      "unit_code":  "ratio",
+                                                      "condition_expression":  {
+                                                                                   "op":  "exists",
+                                                                                   "operand":  {
+                                                                                                   "fact_ref":  {
+                                                                                                                    "fact_code":  "revenue",
+                                                                                                                    "reducer":  "only"
+                                                                                                                }
+                                                                                               }
+                                                                               },
+                                                      "impact_band":  "unknown",
+                                                      "urgency_band":  "unknown",
+                                                      "provenance":  "design-runtime-component-parameter",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "acceptance_recognition_lag_review_days",
+                                                      "value":  "0",
+                                                      "unit_code":  "day",
+                                                      "condition_expression":  {
+                                                                                   "op":  "gt",
+                                                                                   "left":  {
+                                                                                                "fact_ref":  {
+                                                                                                                 "fact_code":  "acceptance_to_recognition_lag_days",
+                                                                                                                 "reducer":  "only",
+                                                                                                                 "unit_code":  "day"
+                                                                                                             }
+                                                                                            },
+                                                                                   "right":  {
+                                                                                                 "literal":  {
+                                                                                                                 "type":  "decimal",
+                                                                                                                 "value":  "0"
+                                                                                                             }
+                                                                                             }
+                                                                               },
+                                                      "impact_band":  "unknown",
+                                                      "urgency_band":  "unknown",
+                                                      "provenance":  "design-runtime-component-parameter",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "mix_shift_high",
+                                                      "value":  "10",
+                                                      "unit_code":  "percentage_point",
+                                                      "condition_expression":  {
+                                                                                   "all":  [
+                                                                                               {
+                                                                                                   "op":  "gte",
+                                                                                                   "left":  {
+                                                                                                                "fact_ref":  {
+                                                                                                                                 "fact_code":  "low_margin_segment_share_change_pp",
+                                                                                                                                 "reducer":  "only",
+                                                                                                                                 "unit_code":  "percentage_point"
+                                                                                                                             }
+                                                                                                            },
+                                                                                                   "right":  {
+                                                                                                                 "literal":  {
+                                                                                                                                 "type":  "decimal",
+                                                                                                                                 "value":  "10"
+                                                                                                                             }
+                                                                                                             }
+                                                                                               },
+                                                                                               {
+                                                                                                   "op":  "gte",
+                                                                                                   "left":  {
+                                                                                                                "fact_ref":  {
+                                                                                                                                 "fact_code":  "segment_margin_gap_pp",
+                                                                                                                                 "reducer":  "only",
+                                                                                                                                 "unit_code":  "percentage_point"
+                                                                                                                             }
+                                                                                                            },
+                                                                                                   "right":  {
+                                                                                                                 "literal":  {
+                                                                                                                                 "type":  "decimal",
+                                                                                                                                 "value":  "5"
+                                                                                                                             }
+                                                                                                             }
+                                                                                               }
+                                                                                           ]
+                                                                               },
+                                                      "impact_band":  "high",
+                                                      "urgency_band":  "near_term",
+                                                      "provenance":  "design-rc2-9.8",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "driver_contribution_plausible",
+                                                      "value":  "0.3",
+                                                      "unit_code":  "ratio",
+                                                      "condition_expression":  {
+                                                                                   "op":  "gte",
+                                                                                   "left":  {
+                                                                                                "fact_ref":  {
+                                                                                                                 "fact_code":  "driver_gap_explanation_ratio",
+                                                                                                                 "reducer":  "only",
+                                                                                                                 "unit_code":  "ratio"
+                                                                                                             }
+                                                                                            },
+                                                                                   "right":  {
+                                                                                                 "literal":  {
+                                                                                                                 "type":  "decimal",
+                                                                                                                 "value":  "0.3"
+                                                                                                             }
+                                                                                             }
+                                                                               },
+                                                      "impact_band":  "medium",
+                                                      "urgency_band":  "routine",
+                                                      "provenance":  "design-rc2-9.8",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "driver_contribution_leading",
+                                                      "value":  "0.6",
+                                                      "unit_code":  "ratio",
+                                                      "condition_expression":  {
+                                                                                   "all":  [
+                                                                                               {
+                                                                                                   "op":  "gte",
+                                                                                                   "left":  {
+                                                                                                                "fact_ref":  {
+                                                                                                                                 "fact_code":  "driver_gap_explanation_ratio",
+                                                                                                                                 "reducer":  "only",
+                                                                                                                                 "unit_code":  "ratio"
+                                                                                                                             }
+                                                                                                            },
+                                                                                                   "right":  {
+                                                                                                                 "literal":  {
+                                                                                                                                 "type":  "decimal",
+                                                                                                                                 "value":  "0.6"
+                                                                                                                             }
+                                                                                                             }
+                                                                                               },
+                                                                                               {
+                                                                                                   "op":  "exists",
+                                                                                                   "operand":  {
+                                                                                                                   "signal_ref":  {
+                                                                                                                                      "signal_code":  "driver_independent_corroboration",
+                                                                                                                                      "outcome":  "triggered"
+                                                                                                                                  }
+                                                                                                               }
+                                                                                               }
+                                                                                           ]
+                                                                               },
+                                                      "impact_band":  "high",
+                                                      "urgency_band":  "near_term",
+                                                      "provenance":  "design-rc2-9.8",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "top3_concentration_high",
+                                                      "value":  "0.6",
+                                                      "unit_code":  "ratio",
+                                                      "condition_expression":  {
+                                                                                   "any":  [
+                                                                                               {
+                                                                                                   "op":  "gte",
+                                                                                                   "left":  {
+                                                                                                                "fact_ref":  {
+                                                                                                                                 "fact_code":  "top3_customer_share",
+                                                                                                                                 "reducer":  "only",
+                                                                                                                                 "unit_code":  "ratio"
+                                                                                                                             }
+                                                                                                            },
+                                                                                                   "right":  {
+                                                                                                                 "literal":  {
+                                                                                                                                 "type":  "decimal",
+                                                                                                                                 "value":  "0.6"
+                                                                                                                             }
+                                                                                                             }
+                                                                                               },
+                                                                                               {
+                                                                                                   "op":  "gte",
+                                                                                                   "left":  {
+                                                                                                                "fact_ref":  {
+                                                                                                                                 "fact_code":  "top3_customer_share_change_pp",
+                                                                                                                                 "reducer":  "only",
+                                                                                                                                 "unit_code":  "percentage_point"
+                                                                                                                             }
+                                                                                                            },
+                                                                                                   "right":  {
+                                                                                                                 "literal":  {
+                                                                                                                                 "type":  "decimal",
+                                                                                                                                 "value":  "10"
+                                                                                                                             }
+                                                                                                             }
+                                                                                               }
+                                                                                           ]
+                                                                               },
+                                                      "impact_band":  "high",
+                                                      "urgency_band":  "near_term",
+                                                      "provenance":  "design-rc2-9.8",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "top3_concentration_critical",
+                                                      "value":  "0.75",
+                                                      "unit_code":  "ratio",
+                                                      "condition_expression":  {
+                                                                                   "op":  "gte",
+                                                                                   "left":  {
+                                                                                                "fact_ref":  {
+                                                                                                                 "fact_code":  "top3_customer_share",
+                                                                                                                 "reducer":  "only",
+                                                                                                                 "unit_code":  "ratio"
+                                                                                                             }
+                                                                                            },
+                                                                                   "right":  {
+                                                                                                 "literal":  {
+                                                                                                                 "type":  "decimal",
+                                                                                                                 "value":  "0.75"
+                                                                                                             }
+                                                                                             }
+                                                                               },
+                                                      "impact_band":  "critical",
+                                                      "urgency_band":  "near_term",
+                                                      "provenance":  "design-rc2-9.8",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "delivery_overrun_high",
+                                                      "value":  "0.1",
+                                                      "unit_code":  "ratio",
+                                                      "condition_expression":  {
+                                                                                   "op":  "gte",
+                                                                                   "left":  {
+                                                                                                "fact_ref":  {
+                                                                                                                 "fact_code":  "delivery_overrun_ratio",
+                                                                                                                 "reducer":  "only",
+                                                                                                                 "unit_code":  "ratio"
+                                                                                                             }
+                                                                                            },
+                                                                                   "right":  {
+                                                                                                 "literal":  {
+                                                                                                                 "type":  "decimal",
+                                                                                                                 "value":  "0.1"
+                                                                                                             }
+                                                                                             }
+                                                                               },
+                                                      "impact_band":  "high",
+                                                      "urgency_band":  "near_term",
+                                                      "provenance":  "design-rc2-9.8",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "delivery_overrun_critical",
+                                                      "value":  "0.2",
+                                                      "unit_code":  "ratio",
+                                                      "condition_expression":  {
+                                                                                   "op":  "gte",
+                                                                                   "left":  {
+                                                                                                "fact_ref":  {
+                                                                                                                 "fact_code":  "delivery_overrun_ratio",
+                                                                                                                 "reducer":  "only",
+                                                                                                                 "unit_code":  "ratio"
+                                                                                                             }
+                                                                                            },
+                                                                                   "right":  {
+                                                                                                 "literal":  {
+                                                                                                                 "type":  "decimal",
+                                                                                                                 "value":  "0.2"
+                                                                                                             }
+                                                                                             }
+                                                                               },
+                                                      "impact_band":  "critical",
+                                                      "urgency_band":  "immediate",
+                                                      "provenance":  "design-rc2-9.8",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  },
+                                                  {
+                                                      "threshold_id":  "revenue_timing_expert",
+                                                      "value":  "0.02",
+                                                      "unit_code":  "ratio",
+                                                      "condition_expression":  {
+                                                                                   "op":  "gte",
+                                                                                   "left":  {
+                                                                                                "fact_ref":  {
+                                                                                                                 "fact_code":  "cross_period_timing_amount_share",
+                                                                                                                 "reducer":  "only",
+                                                                                                                 "unit_code":  "ratio"
+                                                                                                             }
+                                                                                            },
+                                                                                   "right":  {
+                                                                                                 "literal":  {
+                                                                                                                 "type":  "decimal",
+                                                                                                                 "value":  "0.02"
+                                                                                                             }
+                                                                                             }
+                                                                               },
+                                                      "impact_band":  "high",
+                                                      "urgency_band":  "immediate",
+                                                      "provenance":  "design-rc2-9.8",
+                                                      "valid_from":  "2026-07-17",
+                                                      "valid_to":  null
+                                                  }
+                                              ],
+                    "expected_relationships":  [
+                                                   {
+                                                       "relationship_ref":  "margin_mix",
+                                                       "description":  "A shift toward lower-margin services may reduce enterprise gross margin."
+                                                   },
+                                                   {
+                                                       "relationship_ref":  "delivery_margin",
+                                                       "description":  "Unpriced delivery hours may reduce contract margin."
+                                                   }
+                                               ],
+                    "analysis_lenses":  [
+                                            {
+                                                "lens_id":  "financial_profitability",
+                                                "role":  "requested"
+                                            },
+                                            {
+                                                "lens_id":  "customer_portfolio",
+                                                "role":  "challenge"
+                                            },
+                                            {
+                                                "lens_id":  "delivery_operations",
+                                                "role":  "operational"
+                                            },
+                                            {
+                                                "lens_id":  "revenue_timing",
+                                                "role":  "timing"
+                                            }
+                                        ],
+                    "mechanism_catalog":  [
+                                              {
+                                                  "mechanism_ref":  "low_margin_mix_shift",
+                                                  "explanation":  "Low-margin contract mix may explain aggregate margin decline.",
+                                                  "expected_support_patterns":  [
+                                                                                    "mix share rises while segment margin gap persists"
+                                                                                ],
+                                                  "expected_counter_patterns":  [
+                                                                                    "mix is stable or high-margin share rises"
+                                                                                ],
+                                                  "distinguishing_test_refs":  [
+                                                                                   "bridge_mix_contribution"
+                                                                               ],
+                                                  "prohibited_conclusion":  "Do not claim causality when the bridge residual fails."
+                                              },
+                                              {
+                                                  "mechanism_ref":  "delivery_overrun",
+                                                  "explanation":  "Delivery effort above plan may erode project margin.",
+                                                  "expected_support_patterns":  [
+                                                                                    "hours exceed plan and contract margin declines"
+                                                                                ],
+                                                  "expected_counter_patterns":  [
+                                                                                    "overrun is billed or accepted as a change order"
+                                                                                ],
+                                                  "distinguishing_test_refs":  [
+                                                                                   "contract_hours_reconcile"
+                                                                               ],
+                                                  "prohibited_conclusion":  "Do not label all additional effort as waste."
+                                              }
+                                          ],
+                    "expert_triggers":  [
+                                            {
+                                                "expert_trigger_ref":  "revenue_timing_accounting_review",
+                                                "profession":  "accounting",
+                                                "trigger_condition":  {
+                                                                          "op":  "gte",
+                                                                          "left":  {
+                                                                                       "fact_ref":  {
+                                                                                                        "fact_code":  "cross_period_timing_amount_share",
+                                                                                                        "reducer":  "only",
+                                                                                                        "unit_code":  "ratio"
+                                                                                                    }
+                                                                                   },
+                                                                          "right":  {
+                                                                                        "literal":  {
+                                                                                                        "type":  "decimal",
+                                                                                                        "value":  "0.02"
+                                                                                                    }
+                                                                                    }
+                                                                      },
+                                                "required_evidence_roles":  [
+                                                                                "recognition_date",
+                                                                                "acceptance_date",
+                                                                                "contract_terms"
+                                                                            ],
+                                                "required_documents":  [
+                                                                           "contracts",
+                                                                           "acceptance_records",
+                                                                           "revenue_ledger"
+                                                                       ],
+                                                "review_question_template":  "Does the identified recognition-versus-acceptance timing require an accounting treatment review?",
+                                                "prohibited_agent_conclusions":  [
+                                                                                     "correct accounting treatment",
+                                                                                     "audit conclusion"
+                                                                                 ]
+                                            }
+                                        ],
+                    "required_data":  [
+                                          "monthly_financials",
+                                          "customer_contracts",
+                                          "delivery_hours",
+                                          "acceptance_and_recognition_dates"
+                                      ],
+                    "forbidden_interpretations":  [
+                                                      "customer concentration is automatically bad",
+                                                      "timing mismatch proves misstatement"
+                                                  ],
+                    "safe_stop_rules":  [
+                                            "No cause conclusion without required roles",
+                                            "No response when blocking counter evidence is unresolved"
+                                        ],
+                    "independence_policy":  {
+                                                "minimum_independent_chains_for_leading_cause":  2
+                                            },
+                    "privacy_policy":  {
+                                           "direct_identifier_roles":  [
+                                                                           "employee_name",
+                                                                           "customer_contact"
+                                                                       ],
+                                           "prohibited_dimensions":  [
+                                                                         "health",
+                                                                         "union_membership"
+                                                                     ],
+                                           "minimum_group_size":  5,
+                                           "suppression_rule":  "suppress_groups_below_minimum",
+                                           "allowed_reasoning_dimensions":  [
+                                                                                "customer",
+                                                                                "contract",
+                                                                                "service",
+                                                                                "segment",
+                                                                                "employee_group"
+                                                                            ]
+                                       }
+                }
+}

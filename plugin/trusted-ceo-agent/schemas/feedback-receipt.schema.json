@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "feedback-receipt.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "receipt_id", "feedback_id", "feedback_hash", "preview_hash", "stage1_approval_id", "accepted_revision", "status", "created_at", "receipt_hash"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "receipt_id": {"type": "string", "pattern": "^feedbackreceipt_[0-9a-f]{24}$"},
+    "feedback_id": {"type": "string", "pattern": "^feedback_[0-9a-f]{24}$"},
+    "feedback_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "preview_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "stage1_approval_id": {"type": "string", "pattern": "^knowledgeapproval_[0-9a-f]{24}$"},
+    "accepted_revision": {"type": "integer", "minimum": 1},
+    "status": {"const": "submitted"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "receipt_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

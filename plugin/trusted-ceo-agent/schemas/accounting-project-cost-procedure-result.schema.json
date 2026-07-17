@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "accounting-project-cost-procedure-result.schema.json",
+  "title": "Project Cost and Allocation Procedure Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "revision",
+    "issue_family_id",
+    "procedure_id",
+    "input_hash",
+    "status",
+    "missing_inputs",
+    "outcomes",
+    "authority_ceiling",
+    "expert_review_required",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "issue_family_id": {
+      "enum": [
+        "CA-01", "CA-02", "CA-03", "CA-04",
+        "CA-05", "CA-06", "CA-07", "CA-08",
+        "CA-09", "CA-10", "CA-11", "CA-12",
+        "CA-13", "CA-14", "CA-15", "CA-16"
+      ]
+    },
+    "procedure_id": {
+      "enum": [
+        "P-CA-01", "P-CA-02", "P-CA-03", "P-CA-04",
+        "P-CA-05", "P-CA-06", "P-CA-07", "P-CA-08",
+        "P-CA-09", "P-CA-10", "P-CA-11", "P-CA-12",
+        "P-CA-13", "P-CA-14"
+      ]
+    },
+    "input_hash": {"$ref": "#/$defs/sha256"},
+    "status": {"enum": ["passed", "exceptions_found", "not_assessable"]},
+    "missing_inputs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "outcomes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/outcome"}
+    },
+    "authority_ceiling": {"const": "Boundary"},
+    "expert_review_required": {"const": true},
+    "content_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "decimal": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "row_id",
+        "entity",
+        "currency",
+        "period",
+        "project_id",
+        "observed",
+        "expected",
+        "amount",
+        "review_scope",
+        "boundary_reason",
+        "source_refs",
+        "counter_evidence_refs"
+      ],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "row_id": {"type": "string", "minLength": 1},
+        "entity": {"type": "string", "minLength": 1},
+        "currency": {"type": "string", "minLength": 1},
+        "period": {"type": "string", "minLength": 1},
+        "project_id": {"type": "string", "minLength": 1},
+        "observed": {"$ref": "#/$defs/decimal"},
+        "expected": {"$ref": "#/$defs/decimal"},
+        "amount": {"$ref": "#/$defs/decimal"},
+        "review_scope": {
+          "enum": [
+            "accounting",
+            "management_accounting",
+            "accounting_and_management",
+            "labor_privacy_and_accounting",
+            "accounting_tax_and_legal"
+          ]
+        },
+        "boundary_reason": {"type": "string", "minLength": 1},
+        "source_refs": {"$ref": "#/$defs/refs"},
+        "counter_evidence_refs": {"$ref": "#/$defs/refs"}
+      }
+    }
+  }
+}

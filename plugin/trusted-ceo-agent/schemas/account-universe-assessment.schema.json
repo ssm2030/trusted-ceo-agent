@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "account-universe-assessment.schema.json",
+  "title": "Accounting Account Universe Assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "suite_ref", "source_account_family_ids", "records", "state_counts",
+    "coverage_gap_count", "material_gap_account_family_ids", "blocker_codes",
+    "claim_authority", "product_display", "senior_accountant_claim_allowed",
+    "company_wide_full_allowed", "requested_product_claim", "assessment_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "suite_ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["suite_id", "release_id", "content_hash"],
+      "properties": {
+        "suite_id": {"const": "b2b-service-accounting-content-suite"},
+        "release_id": {"type": "string", "minLength": 1},
+        "content_hash": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "source_account_family_ids": {"$ref": "#/$defs/non_empty_string_set"},
+    "records": {
+      "type": "array", "minItems": 1,
+      "items": {"$ref": "#/$defs/account_family_record"}
+    },
+    "state_counts": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "deep_reviewed": {"type": "integer", "minimum": 0},
+        "core_screened": {"type": "integer", "minimum": 0},
+        "pack_required": {"type": "integer", "minimum": 0},
+        "not_assessable": {"type": "integer", "minimum": 0},
+        "not_applicable": {"type": "integer", "minimum": 0},
+        "excluded_by_approved_scope": {"type": "integer", "minimum": 0}
+      }
+    },
+    "coverage_gap_count": {"type": "integer", "minimum": 0},
+    "material_gap_account_family_ids": {"$ref": "#/$defs/string_set"},
+    "blocker_codes": {"$ref": "#/$defs/string_set"},
+    "claim_authority": {"$ref": "#/$defs/authority"},
+    "product_display": {
+      "enum": [
+        "machine_draft", "accounting_core_screened", "three_cycles_boundary",
+        "senior_accountant_draft_scope", "company_wide_accounting_full"
+      ]
+    },
+    "senior_accountant_claim_allowed": {"type": "boolean"},
+    "company_wide_full_allowed": {"type": "boolean"},
+    "requested_product_claim": {
+      "type": ["string", "null"],
+      "enum": [
+        null, "machine_draft", "accounting_core_screened", "three_cycles_boundary",
+        "senior_accountant_draft_scope", "company_wide_accounting_full"
+      ]
+    },
+    "assessment_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "authority": {"enum": ["machine_draft", "Boundary", "Provisional", "Full"]},
+    "string_set": {
+      "type": "array", "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "non_empty_string_set": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "effective_period": {
+      "type": "object", "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": {"type": "string", "format": "date"},
+        "to": {"type": "string", "format": "date"}
+      }
+    },
+    "account_family_record": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "account_family_id", "amount_fact_ref", "risk", "material", "state", "pack_id",
+        "missing_capabilities", "next_actions", "evidence_refs", "approval_ref",
+        "exclusion_reason", "exclusion_effective_period"
+      ],
+      "properties": {
+        "account_family_id": {"type": "string", "minLength": 1},
+        "amount_fact_ref": {"type": "string", "minLength": 1},
+        "risk": {"type": "string", "minLength": 1},
+        "material": {"type": "boolean"},
+        "state": {
+          "enum": [
+            "deep_reviewed", "core_screened", "pack_required", "not_assessable",
+            "not_applicable", "excluded_by_approved_scope"
+          ]
+        },
+        "pack_id": {
+          "type": ["string", "null"],
+          "enum": [
+            null, "accounting-core", "contract-revenue", "cash-flow-working-capital",
+            "project-cost-allocation"
+          ]
+        },
+        "missing_capabilities": {"$ref": "#/$defs/string_set"},
+        "next_actions": {"$ref": "#/$defs/string_set"},
+        "evidence_refs": {"$ref": "#/$defs/string_set"},
+        "approval_ref": {"type": ["string", "null"], "minLength": 1},
+        "exclusion_reason": {"type": ["string", "null"], "minLength": 1},
+        "exclusion_effective_period": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/effective_period"}]
+        }
+      }
+    }
+  }
+}

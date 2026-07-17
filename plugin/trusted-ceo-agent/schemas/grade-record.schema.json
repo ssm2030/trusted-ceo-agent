@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "grade-record.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["grade_record_id", "issue_id", "publication_status", "rule_version", "grading_input_hash", "input_snapshot_hash", "secondary_flags", "reason_codes", "applied_threshold_refs", "applied_mission_refs", "applied_approval_refs", "authority_cap_applied", "computed_at"],
+  "properties": {
+    "grade_record_id": {"type": "string"}, "issue_id": {"type": "string"}, "publication_status": {"enum": ["published", "withheld"]},
+    "rule_version": {"type": "string"}, "grading_input_hash": {"type": "string"}, "input_snapshot_hash": {"type": "string"},
+    "primary_grade": {"enum": ["Decision Required", "Immediate Verification", "Expert Review Required", "Monitor", "Appendix Signal", "Not Assessable"]},
+    "secondary_flags": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}, "reason_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "applied_threshold_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}, "applied_mission_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "applied_approval_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}, "authority_cap_applied": {"type": "boolean"}, "computed_at": {"type": "string"}
+  },
+  "allOf": [
+    {"if": {"properties": {"publication_status": {"const": "published"}}}, "then": {"required": ["primary_grade"]}},
+    {"if": {"properties": {"publication_status": {"const": "withheld"}}}, "then": {"not": {"required": ["primary_grade"]}}}
+  ]
+}

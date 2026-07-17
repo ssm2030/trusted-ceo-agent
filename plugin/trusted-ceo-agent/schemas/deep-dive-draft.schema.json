@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "deep-dive-draft.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "approved_scope_ref", "component_run_refs", "updated_cause_hypotheses",
+    "updated_counter_hypotheses", "distinguishing_test_results",
+    "conditional_response_candidates", "expert_review_candidates",
+    "remaining_uncertainties", "additional_data_requests"
+  ],
+  "properties": {
+    "approved_scope_ref": {"type": "string", "minLength": 1},
+    "component_run_refs": {"$ref": "#/$defs/nonEmptyStringSet"},
+    "updated_cause_hypotheses": {"type": "array", "items": {"$ref": "#/$defs/causeUpdate"}},
+    "updated_counter_hypotheses": {"type": "array", "items": {"$ref": "#/$defs/counterUpdate"}},
+    "distinguishing_test_results": {"type": "array", "items": {"$ref": "#/$defs/testResult"}},
+    "conditional_response_candidates": {"type": "array", "items": {"$ref": "#/$defs/responseCandidate"}},
+    "expert_review_candidates": {"type": "array", "items": {"$ref": "#/$defs/expertCandidate"}},
+    "remaining_uncertainties": {"type": "array", "items": {"$ref": "#/$defs/uncertainty"}},
+    "additional_data_requests": {"type": "array", "items": {"$ref": "#/$defs/dataRequest"}}
+  },
+  "$defs": {
+    "stringSet": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "nonEmptyStringSet": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "valueRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["token", "fact_or_signal_id", "display_field", "display_format_ref"],
+      "properties": {
+        "token": {"type": "string", "minLength": 1},
+        "fact_or_signal_id": {"type": "string", "minLength": 1},
+        "display_field": {"type": "string", "minLength": 1},
+        "display_format_ref": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidenceProposal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidence_ref", "polarity", "role"],
+      "properties": {
+        "evidence_ref": {"type": "string", "minLength": 1},
+        "polarity": {"enum": ["supports", "contradicts"]},
+        "role": {"enum": ["observation", "corroboration", "mechanism", "counter_evidence", "boundary"]}
+      }
+    },
+    "causeUpdate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["target_issue_ref", "claim_ref", "mechanism_ref", "statement_template", "value_refs", "evidence_proposals", "support_condition_refs", "rejection_condition_refs", "distinguishing_test_refs"],
+          "properties": {
+            "target_issue_ref": {"type": "string", "minLength": 1},
+            "claim_ref": {"type": "string", "minLength": 1},
+            "mechanism_ref": {"type": "string", "minLength": 1},
+            "statement_template": {"type": "string", "minLength": 1, "maxLength": 400},
+            "value_refs": {"type": "array", "items": {"$ref": "#/$defs/valueRef"}},
+            "evidence_proposals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidenceProposal"}},
+            "support_condition_refs": {"$ref": "#/$defs/stringSet"},
+            "rejection_condition_refs": {"$ref": "#/$defs/stringSet"},
+            "distinguishing_test_refs": {"$ref": "#/$defs/stringSet"}
+          }
+        }
+      }
+    },
+    "counterUpdate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["target_issue_ref", "claim_ref", "challenged_hypothesis_ref", "mechanism_ref", "statement_template", "value_refs", "evidence_proposals"],
+          "properties": {
+            "target_issue_ref": {"type": "string", "minLength": 1},
+            "claim_ref": {"type": "string", "minLength": 1},
+            "challenged_hypothesis_ref": {"type": "string", "minLength": 1},
+            "mechanism_ref": {"type": "string", "minLength": 1},
+            "statement_template": {"type": "string", "minLength": 1, "maxLength": 400},
+            "value_refs": {"type": "array", "items": {"$ref": "#/$defs/valueRef"}},
+            "evidence_proposals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidenceProposal"}}
+          }
+        }
+      }
+    },
+    "testResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["target_issue_ref", "test_ref", "status", "result_fact_ids", "result_signal_ids", "reason_codes"],
+          "properties": {
+            "target_issue_ref": {"type": "string", "minLength": 1},
+            "test_ref": {"type": "string", "minLength": 1},
+            "status": {"enum": ["completed", "not_assessable", "failed"]},
+            "result_fact_ids": {"$ref": "#/$defs/stringSet"},
+            "result_signal_ids": {"$ref": "#/$defs/stringSet"},
+            "reason_codes": {"$ref": "#/$defs/stringSet"}
+          }
+        }
+      }
+    },
+    "responseCandidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["target_issue_ref", "response_ref", "action_template", "value_refs", "precondition_refs", "disqualifier_refs", "monitoring_metric_refs", "reversibility", "owner_role", "expert_review_refs"],
+          "properties": {
+            "target_issue_ref": {"type": "string", "minLength": 1},
+            "response_ref": {"type": "string", "minLength": 1},
+            "action_template": {"type": "string", "minLength": 1, "maxLength": 400},
+            "value_refs": {"type": "array", "items": {"$ref": "#/$defs/valueRef"}},
+            "precondition_refs": {"$ref": "#/$defs/stringSet"},
+            "disqualifier_refs": {"$ref": "#/$defs/stringSet"},
+            "monitoring_metric_refs": {"$ref": "#/$defs/stringSet"},
+            "reversibility": {"type": "string", "minLength": 1},
+            "owner_role": {"type": "string", "minLength": 1},
+            "expert_review_refs": {"$ref": "#/$defs/stringSet"}
+          }
+        }
+      }
+    },
+    "expertCandidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["target_issue_ref", "expert_trigger_ref", "evidence_proposals", "required_document_refs", "review_question_template"],
+          "properties": {
+            "target_issue_ref": {"type": "string", "minLength": 1},
+            "expert_trigger_ref": {"type": "string", "minLength": 1},
+            "evidence_proposals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidenceProposal"}},
+            "required_document_refs": {"$ref": "#/$defs/stringSet"},
+            "review_question_template": {"type": "string", "minLength": 1, "maxLength": 400}
+          }
+        }
+      }
+    },
+    "uncertainty": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["target_issue_ref", "uncertainty_type", "reason_code", "missing_fact_codes", "statement_template"],
+          "properties": {
+            "target_issue_ref": {"type": "string", "minLength": 1},
+            "uncertainty_type": {"enum": ["data", "definition", "mechanism", "timing", "scope"]},
+            "reason_code": {"type": "string", "minLength": 1},
+            "missing_fact_codes": {"$ref": "#/$defs/stringSet"},
+            "statement_template": {"type": "string", "minLength": 1, "maxLength": 400}
+          }
+        }
+      }
+    },
+    "dataRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_key", "payload"],
+      "properties": {
+        "local_key": {"type": "string", "minLength": 1},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["target_issue_ref", "required_fact_codes", "requested_source_role", "required_fields", "period", "purpose_template"],
+          "properties": {
+            "target_issue_ref": {"type": "string", "minLength": 1},
+            "required_fact_codes": {"$ref": "#/$defs/nonEmptyStringSet"},
+            "requested_source_role": {"type": "string", "minLength": 1},
+            "required_fields": {"$ref": "#/$defs/nonEmptyStringSet"},
+            "period": {"type": "string", "minLength": 1},
+            "purpose_template": {"type": "string", "minLength": 1, "maxLength": 400}
+          }
+        }
+      }
+    }
+  }
+}

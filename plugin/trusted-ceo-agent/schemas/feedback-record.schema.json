@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "feedback-record.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "feedback_id", "source_type", "run_id", "run_revision",
+    "knowledge_release_id", "issue_id", "issue_family_id", "fact_refs",
+    "signal_refs", "evidence_refs", "feedback_type", "structured_content",
+    "requested_outcome", "submitter_id", "authenticated_role",
+    "domain_credential_ref", "trust_state", "independence_flags",
+    "conflict_of_interest_flags", "privacy", "preview_hash",
+    "stage1_approval_id", "stage1_approval_hash", "status", "submitted_at",
+    "feedback_hash"
+  ],
+  "$defs": {
+    "stringSet": {
+      "type": "array", "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 2048}
+    },
+    "structured": {
+      "type": "object", "additionalProperties": false,
+      "required": ["facts", "criteria", "conclusions", "counter_evidence", "uncertainties", "verification_steps"],
+      "properties": {
+        "facts": {"$ref": "#/$defs/stringSet"},
+        "criteria": {"$ref": "#/$defs/stringSet"},
+        "conclusions": {"$ref": "#/$defs/stringSet"},
+        "counter_evidence": {"$ref": "#/$defs/stringSet"},
+        "uncertainties": {"$ref": "#/$defs/stringSet"},
+        "verification_steps": {"$ref": "#/$defs/stringSet"}
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "feedback_id": {"type": "string", "pattern": "^feedback_[0-9a-f]{24}$"},
+    "source_type": {"enum": ["controlled_evaluation", "field_feedback", "system_candidate"]},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "run_revision": {"type": "integer", "minimum": 0},
+    "knowledge_release_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "issue_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 256},
+    "issue_family_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "fact_refs": {"$ref": "#/$defs/stringSet"},
+    "signal_refs": {"$ref": "#/$defs/stringSet"},
+    "evidence_refs": {"$ref": "#/$defs/stringSet"},
+    "feedback_type": {"enum": ["false_positive", "false_negative", "wrong_norm", "wrong_procedure", "wrong_amount", "mapping_error", "evidence_error", "missing_counter", "overconfidence", "underconfidence", "cross_domain_miss", "usability", "oracle_error"]},
+    "structured_content": {"$ref": "#/$defs/structured"},
+    "requested_outcome": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "submitter_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "authenticated_role": {"type": "string", "minLength": 1, "maxLength": 128},
+    "domain_credential_ref": {"type": ["string", "null"], "minLength": 1, "maxLength": 512},
+    "trust_state": {"enum": ["machine_verified_failure", "expert_adjudicated", "unverified_feedback", "context_provided", "high_priority_unverified", "system_candidate"]},
+    "independence_flags": {"$ref": "#/$defs/stringSet"},
+    "conflict_of_interest_flags": {"$ref": "#/$defs/stringSet"},
+    "privacy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["tenant_id", "contains_personal_data", "contains_confidential_data", "retention_class", "evaluation_reuse_consent", "deidentification_status", "source_copy_allowed"],
+      "properties": {
+        "tenant_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "contains_personal_data": {"type": "boolean"},
+        "contains_confidential_data": {"type": "boolean"},
+        "retention_class": {"type": "string", "minLength": 1, "maxLength": 128},
+        "evaluation_reuse_consent": {"type": "boolean"},
+        "deidentification_status": {"enum": ["deidentified", "not_applicable"]},
+        "source_copy_allowed": {"const": false}
+      }
+    },
+    "preview_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "stage1_approval_id": {"type": "string", "pattern": "^knowledgeapproval_[0-9a-f]{24}$"},
+    "stage1_approval_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "status": {"const": "submitted"},
+    "submitted_at": {"type": "string", "format": "date-time"},
+    "feedback_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

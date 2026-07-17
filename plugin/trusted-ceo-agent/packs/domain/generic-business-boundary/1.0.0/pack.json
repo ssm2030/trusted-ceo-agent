@@ -1,0 +1,114 @@
+{
+    "schema_version":  "1.0.0",
+    "pack_type":  "domain",
+    "pack_id":  "generic-business-boundary",
+    "pack_version":  "1.0.0",
+    "requested_authority":  "boundary",
+    "title":  "Generic Business Boundary",
+    "description":  "Safe boundary for unsupported or ambiguous industries and business models.",
+    "applicability":  {
+                          "business_models":  [
+
+                                              ],
+                          "industries":  [
+
+                                         ],
+                          "excluded_industries":  [
+
+                                                  ],
+                          "required_data_roles":  [
+
+                                                  ]
+                      },
+    "dependencies":  [
+                         "trusted-ceo-default@1.0.0"
+                     ],
+    "safety":  {
+                   "forbidden_interpretations":  [
+                                                     "Domain-specific cause or response"
+                                                 ],
+                   "safe_stop_rules":  [
+                                           "Limit output to data quality, generic Facts, required data, and Not Assessable"
+                                       ]
+               },
+    "content":  {
+                    "domain_code":  "generic-business-boundary",
+                    "applicability_dimensions":  [
+                                                     "business_model",
+                                                     "industry"
+                                                 ],
+                    "applicability_rules":  [
+
+                                            ],
+                    "exclusions":  [
+
+                                   ],
+                    "terminology":  {
+
+                                    },
+                    "metric_definitions":  [
+                                               {
+                                                   "metric_code":  "revenue",
+                                                   "business_definition":  "Reported revenue without domain interpretation",
+                                                   "accepted_observation_roles":  [
+                                                                                      "ledger"
+                                                                                  ],
+                                                   "data_type":  "decimal",
+                                                   "unit_policy":  "single_currency_or_verified_conversion",
+                                                   "time_role":  "reporting_period",
+                                                   "allowed_dimensions":  [
+                                                                              "enterprise"
+                                                                          ],
+                                                   "aggregation_policy":  "sum",
+                                                   "reconciliation_refs":  [
+
+                                                                           ],
+                                                   "metric_origin":  "raw_input"
+                                               }
+                                           ],
+                    "threshold_definitions":  [
+
+                                              ],
+                    "expected_relationships":  [
+
+                                               ],
+                    "analysis_lenses":  [
+
+                                        ],
+                    "mechanism_catalog":  [
+
+                                          ],
+                    "expert_triggers":  [
+
+                                        ],
+                    "required_data":  [
+                                          "confirmed_domain_and_business_model"
+                                      ],
+                    "forbidden_interpretations":  [
+                                                      "Domain cause",
+                                                      "Domain response",
+                                                      "Professional conclusion"
+                                                  ],
+                    "safe_stop_rules":  [
+                                            "Return Not Assessable for domain problem, cause, and response"
+                                        ],
+                    "independence_policy":  {
+                                                "minimum_independent_chains_for_leading_cause":  2
+                                            },
+                    "privacy_policy":  {
+                                           "direct_identifier_roles":  [
+                                                                           "person_name",
+                                                                           "contact"
+                                                                       ],
+                                           "prohibited_dimensions":  [
+                                                                         "health",
+                                                                         "union_membership"
+                                                                     ],
+                                           "minimum_group_size":  5,
+                                           "suppression_rule":  "suppress_groups_below_minimum",
+                                           "allowed_reasoning_dimensions":  [
+                                                                                "enterprise"
+                                                                            ]
+                                       }
+                }
+}

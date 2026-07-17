@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "domain-route.schema.json",
+  "$defs": {
+    "stringSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "factRefs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^fact_[0-9a-f]{24}$"}
+    },
+    "signalRefs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^signal_[0-9a-f]{24}$"}
+    },
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pack_ref", "pack_sha256", "effective_authority"],
+      "properties": {
+        "pack_ref": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+@[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "pack_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "effective_authority": {"enum": ["machine_draft", "boundary", "provisional", "full"]}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "route_id", "event_id", "base_revision", "domain", "screen_status",
+    "status", "trigger_card_refs", "fact_refs", "signal_refs", "missing_capability_refs",
+    "selected_pack_refs", "selected_packs", "pack_manifest_hash", "effective_authority",
+    "required", "routing_reason_codes", "estimated_cost_class", "expert_role", "integrity"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "route_id": {"type": "string", "pattern": "^route_[0-9a-f]{24}$"},
+    "event_id": {"type": "string", "pattern": "^event_[0-9a-f]{24}$"},
+    "base_revision": {"type": "integer", "minimum": 1},
+    "domain": {"enum": ["accounting", "labor", "legal", "tax"]},
+    "screen_status": {
+      "enum": ["not_applicable", "triggered", "possible_missing_data", "unsupported_pack", "expert_review_required"]
+    },
+    "status": {
+      "enum": [
+        "completed", "deep_review_pending", "not_assessable", "unsupported_pack",
+        "expert_review_required", "not_applicable", "excluded_by_approved_scope", "failed"
+      ]
+    },
+    "trigger_card_refs": {"$ref": "#/$defs/stringSet"},
+    "fact_refs": {"$ref": "#/$defs/factRefs"},
+    "signal_refs": {"$ref": "#/$defs/signalRefs"},
+    "missing_capability_refs": {"$ref": "#/$defs/stringSet"},
+    "selected_pack_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+@[0-9]+\\.[0-9]+\\.[0-9]+$"}
+    },
+    "selected_packs": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/pack"}},
+    "pack_manifest_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "effective_authority": {"enum": ["none", "machine_draft", "boundary", "provisional", "full"]},
+    "required": {"type": "boolean"},
+    "routing_reason_codes": {"$ref": "#/$defs/stringSet"},
+    "estimated_cost_class": {"enum": ["none", "low", "medium", "high"]},
+    "expert_role": {"type": ["string", "null"], "minLength": 1},
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payload_hash"],
+      "properties": {"payload_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "not_applicable"}}},
+      "then": {
+        "properties": {
+          "required": {"const": false},
+          "selected_pack_refs": {"maxItems": 0},
+          "selected_packs": {"maxItems": 0},
+          "effective_authority": {"const": "none"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "unsupported_pack"}}},
+      "then": {
+        "properties": {
+          "required": {"const": true},
+          "selected_pack_refs": {"maxItems": 0},
+          "selected_packs": {"maxItems": 0},
+          "effective_authority": {"const": "boundary"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "deep_review_pending"}}},
+      "then": {
+        "properties": {
+          "required": {"const": true},
+          "selected_pack_refs": {"minItems": 1},
+          "selected_packs": {"minItems": 1}
+        }
+      }
+    }
+  ]
+}

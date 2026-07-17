@@ -118,6 +118,14 @@
 | O. Knowledge Foundry | D02 AD-10; D07 §§1.2,5–11,14,16–18; D08 §§1–17,19–20; D09 §§7.4,11 I,12.3; D18 §8 | `knowledge/{foundry,release,persistent_release}.py`; Feedback/Patch/Regression/Release schemas와 CAS registry | 3단계 승인 분리, reproduction, regression, deploy 이후 Run만 적용, rollback·privacy | 런타임 `완료`, `외부 전문가 필요`: 3단계 release·persistent CAS·rollback focused·Full 통과; 전문 콘텐츠 승격은 외부 승인 필요 |
 | P. 평가·성능·병렬 non-inferiority | D01 §8; D02 AD-07/12/13; D03 §§13.5,16–17; D04 §§17,19; D06 §§14–16; D07 §§11,14–15,19; D08 §§17–18,20; D09 §§7–9,12–13; D12–D18 Release Gate | `evaluation/{metrics,runner,non_inferiority,performance}.py`; Quality/Performance/Concurrency contracts | sequential/parallel 결정성, AI non-inferiority, p50/p95, 실패 profile 비활성·rollback | 구현 `완료`, 평가 `부분`: evaluator·activation/rollback focused·Full 통과; 실제 외부 모델·전문가 대조는 `not_evaluated`, profile은 experimental |
 
+### 4.1 구현 폐쇄 보강 기록
+
+2026-07-17 최종 구현 검토에서 확인된 “테스트 전용 구성요소” 간극을 닫았다. Task F는 `accounting/{raw_journal_adapter,execution,dispatcher}.py`, `accounting-execution-bundle.schema.json`, CLI `run-components --accounting-input`으로 64 Family 실제 실행·불변 증빙·동일 revision publish를 연결한다. AC-15는 Related-party trace, AC-16은 Management bias stand-back으로 분리한다.
+
+Task C–L은 `analysis/runtime.py`, `professional-task-result.schema.json`, `professional-analysis-runtime-result.schema.json`, CLI `run-components --professional-input`으로 Event→Route→Signal Case→유한 DAG/Scheduler→CAS→Finding→Join/Integrator→Completion을 연결한다. required 실패는 blocked revision과 `not_ready` Completion을 남기고 finalization을 차단한다.
+
+보강 후 최종 증거는 Python Full 434/434, 별도 WebReport Python 41/41이다. 이 기록이 위 표의 이전 418개 기준 수와 F/G/L 경로 설명을 대체한다. 제품 authority는 승격하지 않으며 공식 Norm grounding·production Oracle·외부 전문가 승인이 끝날 때까지 `machine_draft`/`Boundary` 상한을 유지한다.
+
 ## 5. 회계 64 Issue Family 구현 입력
 
 | Pack | 필수 Family | 강제 범위·제품 상한 |

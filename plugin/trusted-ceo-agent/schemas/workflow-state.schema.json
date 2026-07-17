@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "workflow-state.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["status", "revision"],
+  "properties": {
+    "status": {"enum": ["created", "context_confirmation_required", "context_ready", "schema_mapping_job_ready", "mapping_proposal_ready", "data_confirmation_required", "evidence_ready", "scope_narrowing_required", "lens_jobs_ready", "lens_ready", "integrated_draft", "diagnostic_approval_required", "deep_dive_authorized", "deep_dive_jobs_ready", "deep_dive_ready", "finalization_jobs_ready", "writer_ready", "final_approval_required", "delivery_approved", "finalized", "blocked", "stopped_by_human", "failed", "cancelled"]},
+    "revision": {"type": "integer", "minimum": 0}, "resume_state": {"type": "string"}, "blocker": {"type": "string"}, "failure_reason": {"type": "string"}
+  },
+  "allOf": [{"if": {"properties": {"status": {"const": "blocked"}}}, "then": {"required": ["resume_state", "blocker"]}}]
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "human-response-receipt.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "response_id", "run_id", "base_revision", "result_revision", "action_id",
+    "response_hash", "affected_paths", "invalidated_approval_refs",
+    "workflow_state", "pending_action_ref", "terminal_approval_required", "created_at"
+  ],
+  "properties": {
+    "response_id": {"type": "string", "pattern": "^response_[0-9a-f]{24}$"},
+    "run_id": {"type": "string", "minLength": 1},
+    "base_revision": {"type": "integer", "minimum": 0},
+    "result_revision": {"type": "integer", "minimum": 0},
+    "action_id": {"type": "string", "pattern": "^action_[0-9a-f]{24}$"},
+    "response_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "affected_paths": {"type": "array", "items": {"type": "string", "pattern": "^/"}, "uniqueItems": true},
+    "invalidated_approval_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "workflow_state": {"type": "string", "minLength": 1},
+    "pending_action_ref": {"type": ["string", "null"], "minLength": 1},
+    "terminal_approval_required": {"type": "boolean"},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}

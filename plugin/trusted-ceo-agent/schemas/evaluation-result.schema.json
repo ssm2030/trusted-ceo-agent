@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evaluation-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result_id",
+    "case_id",
+    "workload_class",
+    "condition",
+    "profile_id",
+    "repetition",
+    "paired_seed",
+    "input_hash",
+    "release_hash",
+    "model_profile_id",
+    "status",
+    "failure_code",
+    "semantic_output_hash",
+    "byte_output_hash",
+    "quality_metrics",
+    "model_evaluation_status",
+    "expert_evaluation_status",
+    "stage_timing_ref",
+    "stage_timing_hash",
+    "semantic_result_hash",
+    "result_hash"
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableHash": {
+      "anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]
+    },
+    "score": {
+      "type": "string",
+      "pattern": "^(0(\\.[0-9]+)?|1(\\.0+)?)$"
+    },
+    "nullableScore": {
+      "anyOf": [{"$ref": "#/$defs/score"}, {"type": "null"}]
+    },
+    "qualityMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "critical_recall",
+        "mandatory_recall",
+        "cross_domain_trigger_recall",
+        "evidence_role_coverage",
+        "counter_evidence_coverage",
+        "authority_state_accuracy",
+        "expert_practice_quality",
+        "unsupported_claim_count",
+        "prohibited_conclusion_count"
+      ],
+      "properties": {
+        "critical_recall": {"$ref": "#/$defs/score"},
+        "mandatory_recall": {"$ref": "#/$defs/score"},
+        "cross_domain_trigger_recall": {"$ref": "#/$defs/score"},
+        "evidence_role_coverage": {"$ref": "#/$defs/score"},
+        "counter_evidence_coverage": {"$ref": "#/$defs/score"},
+        "authority_state_accuracy": {"$ref": "#/$defs/score"},
+        "expert_practice_quality": {"$ref": "#/$defs/nullableScore"},
+        "unsupported_claim_count": {"type": "integer", "minimum": 0},
+        "prohibited_conclusion_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "result_id": {"type": "string", "pattern": "^evaluationresult_[0-9a-f]{24}$"},
+    "case_id": {"type": "string", "pattern": "^evaluationcase_[0-9a-f]{24}$"},
+    "workload_class": {"type": "string", "minLength": 1},
+    "condition": {"enum": ["cold", "warm"]},
+    "profile_id": {"enum": ["sequential", "parallel_2", "parallel_3", "parallel_4"]},
+    "repetition": {"type": "integer", "minimum": 0},
+    "paired_seed": {"$ref": "#/$defs/hash"},
+    "input_hash": {"$ref": "#/$defs/hash"},
+    "release_hash": {"$ref": "#/$defs/hash"},
+    "model_profile_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["completed", "timeout", "cancelled", "failed", "not_evaluated"]},
+    "failure_code": {
+      "type": ["string", "null"],
+      "enum": [
+        null,
+        "contract_invalid",
+        "packet_hash_mismatch",
+        "source_unavailable",
+        "model_timeout",
+        "model_contract_failure",
+        "procedure_failed",
+        "required_evidence_missing",
+        "stale_revision",
+        "cancelled_by_human",
+        "resource_exhausted",
+        "unsupported_pack",
+        "external_evaluation_unavailable"
+      ]
+    },
+    "semantic_output_hash": {"$ref": "#/$defs/nullableHash"},
+    "byte_output_hash": {"$ref": "#/$defs/nullableHash"},
+    "quality_metrics": {
+      "anyOf": [{"$ref": "#/$defs/qualityMetrics"}, {"type": "null"}]
+    },
+    "model_evaluation_status": {"enum": ["evaluated", "not_evaluated"]},
+    "expert_evaluation_status": {"enum": ["evaluated", "not_evaluated"]},
+    "stage_timing_ref": {
+      "type": ["string", "null"],
+      "pattern": "^stagetiming_[0-9a-f]{24}$"
+    },
+    "stage_timing_hash": {"$ref": "#/$defs/nullableHash"},
+    "semantic_result_hash": {"$ref": "#/$defs/hash"},
+    "result_hash": {"$ref": "#/$defs/hash"}
+  }
+}
+

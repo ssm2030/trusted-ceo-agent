@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lineage_set_ref", "entries", "sha256"],
+  "properties": {
+    "lineage_set_ref": {"type": "string", "pattern": "^lineage/sets/[0-9a-f]{64}\\.json$"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["row_fingerprint", "occurrence_index"],
+        "properties": {
+          "row_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "occurrence_index": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

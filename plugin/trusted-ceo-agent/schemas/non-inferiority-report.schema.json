@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "non-inferiority-report.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_id",
+    "quality_policy_id",
+    "quality_policy_hash",
+    "baseline_profile_id",
+    "candidate_profile_id",
+    "paired_result_count",
+    "workload_classes",
+    "conditions",
+    "runs_per_workload_condition",
+    "pair_coverage_complete",
+    "semantic_equivalent",
+    "byte_equivalent",
+    "metric_deltas",
+    "count_deltas",
+    "external_model_status",
+    "blinded_expert_status",
+    "gate_status",
+    "eligible_for_activation",
+    "failure_codes",
+    "report_hash"
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "delta": {
+      "type": ["string", "null"],
+      "pattern": "^-?(0(\\.[0-9]+)?|1(\\.0+)?)$"
+    }
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "report_id": {"type": "string", "pattern": "^noninferiorityreport_[0-9a-f]{24}$"},
+    "quality_policy_id": {"type": "string", "minLength": 1},
+    "quality_policy_hash": {"$ref": "#/$defs/hash"},
+    "baseline_profile_id": {"const": "sequential"},
+    "candidate_profile_id": {"enum": ["parallel_2", "parallel_3", "parallel_4"]},
+    "paired_result_count": {"type": "integer", "minimum": 0},
+    "workload_classes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "conditions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["cold", "warm"]}
+    },
+    "runs_per_workload_condition": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "pair_coverage_complete": {"type": "boolean"},
+    "semantic_equivalent": {"type": "boolean"},
+    "byte_equivalent": {"type": "boolean"},
+    "metric_deltas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "critical_recall",
+        "mandatory_recall",
+        "cross_domain_trigger_recall",
+        "evidence_role_coverage",
+        "counter_evidence_coverage",
+        "authority_state_accuracy",
+        "expert_practice_quality"
+      ],
+      "properties": {
+        "critical_recall": {"$ref": "#/$defs/delta"},
+        "mandatory_recall": {"$ref": "#/$defs/delta"},
+        "cross_domain_trigger_recall": {"$ref": "#/$defs/delta"},
+        "evidence_role_coverage": {"$ref": "#/$defs/delta"},
+        "counter_evidence_coverage": {"$ref": "#/$defs/delta"},
+        "authority_state_accuracy": {"$ref": "#/$defs/delta"},
+        "expert_practice_quality": {"$ref": "#/$defs/delta"}
+      }
+    },
+    "count_deltas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unsupported_claim_count", "prohibited_conclusion_count"],
+      "properties": {
+        "unsupported_claim_count": {"type": "integer"},
+        "prohibited_conclusion_count": {"type": "integer"}
+      }
+    },
+    "external_model_status": {"enum": ["evaluated", "not_evaluated"]},
+    "blinded_expert_status": {"enum": ["evaluated", "not_evaluated"]},
+    "gate_status": {"enum": ["pass", "fail", "not_evaluated"]},
+    "eligible_for_activation": {"type": "boolean"},
+    "failure_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "report_hash": {"$ref": "#/$defs/hash"}
+  }
+}
+

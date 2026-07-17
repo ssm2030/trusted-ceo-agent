@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trusted CEO Agent"
+  short_description: "근거와 승인 경계를 지키는 CEO 경영 문제 진단 워크플로"
+  default_prompt: "Use $trusted-ceo-agent to diagnose important management issues from these company data files."

@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "professional-analysis-runtime-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "revision",
+    "event",
+    "routing_decisions",
+    "domain_routes",
+    "signal_cases",
+    "priority_records",
+    "graphs",
+    "work_items",
+    "result_cas",
+    "domain_assessments",
+    "findings",
+    "relations",
+    "clusters",
+    "finding_join_manifest",
+    "cross_domain_integration",
+    "completion",
+    "finalization_allowed",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "pattern": "^run_[A-Za-z0-9_.-]+$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "event": {"$ref": "economic-event.schema.json"},
+    "routing_decisions": {
+      "type": "array",
+      "items": {"$ref": "domain-route.schema.json"}
+    },
+    "domain_routes": {
+      "type": "array",
+      "items": {"$ref": "domain-route.schema.json"}
+    },
+    "signal_cases": {
+      "type": "array",
+      "items": {"$ref": "signal-case.schema.json"}
+    },
+    "priority_records": {
+      "type": "array",
+      "items": {"$ref": "priority-record.schema.json"}
+    },
+    "graphs": {
+      "type": "array",
+      "items": {"$ref": "analysis-work-graph.schema.json"}
+    },
+    "work_items": {
+      "type": "array",
+      "items": {"$ref": "analysis-work-item.schema.json"}
+    },
+    "result_cas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["result_ref", "result_hash", "payload"],
+        "properties": {
+          "result_ref": {
+            "type": "string",
+            "pattern": "^cas/results/[0-9a-f]{64}\\.json$"
+          },
+          "result_hash": {"$ref": "#/$defs/hash"},
+          "payload": {"$ref": "professional-task-result.schema.json"}
+        }
+      }
+    },
+    "domain_assessments": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/domainAssessment"}
+    },
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "finding-record.schema.json"}
+    },
+    "relations": {
+      "type": "array",
+      "items": {"$ref": "finding-relation.schema.json"}
+    },
+    "clusters": {
+      "type": "array",
+      "items": {"$ref": "issue-cluster.schema.json"}
+    },
+    "finding_join_manifest": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "finding-join-manifest.schema.json"}
+      ]
+    },
+    "cross_domain_integration": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "cross-domain-integration.schema.json"}
+      ]
+    },
+    "completion": {"$ref": "completion-assessment.schema.json"},
+    "finalization_allowed": {"type": "boolean"},
+    "content_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "domainAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assessment_id",
+        "route_id",
+        "event_id",
+        "domain",
+        "revision",
+        "status",
+        "authority",
+        "finding_ids",
+        "additional_data_refs",
+        "expert_role",
+        "content_hash"
+      ],
+      "properties": {
+        "assessment_id": {
+          "type": "string",
+          "pattern": "^assessment_[0-9a-f]{24}$"
+        },
+        "route_id": {"type": "string", "pattern": "^route_[0-9a-f]{24}$"},
+        "event_id": {"type": "string", "pattern": "^event_[0-9a-f]{24}$"},
+        "domain": {"enum": ["accounting", "labor", "legal", "tax"]},
+        "revision": {"type": "integer", "minimum": 1},
+        "status": {
+          "enum": [
+            "completed",
+            "deep_review_pending",
+            "not_assessable",
+            "unsupported_pack",
+            "expert_review_required"
+          ]
+        },
+        "authority": {"enum": ["full", "provisional", "boundary"]},
+        "finding_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^finding_[0-9a-f]{24}$"}
+        },
+        "additional_data_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "expert_role": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "content_hash": {"$ref": "#/$defs/hash"}
+      }
+    }
+  }
+}

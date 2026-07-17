@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "final-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_summary","mission_summary","capability_summary","issues","cross_issue_relations","conditional_responses","monitoring","blind_spots","expert_review_packets","approvals","integrity"],
+  "properties": {
+    "run_summary": {"type":"object","additionalProperties":false,"required":["run_id","revision"],"properties":{"run_id":{"type":"string"},"revision":{"type":"integer","minimum":0}}},
+    "mission_summary": {"type":"object","additionalProperties":false,"properties":{"objective":{"type":"string"}}},
+    "capability_summary": {"type":"object","additionalProperties":false,"properties":{"status":{"type":"string"}}},
+    "issues": {"type":"array","items":{"$ref":"#/$defs/issue"}},
+    "cross_issue_relations": {"type":"array","items":{"$ref":"#/$defs/relation"}},
+    "conditional_responses": {"type":"array","items":{"$ref":"#/$defs/response"}},
+    "monitoring": {"type":"array","items":{"$ref":"#/$defs/monitor"}},
+    "blind_spots": {"type":"array","items":{"$ref":"#/$defs/blindSpot"}},
+    "expert_review_packets": {"type":"array","items":{"$ref":"#/$defs/expertPacket"}},
+    "approvals": {"type":"array","items":{"$ref":"#/$defs/approvalSummary"}},
+    "integrity": {"type":"object","additionalProperties":false,"required":["semantic_fingerprint"],"properties":{"semantic_fingerprint":{"type":"string","pattern":"^[0-9a-f]{64}$"}}}
+  },
+  "$defs": {
+    "claim": {"type":"object","additionalProperties":false,"required":["claim_code"],"properties":{"claim_code":{"type":"string"}}},
+    "issue": {
+      "type":"object","additionalProperties":false,
+      "required":["issue_id","title_template","primary_grade","secondary_flags","why_it_matters_template","value_refs","evidence_link_ids","cause_hypotheses","counter_hypotheses","unresolved_conflicts","verification_next_steps","conditional_response_refs","expert_review_refs"],
+      "properties": {
+        "issue_id":{"type":"string"},"title_template":{"type":"string"},
+        "primary_grade":{"enum":["Decision Required","Immediate Verification","Expert Review Required","Monitor","Appendix Signal","Not Assessable"]},
+        "secondary_flags":{"type":"array","items":{"type":"string"}},
+        "why_it_matters_template":{"type":"string"},"value_refs":{"type":"array","items":{"type":"string"}},
+        "evidence_link_ids":{"type":"array","minItems":1,"items":{"type":"string"}},
+        "cause_hypotheses":{"type":"array","items":{"$ref":"#/$defs/claim"}},
+        "counter_hypotheses":{"type":"array","items":{"$ref":"#/$defs/claim"}},
+        "unresolved_conflicts":{"type":"array","items":{"type":"string"}},
+        "verification_next_steps":{"type":"array","items":{"type":"string"}},
+        "conditional_response_refs":{"type":"array","items":{"type":"string"}},
+        "expert_review_refs":{"type":"array","items":{"type":"string"}}
+      }
+    },
+    "relation": {"type":"object","additionalProperties":false,"required":["relation_id","from_issue_ref","to_issue_ref","relation_type"],"properties":{"relation_id":{"type":"string"},"from_issue_ref":{"type":"string"},"to_issue_ref":{"type":"string"},"relation_type":{"type":"string"}}},
+    "response": {"type":"object","additionalProperties":false,"required":["response_id","condition_template","direction_template"],"properties":{"response_id":{"type":"string"},"condition_template":{"type":"string"},"direction_template":{"type":"string"}}},
+    "monitor": {"type":"object","additionalProperties":false,"required":["monitor_id","metric_ref","condition_template"],"properties":{"monitor_id":{"type":"string"},"metric_ref":{"type":"string"},"condition_template":{"type":"string"}}},
+    "blindSpot": {"type":"object","additionalProperties":false,"required":["blind_spot_id","description_template"],"properties":{"blind_spot_id":{"type":"string"},"description_template":{"type":"string"}}},
+    "expertPacket": {"type":"object","additionalProperties":false,"required":["expert_packet_id","profession","question_template","forbidden_conclusions"],"properties":{"expert_packet_id":{"type":"string"},"profession":{"type":"string"},"question_template":{"type":"string"},"forbidden_conclusions":{"type":"array","items":{"type":"string"}}}},
+    "approvalSummary": {"type":"object","additionalProperties":false,"required":["gate","status"],"properties":{"gate":{"type":"string"},"status":{"type":"string"},"input_method":{"type":"string"},"fixture_only":{"type":"boolean"},"approval_id":{"type":"string"},"actor_role":{"type":"string"},"result_artifact_ref":{"type":"string"}}}
+  }
+}

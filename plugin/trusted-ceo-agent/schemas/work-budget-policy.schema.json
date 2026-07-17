@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "work-budget-policy.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policy_id",
+    "workload_class",
+    "max_active_signal_cases",
+    "max_parallel_workers",
+    "max_model_attempts_per_task",
+    "task_timeout",
+    "case_timeout",
+    "max_optional_issue_families",
+    "evidence_packet_limits",
+    "overflow_action",
+    "benchmark_refs",
+    "approved_concurrency_profile_id",
+    "effective_from",
+    "content_hash"
+  ],
+  "properties": {
+    "policy_id": {"type": "string", "minLength": 1},
+    "workload_class": {"type": "string", "minLength": 1},
+    "max_active_signal_cases": {"type": "integer", "minimum": 1},
+    "max_parallel_workers": {"type": "integer", "minimum": 1, "maximum": 4},
+    "max_model_attempts_per_task": {"type": "integer", "minimum": 1, "maximum": 2},
+    "task_timeout": {"type": "integer", "minimum": 1},
+    "case_timeout": {"type": "integer", "minimum": 1},
+    "max_optional_issue_families": {"type": "integer", "minimum": 0},
+    "evidence_packet_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_facts",
+        "max_signals",
+        "max_observations",
+        "max_problem_candidates",
+        "max_causes_per_problem",
+        "max_counters_per_cause",
+        "max_verifications_per_problem",
+        "max_data_requests",
+        "max_human_questions",
+        "max_expert_candidates",
+        "max_payload_bytes"
+      ],
+      "properties": {
+        "max_facts": {"type": "integer", "minimum": 1, "maximum": 48},
+        "max_signals": {"type": "integer", "minimum": 1, "maximum": 48},
+        "max_observations": {"type": "integer", "minimum": 1, "maximum": 12},
+        "max_problem_candidates": {"type": "integer", "minimum": 1, "maximum": 6},
+        "max_causes_per_problem": {"type": "integer", "minimum": 1, "maximum": 4},
+        "max_counters_per_cause": {"type": "integer", "minimum": 1, "maximum": 2},
+        "max_verifications_per_problem": {"type": "integer", "minimum": 1, "maximum": 3},
+        "max_data_requests": {"type": "integer", "minimum": 1, "maximum": 8},
+        "max_human_questions": {"type": "integer", "minimum": 1, "maximum": 8},
+        "max_expert_candidates": {"type": "integer", "minimum": 1, "maximum": 6},
+        "max_payload_bytes": {"type": "integer", "minimum": 1, "maximum": 65536}
+      }
+    },
+    "overflow_action": {
+      "enum": ["needs_prioritization", "needs_input", "deep_review_pending"]
+    },
+    "benchmark_refs": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "approved_concurrency_profile_id": {
+      "enum": ["sequential", "parallel_2", "parallel_3", "parallel_4"]
+    },
+    "effective_from": {"type": "string", "format": "date-time"},
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

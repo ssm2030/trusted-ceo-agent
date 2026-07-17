@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0.0",
+  "pack_type": "mission",
+  "pack_id": "trusted-ceo-default",
+  "pack_version": "1.0.0",
+  "requested_authority": "full",
+  "title": "Trusted CEO Default Mission",
+  "description": "Common evidence, reasoning, approval, professional-boundary, and output policy for CEO diagnostics.",
+  "applicability": {
+    "business_models": [],
+    "industries": [],
+    "excluded_industries": [],
+    "required_data_roles": []
+  },
+  "dependencies": [],
+  "safety": {
+    "forbidden_interpretations": [
+      "Treating a customer hypothesis as a Fact",
+      "Issuing a professional conclusion",
+      "Publishing an unapproved deep-dive response"
+    ],
+    "safe_stop_rules": [
+      "Stop when material claims lack Evidence Links",
+      "Stop when a required approval is missing or stale"
+    ]
+  },
+  "content": {
+    "customer_hypothesis_policy": {
+      "initial_status": "unverified",
+      "fact_promotion_allowed": false
+    },
+    "required_challenge_policy": {
+      "minimum_required_challenge_lenses": 1,
+      "waiver_allowed": false
+    },
+    "reasoning_sequence": [
+      "observed_fact",
+      "business_meaning",
+      "issue_candidate",
+      "cause_hypothesis",
+      "counter_hypothesis",
+      "distinguishing_test",
+      "evidence_state",
+      "data_request",
+      "conditional_response"
+    ],
+    "result_grade_definitions": [
+      {"grade": "Decision Required", "meaning": "Evidence is sufficient and an executive decision is required."},
+      {"grade": "Immediate Verification", "meaning": "Impact is material but evidence is limited or conflicting."},
+      {"grade": "Expert Review Required", "meaning": "A professional trigger requires qualified review."},
+      {"grade": "Monitor", "meaning": "The issue is trackable and does not currently require executive action."},
+      {"grade": "Appendix Signal", "meaning": "The signal is low-materiality, duplicate, or isolated."},
+      {"grade": "Not Assessable", "meaning": "Declared evidence or domain capability is insufficient."}
+    ],
+    "required_output_sections": [
+      "run_summary",
+      "mission_summary",
+      "capability_summary",
+      "issues",
+      "conditional_responses",
+      "monitoring",
+      "blind_spots",
+      "expert_review_packets",
+      "approvals",
+      "integrity"
+    ],
+    "professional_boundaries": [
+      "No final accounting treatment",
+      "No tax amount or legal-compliance conclusion",
+      "No audit opinion or investment recommendation"
+    ],
+    "hitl_minimum_gates": ["context", "diagnostic", "final"],
+    "trust_kernel_rules": [
+      "Source bytes are immutable",
+      "Fact and Signal values are code-generated",
+      "Material claims require Evidence Links",
+      "Final validation is mandatory"
+    ],
+    "default_privacy_policy": {
+      "direct_identifier_reasoning": "forbidden",
+      "minimum_group_size": 5,
+      "suppression": "groups_below_minimum"
+    },
+    "model_role_profiles": [
+      {"role": "lens", "may_create_facts": false, "may_assign_grade": false},
+      {"role": "integrator", "may_create_facts": false, "may_assign_grade": false},
+      {"role": "writer", "may_create_facts": false, "may_assign_grade": false}
+    ],
+    "default_limits": {
+      "maximum_lens_cards": 6,
+      "maximum_model_attempts": 2,
+      "maximum_component_workers": 4
+    }
+  }
+}

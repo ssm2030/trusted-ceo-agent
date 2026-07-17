@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["quality_issue_id", "source_ref", "issue_code", "severity", "affected_field", "raw_value_hash", "normalized_role", "reason_code", "suggested_resolution", "resolution_status"],
+  "properties": {
+    "quality_issue_id": {"type": "string", "pattern": "^quality_[0-9a-f]{24}$"},
+    "source_ref": {"type": ["object", "null"]},
+    "issue_code": {"enum": ["missing_required_field", "invalid_decimal", "invalid_date", "ambiguous_unit", "ambiguous_period", "ambiguous_observation_role", "duplicate_business_key", "inconsistent_dimension", "untrusted_formula_value", "unsupported_type"]},
+    "severity": {"enum": ["blocking", "warning", "info"]},
+    "affected_field": {"type": ["string", "null"]},
+    "raw_value_hash": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "normalized_role": {"type": ["string", "null"]},
+    "reason_code": {"type": "string", "minLength": 1},
+    "suggested_resolution": {"type": "string"},
+    "resolution_status": {"enum": ["open", "resolved", "accepted", "not_applicable"]}
+  }
+}

@@ -1,0 +1,240 @@
+{
+    "schema_version":  "1.0.0",
+    "pack_type":  "problem",
+    "pack_id":  "customer-concentration",
+    "pack_version":  "1.0.0",
+    "requested_authority":  "full",
+    "title":  "Customer Concentration",
+    "description":  "Tests material customer concentration and its interaction with profitability and decision exposure.",
+    "applicability":  {
+                          "business_models":  [
+                                                  "project_b2b_services",
+                                                  "subscription_b2b_services",
+                                                  "hybrid_b2b_services"
+                                              ],
+                          "industries":  [
+
+                                         ],
+                          "excluded_industries":  [
+
+                                                  ],
+                          "required_data_roles":  [
+                                                      "monthly_financials"
+                                                  ]
+                      },
+    "dependencies":  [
+                         "trusted-ceo-default@1.0.0",
+                         "b2b-services@1.0.0"
+                     ],
+    "safety":  {
+                   "forbidden_interpretations":  [
+                                                     "Assuming concentration is harmful without dependency context"
+                                                 ],
+                   "safe_stop_rules":  [
+                                           "Require a reconciled customer revenue population"
+                                       ]
+               },
+    "content":  {
+                    "problem_family_code":  "customer_concentration",
+                    "domain_pack_refs":  [
+                                             "b2b-services@1.0.0"
+                                         ],
+                    "entry_conditions":  [
+                                             {
+                                                 "op":  "exists",
+                                                 "operand":  {
+                                                                 "fact_ref":  {
+                                                                                  "fact_code":  "customer_revenue",
+                                                                                  "reducer":  "sum"
+                                                                              }
+                                                             }
+                                             }
+                                         ],
+                    "required_capabilities":  [
+                                                  "customer_revenue"
+                                              ],
+                    "lens_plan":  [
+                                      {
+                                          "lens_id":  "concentration_requested",
+                                          "role":  "requested",
+                                          "required":  true,
+                                          "capability_refs":  [
+                                                                  "customer_revenue"
+                                                              ],
+                                          "allowed_mechanism_refs":  [
+
+                                                                     ],
+                                          "max_shards":  1
+                                      },
+                                      {
+                                          "lens_id":  "concentration_challenge",
+                                          "role":  "challenge",
+                                          "required":  true,
+                                          "capability_refs":  [
+                                                                  "customer_revenue"
+                                                              ],
+                                          "allowed_mechanism_refs":  [
+
+                                                                     ],
+                                          "max_shards":  1
+                                      }
+                                  ],
+                    "analysis_plan":  [
+                                          {
+                                              "component_id":  "mix_concentration",
+                                              "purpose":  "Calculate Top N share and HHI",
+                                              "parameter_template":  {
+                                                                         "input_fact_ids":  {
+                                                                                                "fact_selector":  {
+                                                                                                                      "fact_code":  "customer_revenue",
+                                                                                                                      "cardinality":  "many",
+                                                                                                                      "time_role":  "latest",
+                                                                                                                      "scope_relation":  "any",
+                                                                                                                      "unit_code":  "KRW"
+                                                                                                                  }
+                                                                                            },
+                                                                         "input_fact_code":  "customer_revenue",
+                                                                         "top_n":  3,
+                                                                         "share_output_fact_code":  "top3_customer_share",
+                                                                         "hhi_output_fact_code":  "customer_revenue_hhi"
+                                                                     }
+                                          },
+                                          {
+                                              "component_id":  "compare",
+                                              "purpose":  "Compare concentration over time",
+                                              "parameter_template":  {
+                                                                         "baseline_fact_id":  {
+                                                                                                  "fact_selector":  {
+                                                                                                                        "fact_code":  "top3_customer_share",
+                                                                                                                        "cardinality":  "one",
+                                                                                                                        "time_role":  "previous",
+                                                                                                                        "scope_relation":  "any",
+                                                                                                                        "unit_code":  "ratio"
+                                                                                                                    }
+                                                                                              },
+                                                                         "current_fact_id":  {
+                                                                                                 "fact_selector":  {
+                                                                                                                       "fact_code":  "top3_customer_share",
+                                                                                                                       "cardinality":  "one",
+                                                                                                                       "time_role":  "latest",
+                                                                                                                       "scope_relation":  "any",
+                                                                                                                       "unit_code":  "ratio"
+                                                                                                                   }
+                                                                                             },
+                                                                         "mode":  "percentage_point_change",
+                                                                         "output_fact_code":  "top3_customer_share_change_pp",
+                                                                         "output_metric_code":  "top3_customer_share_change_pp"
+                                                                     }
+                                          }
+                                      ],
+                    "hypothesis_templates":  [
+                                                 {
+                                                     "hypothesis_key":  "portfolio_dependency",
+                                                     "statement":  "A larger share of revenue may depend on a small customer set."
+                                                 }
+                                             ],
+                    "evidence_requirements":  [
+                                                  {
+                                                      "target_type":  "issue",
+                                                      "required_roles":  [
+                                                                             "customer_share",
+                                                                             "customer_population_reconciliation"
+                                                                         ],
+                                                      "minimum_independent_chains":  1
+                                                  }
+                                              ],
+                    "distinguishing_tests":  [
+                                                 {
+                                                     "test_ref":  "customer_profitability_and_renewal",
+                                                     "required_data":  [
+                                                                           "customer_revenue",
+                                                                           "customer_margin",
+                                                                           "renewal_terms"
+                                                                       ]
+                                                 }
+                                             ],
+                    "decision_type_catalog":  [
+                                                  {
+                                                      "decision_type_ref":  "customer_portfolio_risk",
+                                                      "allowed_decision_unit_types":  [
+                                                                                          "customer_portfolio"
+                                                                                      ]
+                                                  }
+                                              ],
+                    "blocking_counter_evidence_conditions":  [
+                                                                 {
+                                                                     "condition_ref":  "population_unreconciled",
+                                                                     "target_problem_family":  "customer_concentration",
+                                                                     "condition_expression":  {
+                                                                                                  "op":  "exists",
+                                                                                                  "operand":  {
+                                                                                                                  "signal_ref":  {
+                                                                                                                                     "signal_code":  "customer_revenue_population_reconciles",
+                                                                                                                                     "outcome":  "not_triggered"
+                                                                                                                                 }
+                                                                                                              }
+                                                                                              },
+                                                                     "reason_code":  "customer_population_unreconciled"
+                                                                 }
+                                                             ],
+                    "deep_dive_plan":  [
+                                           {
+                                               "component_id":  "reconcile",
+                                               "purpose":  "Reconcile customer revenue to enterprise revenue",
+                                               "parameter_template":  {
+                                                                          "total_fact_id":  {
+                                                                                                "fact_selector":  {
+                                                                                                                      "fact_code":  "revenue",
+                                                                                                                      "cardinality":  "one",
+                                                                                                                      "time_role":  "latest",
+                                                                                                                      "scope_relation":  "issue",
+                                                                                                                      "unit_code":  "KRW"
+                                                                                                                  }
+                                                                                            },
+                                                                          "part_fact_ids":  {
+                                                                                                "fact_selector":  {
+                                                                                                                      "fact_code":  "customer_revenue",
+                                                                                                                      "cardinality":  "many",
+                                                                                                                      "time_role":  "latest",
+                                                                                                                      "scope_relation":  "issue",
+                                                                                                                      "unit_code":  "KRW"
+                                                                                                                  }
+                                                                                            },
+                                                                          "tolerance_ref":  "reconciliation_tolerance_ratio",
+                                                                          "output_signal_code":  "customer_revenue_population_reconciles"
+                                                                      }
+                                           }
+                                       ],
+                    "conditional_response_catalog":  [
+                                                         {
+                                                             "response_ref":  "portfolio_resilience",
+                                                             "preconditions":  [
+                                                                                   "concentration material and decision exposure confirmed"
+                                                                               ],
+                                                             "disqualifiers":  [
+                                                                                   "population unreconciled"
+                                                                               ]
+                                                         }
+                                                     ],
+                    "expert_trigger_refs":  [
+
+                                            ],
+                    "not_assessable_rules":  [
+                                                 "Customer dimension unavailable"
+                                             ],
+                    "stop_rules":  [
+                                       "Do not call concentration harmful without business context"
+                                   ],
+                    "capability_requirements":  [
+                                                    {
+                                                        "capability_code":  "customer_revenue",
+                                                        "required_fact_codes":  [
+                                                                                    "customer_revenue"
+                                                                                ],
+                                                        "required_observation_roles":  [
+                                                                                           "ledger"
+                                                                                       ]
+                                                    }
+                                                ]
+                }
+}

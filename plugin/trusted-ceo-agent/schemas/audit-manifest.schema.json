@@ -1,0 +1,9 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"audit-manifest.schema.json",
+  "type":"object","additionalProperties":false,"required":["files","manifest_hash"],
+  "properties":{
+    "files":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["path","sha256","size"],"properties":{"path":{"type":"string"},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"size":{"type":"integer","minimum":0}}}},
+    "manifest_hash":{"type":"string","pattern":"^[0-9a-f]{64}$"}
+  }
+}

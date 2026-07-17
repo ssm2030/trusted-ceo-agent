@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "condition-expression.schema.json",
+  "$ref": "#/$defs/expression",
+  "$defs": {
+    "literal": {
+      "type": "object",
+      "required": ["type", "value"],
+      "properties": {
+        "type": {"enum": ["decimal", "integer", "string", "boolean", "date"]},
+        "value": {}
+      },
+      "additionalProperties": false
+    },
+    "operand": {
+      "oneOf": [
+        {"type": "object", "required": ["literal"], "properties": {"literal": {"$ref": "#/$defs/literal"}}, "additionalProperties": false},
+        {"type": "object", "required": ["fact_ref"], "properties": {"fact_ref": {"type": "object"}}, "additionalProperties": false},
+        {"type": "object", "required": ["signal_ref"], "properties": {"signal_ref": {"type": "object"}}, "additionalProperties": false},
+        {"type": "object", "required": ["mission_ref"], "properties": {"mission_ref": {"type": "string", "pattern": "^/"}}, "additionalProperties": false},
+        {"type": "object", "required": ["hitl_ref"], "properties": {"hitl_ref": {"type": "string", "pattern": "^/"}}, "additionalProperties": false}
+      ]
+    },
+    "expression": {
+      "oneOf": [
+        {"type": "object", "required": ["all"], "properties": {"all": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/expression"}}}, "additionalProperties": false},
+        {"type": "object", "required": ["any"], "properties": {"any": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/expression"}}}, "additionalProperties": false},
+        {"type": "object", "required": ["not"], "properties": {"not": {"$ref": "#/$defs/expression"}}, "additionalProperties": false},
+        {"type": "object", "required": ["op", "left", "right"], "properties": {"op": {"enum": ["eq", "ne", "gt", "gte", "lt", "lte", "outcome_is"]}, "left": {"$ref": "#/$defs/operand"}, "right": {"$ref": "#/$defs/operand"}}, "additionalProperties": false},
+        {"type": "object", "required": ["op", "left", "values"], "properties": {"op": {"enum": ["in", "not_in"]}, "left": {"$ref": "#/$defs/operand"}, "values": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/operand"}}}, "additionalProperties": false},
+        {"type": "object", "required": ["op", "operand"], "properties": {"op": {"enum": ["exists", "missing"]}, "operand": {"$ref": "#/$defs/operand"}}, "additionalProperties": false}
+      ]
+    }
+  }
+}

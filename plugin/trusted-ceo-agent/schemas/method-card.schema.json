@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "method-card.schema.json",
+  "allOf": [
+    {"$ref": "knowledge-artifact.schema.json#/$defs/base"},
+    {
+      "type": "object",
+      "required": ["artifact_type", "content"],
+      "properties": {
+        "artifact_type": {"const": "method_card"},
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["review_sequence", "required_questions", "scope_conditions"],
+          "properties": {
+            "review_sequence": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+            "required_questions": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+            "scope_conditions": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"}
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "signal_id", "signal_code", "rule_ref", "component_ref", "threshold_ref",
+    "input_fact_ids", "required_fact_codes", "missing_fact_codes", "scope",
+    "time_context", "evaluation", "outcome", "direction",
+    "impact_band_candidate", "urgency_band_candidate", "reason_codes", "producer"
+  ],
+  "properties": {
+    "signal_id": {"type": "string", "pattern": "^signal_[0-9a-f]{24}$"},
+    "signal_code": {"type": "string", "minLength": 1},
+    "rule_ref": {"type": "string", "minLength": 1},
+    "component_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_id", "component_version", "component_run_id"],
+      "properties": {
+        "component_id": {"type": "string", "minLength": 1},
+        "component_version": {"type": "string", "minLength": 1},
+        "component_run_id": {"type": "string", "pattern": "^component_run_[0-9a-f]{24}$"}
+      }
+    },
+    "threshold_ref": {"type": ["string", "null"]},
+    "input_fact_ids": {"type": "array", "items": {"type": "string", "pattern": "^fact_[0-9a-f]{24}$"}, "uniqueItems": true},
+    "required_fact_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "missing_fact_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "scope": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["dimension_code", "member_code"],
+        "properties": {"dimension_code": {"type": "string"}, "member_code": {"type": "string"}}
+      }
+    },
+    "time_context": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["period"], "properties": {"period": {"type": "string"}}},
+        {"type": "object", "additionalProperties": false, "required": ["as_of"], "properties": {"as_of": {"type": "string", "format": "date"}}},
+        {
+          "type": "object", "additionalProperties": false, "required": ["window"],
+          "properties": {
+            "window": {
+              "type": "object", "additionalProperties": false,
+              "required": ["start", "end"],
+              "properties": {"start": {"type": "string", "format": "date"}, "end": {"type": "string", "format": "date"}}
+            }
+          }
+        }
+      ]
+    },
+    "evaluation": {"type": "object", "additionalProperties": {"type": ["string", "integer", "boolean", "null"]}},
+    "outcome": {"enum": ["triggered", "not_triggered", "not_assessable"]},
+    "direction": {"type": ["string", "null"]},
+    "impact_band_candidate": {"enum": ["critical", "high", "medium", "low", null]},
+    "urgency_band_candidate": {"enum": ["immediate", "near_term", "routine", null]},
+    "reason_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "producer": {"const": "deterministic_component"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"outcome": {"const": "not_assessable"}}},
+      "then": {
+        "anyOf": [
+          {"properties": {"missing_fact_codes": {"minItems": 1}}},
+          {"properties": {"reason_codes": {"minItems": 1}}}
+        ]
+      }
+    }
+  ]
+}

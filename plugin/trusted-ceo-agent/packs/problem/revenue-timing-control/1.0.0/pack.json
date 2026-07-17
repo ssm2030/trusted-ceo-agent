@@ -1,0 +1,297 @@
+{
+    "schema_version":  "1.0.0",
+    "pack_type":  "problem",
+    "pack_id":  "revenue-timing-control",
+    "pack_version":  "1.0.0",
+    "requested_authority":  "full",
+    "title":  "Revenue Timing Control",
+    "description":  "Detects material cross-period differences among service, acceptance, recognition, billing, and cash dates for expert review.",
+    "applicability":  {
+                          "business_models":  [
+                                                  "project_b2b_services",
+                                                  "subscription_b2b_services",
+                                                  "hybrid_b2b_services"
+                                              ],
+                          "industries":  [
+
+                                         ],
+                          "excluded_industries":  [
+
+                                                  ],
+                          "required_data_roles":  [
+                                                      "monthly_financials"
+                                                  ]
+                      },
+    "dependencies":  [
+                         "trusted-ceo-default@1.0.0",
+                         "b2b-services@1.0.0"
+                     ],
+    "safety":  {
+                   "forbidden_interpretations":  [
+                                                     "Issuing an accounting treatment or misstatement conclusion"
+                                                 ],
+                   "safe_stop_rules":  [
+                                           "Route material timing mismatches to accounting review"
+                                       ]
+               },
+    "content":  {
+                    "problem_family_code":  "revenue_timing_control",
+                    "domain_pack_refs":  [
+                                             "b2b-services@1.0.0"
+                                         ],
+                    "entry_conditions":  [
+                                             {
+                                                 "op":  "exists",
+                                                 "operand":  {
+                                                                 "fact_ref":  {
+                                                                                  "fact_code":  "recognition_date",
+                                                                                  "reducer":  "only"
+                                                                              }
+                                                             }
+                                             }
+                                         ],
+                    "required_capabilities":  [
+                                                  "acceptance_date",
+                                                  "recognition_date",
+                                                  "revenue_amount"
+                                              ],
+                    "lens_plan":  [
+                                      {
+                                          "lens_id":  "timing_requested",
+                                          "role":  "requested",
+                                          "required":  true,
+                                          "capability_refs":  [
+                                                                  "recognition_date"
+                                                              ],
+                                          "allowed_mechanism_refs":  [
+
+                                                                     ],
+                                          "max_shards":  1
+                                      },
+                                      {
+                                          "lens_id":  "timing_challenge",
+                                          "role":  "challenge",
+                                          "required":  true,
+                                          "capability_refs":  [
+                                                                  "acceptance_date"
+                                                              ],
+                                          "allowed_mechanism_refs":  [
+
+                                                                     ],
+                                          "max_shards":  1
+                                      }
+                                  ],
+                    "analysis_plan":  [
+                                          {
+                                              "component_id":  "temporal_alignment",
+                                              "purpose":  "Align acceptance and recognition dates for review",
+                                              "parameter_template":  {
+                                                                         "earlier_fact_id":  {
+                                                                                                 "fact_selector":  {
+                                                                                                                       "fact_code":  "acceptance_date",
+                                                                                                                       "cardinality":  "one",
+                                                                                                                       "time_role":  "latest",
+                                                                                                                       "scope_relation":  "any"
+                                                                                                                   }
+                                                                                             },
+                                                                         "later_fact_id":  {
+                                                                                               "fact_selector":  {
+                                                                                                                     "fact_code":  "recognition_date",
+                                                                                                                     "cardinality":  "one",
+                                                                                                                     "time_role":  "latest",
+                                                                                                                     "scope_relation":  "any"
+                                                                                                                 }
+                                                                                           },
+                                                                         "max_lag_days_ref":  "acceptance_recognition_lag_review_days",
+                                                                         "output_fact_code":  "acceptance_to_recognition_lag_days",
+                                                                         "output_metric_code":  "acceptance_to_recognition_lag_days",
+                                                                         "output_signal_code":  "acceptance_recognition_date_difference_for_review"
+                                                                     }
+                                          },
+                                          {
+                                              "component_id":  "ratio",
+                                              "purpose":  "Measure cross-period amount share",
+                                              "parameter_template":  {
+                                                                         "numerator_fact_id":  {
+                                                                                                   "fact_selector":  {
+                                                                                                                         "fact_code":  "cross_period_timing_amount",
+                                                                                                                         "cardinality":  "one",
+                                                                                                                         "time_role":  "latest",
+                                                                                                                         "scope_relation":  "any",
+                                                                                                                         "unit_code":  "KRW"
+                                                                                                                     }
+                                                                                               },
+                                                                         "denominator_fact_id":  {
+                                                                                                     "fact_selector":  {
+                                                                                                                           "fact_code":  "revenue",
+                                                                                                                           "cardinality":  "one",
+                                                                                                                           "time_role":  "latest",
+                                                                                                                           "scope_relation":  "any",
+                                                                                                                           "unit_code":  "KRW"
+                                                                                                                       }
+                                                                                                 },
+                                                                         "output_fact_code":  "cross_period_timing_amount_share",
+                                                                         "output_metric_code":  "cross_period_timing_amount_share",
+                                                                         "output_unit_code":  "ratio"
+                                                                     }
+                                          }
+                                      ],
+                    "hypothesis_templates":  [
+                                                 {
+                                                     "hypothesis_key":  "timing_control_gap",
+                                                     "statement":  "Recognition and acceptance dates may cross reporting periods."
+                                                 }
+                                             ],
+                    "evidence_requirements":  [
+                                                  {
+                                                      "target_type":  "expert_trigger",
+                                                      "required_roles":  [
+                                                                             "acceptance_date",
+                                                                             "recognition_date",
+                                                                             "contract_terms",
+                                                                             "amount"
+                                                                         ],
+                                                      "minimum_independent_chains":  1
+                                                  }
+                                              ],
+                    "distinguishing_tests":  [
+                                                 {
+                                                     "test_ref":  "contract_timing_review",
+                                                     "required_data":  [
+                                                                           "contracts",
+                                                                           "acceptance_records",
+                                                                           "revenue_ledger"
+                                                                       ]
+                                                 }
+                                             ],
+                    "decision_type_catalog":  [
+                                                  {
+                                                      "decision_type_ref":  "control_remediation_review",
+                                                      "allowed_decision_unit_types":  [
+                                                                                          "control",
+                                                                                          "contract"
+                                                                                      ]
+                                                  }
+                                              ],
+                    "blocking_counter_evidence_conditions":  [
+                                                                 {
+                                                                     "condition_ref":  "date_role_unconfirmed",
+                                                                     "target_problem_family":  "revenue_timing_control",
+                                                                     "condition_expression":  {
+                                                                                                  "op":  "missing",
+                                                                                                  "operand":  {
+                                                                                                                  "fact_ref":  {
+                                                                                                                                   "fact_code":  "acceptance_date",
+                                                                                                                                   "reducer":  "only"
+                                                                                                                               }
+                                                                                                              }
+                                                                                              },
+                                                                     "reason_code":  "acceptance_date_role_unconfirmed"
+                                                                 }
+                                                             ],
+                    "deep_dive_plan":  [
+                                           {
+                                               "component_id":  "temporal_alignment",
+                                               "purpose":  "Calculate contract-level acceptance-to-recognition lag for review",
+                                               "parameter_template":  {
+                                                                          "earlier_fact_id":  {
+                                                                                                  "fact_selector":  {
+                                                                                                                        "fact_code":  "acceptance_date",
+                                                                                                                        "cardinality":  "one",
+                                                                                                                        "time_role":  "latest",
+                                                                                                                        "scope_relation":  "issue"
+                                                                                                                    }
+                                                                                              },
+                                                                          "later_fact_id":  {
+                                                                                                "fact_selector":  {
+                                                                                                                      "fact_code":  "recognition_date",
+                                                                                                                      "cardinality":  "one",
+                                                                                                                      "time_role":  "latest",
+                                                                                                                      "scope_relation":  "issue"
+                                                                                                                  }
+                                                                                            },
+                                                                          "max_lag_days_ref":  "acceptance_recognition_lag_review_days",
+                                                                          "output_fact_code":  "contract_acceptance_to_recognition_lag_days",
+                                                                          "output_metric_code":  "contract_acceptance_to_recognition_lag_days",
+                                                                          "output_signal_code":  "contract_acceptance_recognition_date_difference_for_review"
+                                                                      }
+                                           },
+                                           {
+                                               "component_id":  "reconcile",
+                                               "purpose":  "Reconcile contract-level flagged amounts to the flagged total",
+                                               "parameter_template":  {
+                                                                          "total_fact_id":  {
+                                                                                                "fact_selector":  {
+                                                                                                                      "fact_code":  "cross_period_timing_amount",
+                                                                                                                      "cardinality":  "one",
+                                                                                                                      "time_role":  "latest",
+                                                                                                                      "scope_relation":  "issue",
+                                                                                                                      "unit_code":  "KRW"
+                                                                                                                  }
+                                                                                            },
+                                                                          "part_fact_ids":  {
+                                                                                                "fact_selector":  {
+                                                                                                                      "fact_code":  "contract_cross_period_timing_amount",
+                                                                                                                      "cardinality":  "many",
+                                                                                                                      "time_role":  "latest",
+                                                                                                                      "scope_relation":  "issue",
+                                                                                                                      "unit_code":  "KRW"
+                                                                                                                  }
+                                                                                            },
+                                                                          "tolerance_ref":  "reconciliation_tolerance_ratio",
+                                                                          "output_signal_code":  "cross_period_timing_amount_reconciles"
+                                                                      }
+                                           }
+                                       ],
+                    "conditional_response_catalog":  [
+                                                         {
+                                                             "response_ref":  "expert_review_packet",
+                                                             "preconditions":  [
+                                                                                   "material timing threshold met"
+                                                                               ],
+                                                             "disqualifiers":  [
+                                                                                   "date role unconfirmed"
+                                                                               ]
+                                                         }
+                                                     ],
+                    "expert_trigger_refs":  [
+                                                "revenue_timing_accounting_review"
+                                            ],
+                    "not_assessable_rules":  [
+                                                 "Acceptance or recognition date role unavailable"
+                                             ],
+                    "stop_rules":  [
+                                       "Never publish an accounting treatment conclusion"
+                                   ],
+                    "capability_requirements":  [
+                                                    {
+                                                        "capability_code":  "acceptance_date",
+                                                        "required_fact_codes":  [
+                                                                                    "acceptance_date"
+                                                                                ],
+                                                        "required_observation_roles":  [
+                                                                                           "contract_event"
+                                                                                       ]
+                                                    },
+                                                    {
+                                                        "capability_code":  "recognition_date",
+                                                        "required_fact_codes":  [
+                                                                                    "recognition_date"
+                                                                                ],
+                                                        "required_observation_roles":  [
+                                                                                           "contract_event"
+                                                                                       ]
+                                                    },
+                                                    {
+                                                        "capability_code":  "revenue_amount",
+                                                        "required_fact_codes":  [
+                                                                                    "cross_period_timing_amount",
+                                                                                    "revenue"
+                                                                                ],
+                                                        "required_observation_roles":  [
+                                                                                           "ledger"
+                                                                                       ]
+                                                    }
+                                                ]
+                }
+}

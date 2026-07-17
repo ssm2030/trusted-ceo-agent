@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "issue-cluster.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cluster_id",
+    "schema_version",
+    "run_id",
+    "revision",
+    "finding_ids",
+    "relation_ids",
+    "decision_unit",
+    "unresolved_conflicts",
+    "created_from_hash",
+    "content_hash"
+  ],
+  "properties": {
+    "cluster_id": {"type": "string", "pattern": "^cluster_[0-9a-f]{24}$"},
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "pattern": "^run_[A-Za-z0-9_.-]+$"},
+    "revision": {"type": "integer", "minimum": 0},
+    "finding_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^finding_[0-9a-f]{24}$"}
+    },
+    "relation_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^relation_[0-9a-f]{24}$"}
+    },
+    "decision_unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "decision_required", "owner_role", "option_refs"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 512},
+        "decision_required": {"type": "boolean"},
+        "owner_role": {"type": "string", "minLength": 1, "maxLength": 256},
+        "option_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 256}
+        }
+      }
+    },
+    "unresolved_conflicts": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 1024}
+    },
+    "created_from_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

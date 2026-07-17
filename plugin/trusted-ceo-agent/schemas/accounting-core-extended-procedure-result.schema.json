@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "accounting-core-extended-procedure-result.schema.json",
+  "title": "Accounting Core Extended Procedure Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "revision",
+    "issue_family_id",
+    "procedure_id",
+    "input_hash",
+    "status",
+    "missing_inputs",
+    "outcomes",
+    "authority_ceiling",
+    "expert_review_required",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "issue_family_id": {
+      "enum": [
+        "AC-06", "AC-07", "AC-08", "AC-09", "AC-10", "AC-11",
+        "AC-12", "AC-13", "AC-14", "AC-15", "AC-16"
+      ]
+    },
+    "procedure_id": {
+      "enum": [
+        "P-AC-06", "P-AC-07", "P-AC-08", "P-AC-09", "P-AC-10",
+        "P-AC-11", "P-AC-12", "P-AC-13", "P-AC-14", "P-AC-15",
+        "P-AC-16"
+      ]
+    },
+    "input_hash": {"$ref": "#/$defs/sha256"},
+    "status": {"enum": ["passed", "exceptions_found", "not_assessable"]},
+    "missing_inputs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "outcomes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/outcome"}
+    },
+    "authority_ceiling": {"const": "Boundary"},
+    "expert_review_required": {"const": true},
+    "content_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "decimal": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "row_id",
+        "entity",
+        "currency",
+        "period",
+        "observed",
+        "expected",
+        "amount",
+        "review_scope",
+        "boundary_reason",
+        "source_refs",
+        "counter_evidence_refs"
+      ],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "row_id": {"type": "string", "minLength": 1},
+        "entity": {"type": "string", "minLength": 1},
+        "currency": {"type": "string", "minLength": 1},
+        "period": {"type": "string", "minLength": 1},
+        "observed": {"$ref": "#/$defs/decimal"},
+        "expected": {"$ref": "#/$defs/decimal"},
+        "amount": {"$ref": "#/$defs/decimal"},
+        "review_scope": {
+          "enum": [
+            "accounting",
+            "accounting_and_governance",
+            "accounting_and_valuation",
+            "accounting_and_legal_tax",
+            "accounting_and_fraud_risk"
+          ]
+        },
+        "boundary_reason": {"type": "string", "minLength": 1},
+        "source_refs": {"$ref": "#/$defs/refs"},
+        "counter_evidence_refs": {"$ref": "#/$defs/refs"}
+      }
+    }
+  }
+}

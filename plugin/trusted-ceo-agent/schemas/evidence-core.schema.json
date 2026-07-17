@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["envelope", "mission_contract_ref", "pack_manifest", "component_manifest", "source_registry", "data_quality_register", "fact_register", "signal_register", "evidence_links", "capability_map", "integrity"],
+  "properties": {
+    "envelope": {"type": "object", "additionalProperties": false, "required": ["schema_version", "artifact_id", "run_id", "revision", "parent_artifact_hash", "stage", "created_at", "semantic_fingerprint", "artifact_hash"], "properties": {
+      "schema_version": {"type": "string"}, "artifact_id": {"type": "string", "pattern": "^artifact_[0-9a-f]{24}$"}, "run_id": {"type": "string", "pattern": "^run_[0-9]{8}T[0-9]{6}Z_[0-9a-f]{16}$"},
+      "revision": {"type": "integer", "minimum": 1}, "parent_artifact_hash": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}, "stage": {"type": "string"}, "created_at": {"type": "string", "format": "date-time"},
+      "semantic_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "artifact_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    }},
+    "mission_contract_ref": {"type": "string", "pattern": "^mission_[0-9a-f]{24}$"},
+    "pack_manifest": {"type": "object", "additionalProperties": false, "required": ["pack_manifest_hash", "pack_refs"], "properties": {"pack_manifest_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "pack_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}}},
+    "component_manifest": {"type": "object", "additionalProperties": false, "required": ["component_refs"], "properties": {"component_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}}},
+    "source_registry": {"type": "array", "items": {"$ref": "source.schema.json"}}, "data_quality_register": {"type": "array", "items": {"$ref": "data-quality.schema.json"}},
+    "fact_register": {"type": "array", "items": {"$ref": "fact.schema.json"}}, "signal_register": {"type": "array", "items": {"$ref": "signal.schema.json"}},
+    "evidence_links": {"type": "array", "items": {"$ref": "evidence-link.schema.json"}}, "capability_map": {"$ref": "capability-map.schema.json"},
+    "integrity": {"type": "object", "additionalProperties": false, "required": ["payload_hash"], "properties": {"payload_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}
+  }
+}

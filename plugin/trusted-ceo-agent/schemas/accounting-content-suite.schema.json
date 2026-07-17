@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "accounting-content-suite.schema.json",
+  "title": "B2B Service Accounting Content Suite",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "suite_id", "release_id", "jurisdiction", "reporting_framework",
+    "industry_scope", "effective_period", "authority", "authority_ceiling", "design_refs",
+    "packs", "issue_families", "norm_seeds", "procedure_seeds", "tier_zero",
+    "expert_approval", "knowledge_release_state", "content_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "suite_id": {"const": "b2b-service-accounting-content-suite"},
+    "release_id": {"type": "string", "minLength": 1},
+    "jurisdiction": {"const": "KR"},
+    "reporting_framework": {"const": "K-IFRS"},
+    "industry_scope": {"type": "string", "minLength": 1},
+    "effective_period": {"$ref": "#/$defs/effective_period"},
+    "authority": {"$ref": "#/$defs/authority"},
+    "authority_ceiling": {"const": "Boundary"},
+    "design_refs": {
+      "type": "array", "minItems": 9, "maxItems": 9, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "packs": {
+      "type": "array", "minItems": 4, "maxItems": 4,
+      "items": {"$ref": "#/$defs/pack"}
+    },
+    "issue_families": {
+      "type": "array", "minItems": 64, "maxItems": 64,
+      "items": {"$ref": "accounting-issue-family.schema.json"}
+    },
+    "norm_seeds": {
+      "type": "array", "minItems": 36, "maxItems": 36,
+      "items": {"$ref": "#/$defs/norm_seed"}
+    },
+    "procedure_seeds": {
+      "type": "array", "minItems": 59, "maxItems": 59,
+      "items": {"$ref": "#/$defs/procedure_seed"}
+    },
+    "tier_zero": {"$ref": "#/$defs/tier_zero"},
+    "expert_approval": {"$ref": "#/$defs/expert_approval"},
+    "knowledge_release_state": {"enum": ["draft", "released"]},
+    "content_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "authority": {"enum": ["machine_draft", "Boundary", "Provisional", "Full"]},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "string_set": {
+      "type": "array", "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "non_empty_string_set": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "effective_period": {
+      "type": "object", "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": {"type": "string", "format": "date"},
+        "to": {"type": ["string", "null"], "format": "date"}
+      }
+    },
+    "pack": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "pack_id", "cycle_id", "source_design_ref", "issue_family_count",
+        "issue_family_ids", "tier_zero_issue_family_ids", "procedure_card_refs",
+        "norm_card_refs", "authority", "authority_ceiling", "effective_period", "content_hash"
+      ],
+      "properties": {
+        "pack_id": {
+          "enum": [
+            "accounting-core", "contract-revenue", "cash-flow-working-capital",
+            "project-cost-allocation"
+          ]
+        },
+        "cycle_id": {
+          "enum": [
+            "accounting_core", "contract_revenue", "cash_flow_working_capital",
+            "project_cost_allocation"
+          ]
+        },
+        "source_design_ref": {"type": "string", "minLength": 1},
+        "issue_family_count": {"const": 16},
+        "issue_family_ids": {
+          "type": "array", "minItems": 16, "maxItems": 16, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^(AC|RV|CF|CA)-[0-9]{2}$"}
+        },
+        "tier_zero_issue_family_ids": {
+          "type": "array", "maxItems": 5, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^AC-[0-9]{2}$"}
+        },
+        "procedure_card_refs": {"$ref": "#/$defs/non_empty_string_set"},
+        "norm_card_refs": {"$ref": "#/$defs/non_empty_string_set"},
+        "authority": {"$ref": "#/$defs/authority"},
+        "authority_ceiling": {"const": "Boundary"},
+        "effective_period": {"$ref": "#/$defs/effective_period"},
+        "content_hash": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "norm_seed": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "norm_card_id", "title", "source_design_ref", "authority", "paragraph_refs",
+        "effective_status", "expert_review_status"
+      ],
+      "properties": {
+        "norm_card_id": {"type": "string", "pattern": "^N-[A-Z0-9-]+$"},
+        "title": {"type": "string", "minLength": 1},
+        "source_design_ref": {"type": "string", "minLength": 1},
+        "authority": {"$ref": "#/$defs/authority"},
+        "paragraph_refs": {"$ref": "#/$defs/string_set"},
+        "effective_status": {"enum": ["unverified", "verified", "not_effective"]},
+        "expert_review_status": {"enum": ["not_reviewed", "approved", "rejected"]}
+      }
+    },
+    "procedure_seed": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "procedure_card_id", "title", "source_design_ref", "authority",
+        "implementation_status", "test_status"
+      ],
+      "properties": {
+        "procedure_card_id": {"type": "string", "pattern": "^P-[A-Z0-9-]+$"},
+        "title": {"type": "string", "minLength": 1},
+        "source_design_ref": {"type": "string", "minLength": 1},
+        "authority": {"$ref": "#/$defs/authority"},
+        "implementation_status": {"enum": ["not_implemented", "implemented"]},
+        "test_status": {"enum": ["not_tested", "passed", "failed"]}
+      }
+    },
+    "tier_zero": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mandatory_issue_family_ids", "required_reconciliations", "omission_allowed"],
+      "properties": {
+        "mandatory_issue_family_ids": {
+          "type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^AC-0[1-5]$"}
+        },
+        "required_reconciliations": {
+          "type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true,
+          "items": {
+            "enum": ["debit_credit", "opening_closing", "gl_tb", "subledger_gl", "bank_gl"]
+          }
+        },
+        "omission_allowed": {"const": false}
+      }
+    },
+    "expert_approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "approval_ref"],
+      "properties": {
+        "status": {"enum": ["not_approved", "approved", "rejected"]},
+        "approval_ref": {"type": ["string", "null"], "minLength": 1}
+      }
+    }
+  }
+}

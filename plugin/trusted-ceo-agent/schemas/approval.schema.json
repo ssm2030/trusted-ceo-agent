@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "approval.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["approval_id", "approval_request_id", "gate", "base_artifact_ref", "result_artifact_ref", "decision", "confirmed", "actor_id", "actor_role", "target_refs", "authorized_component_ids", "patch_operations", "rationale", "created_at", "input_method", "nonce_hash", "tty_session_fingerprint", "supersedes_approval_id", "status", "approval_hash"],
+  "properties": {
+    "approval_id": {"type": "string"}, "approval_request_id": {"type": "string"}, "gate": {"enum": ["context", "data", "scope_narrowing", "diagnostic", "final", "expert_packet"]},
+    "base_artifact_ref": {"type": "string"}, "result_artifact_ref": {"type": "string"}, "decision": {"enum": ["approve", "approve_with_edits", "request_changes", "reject"]},
+    "confirmed": {"const": true}, "actor_id": {"type": "string", "minLength": 1}, "actor_role": {"type": "string", "minLength": 1},
+    "target_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}, "authorized_component_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "patch_operations": {"type": "array", "items": {"type": "object"}}, "rationale": {"type": "string"}, "created_at": {"type": "string"},
+    "input_method": {"const": "interactive_tty"}, "nonce_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "tty_session_fingerprint": {"type": "string"},
+    "supersedes_approval_id": {"type": ["string", "null"]}, "status": {"enum": ["current", "invalidated"]},
+    "invalidated_by_revision": {"type": "integer", "minimum": 1}, "approval_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "allOf": [{
+    "if": {"properties": {"status": {"const": "invalidated"}}, "required": ["status"]},
+    "then": {"required": ["invalidated_by_revision"]},
+    "else": {"not": {"required": ["invalidated_by_revision"]}}
+  }]
+}

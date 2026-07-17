@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["evidence_link_id", "target_ref", "target_type", "evidence_ref", "evidence_kind", "polarity", "role", "rationale_template", "value_refs", "stage", "materialized_by", "origin", "independence_group_id"],
+  "properties": {
+    "evidence_link_id": {"type": "string", "pattern": "^evidence_[0-9a-f]{24}$"}, "target_ref": {"type": "string", "minLength": 1},
+    "target_type": {"enum": ["business_meaning", "problem_candidate", "cause_hypothesis", "counter_hypothesis", "integrated_issue", "causal_relation_hypothesis", "cross_issue_conflict", "conditional_response", "expert_review_need"]},
+    "evidence_ref": {"type": "string", "pattern": "^(fact|signal)_[0-9a-f]{24}$"}, "evidence_kind": {"enum": ["fact", "signal"]},
+    "polarity": {"enum": ["supports", "contradicts"]}, "role": {"enum": ["observation", "corroboration", "mechanism", "counter_evidence", "boundary"]},
+    "rationale_template": {"type": "string", "maxLength": 1000},
+    "value_refs": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["token", "fact_or_signal_id", "display_field", "display_format_ref"], "properties": {"token": {"type": "string"}, "fact_or_signal_id": {"type": "string", "pattern": "^(fact|signal)_[0-9a-f]{24}$"}, "display_field": {"type": "string"}, "display_format_ref": {"type": "string"}}}},
+    "stage": {"type": "string", "minLength": 1}, "materialized_by": {"enum": ["runtime_normalizer", "runtime_integrator", "runtime_grader", "runtime_hitl"]},
+    "origin": {"type": "object", "additionalProperties": false, "required": ["origin_type", "origin_job_id", "model_profile", "prompt_hash", "proposal_hash"], "properties": {"origin_type": {"enum": ["model_proposal", "deterministic_rule", "human_overlay"]}, "origin_job_id": {"type": ["string", "null"]}, "model_profile": {"type": ["string", "null"]}, "prompt_hash": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}, "proposal_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+    "independence_group_id": {"type": "string", "pattern": "^independence_[0-9a-f]{24}$"}
+  }
+}

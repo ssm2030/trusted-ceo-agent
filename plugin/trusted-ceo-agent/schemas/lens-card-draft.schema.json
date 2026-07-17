@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lens-card-draft.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assessment_status", "status_reason_codes", "observations", "business_meanings", "problem_candidates", "cause_hypotheses", "counter_hypotheses", "challenge_reviews", "verification_tests", "signal_dispositions", "uncertainties", "data_requests", "human_questions", "expert_trigger_candidates", "limitations"],
+  "properties": {
+    "assessment_status": {"enum": ["complete", "partial", "not_assessable"]},
+    "status_reason_codes": {"$ref": "#/$defs/stringSet"},
+    "observations": {"type": "array", "maxItems": 12, "items": {"$ref": "#/$defs/observation"}},
+    "business_meanings": {"type": "array", "items": {"$ref": "#/$defs/materialClaim"}},
+    "problem_candidates": {"type": "array", "maxItems": 6, "items": {"$ref": "#/$defs/problem"}},
+    "cause_hypotheses": {"type": "array", "items": {"$ref": "#/$defs/cause"}},
+    "counter_hypotheses": {"type": "array", "items": {"$ref": "#/$defs/counter"}},
+    "challenge_reviews": {"type": "array", "items": {"$ref": "#/$defs/challenge"}},
+    "verification_tests": {"type": "array", "items": {"$ref": "#/$defs/verification"}},
+    "signal_dispositions": {"type": "array", "items": {"$ref": "#/$defs/disposition"}},
+    "uncertainties": {"type": "array", "items": {"$ref": "#/$defs/openItem"}},
+    "data_requests": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/openItem"}},
+    "human_questions": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/openItem"}},
+    "expert_trigger_candidates": {"type": "array", "maxItems": 6, "items": {"$ref": "#/$defs/materialClaim"}},
+    "limitations": {"type": "array", "items": {"$ref": "#/$defs/openItem"}}
+  },
+  "$defs": {
+    "stringSet": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "valueRef": {"type": "object", "additionalProperties": false, "required": ["token", "fact_or_signal_id", "display_field", "display_format_ref"], "properties": {"token": {"type": "string"}, "fact_or_signal_id": {"type": "string"}, "display_field": {"type": "string"}, "display_format_ref": {"type": "string"}}},
+    "proposal": {"type": "object", "additionalProperties": false, "required": ["evidence_ref", "polarity", "role"], "properties": {"evidence_ref": {"type": "string"}, "polarity": {"enum": ["supports", "contradicts"]}, "role": {"enum": ["observation", "corroboration", "mechanism", "counter_evidence", "boundary"]}}},
+    "observation": {"type": "object", "additionalProperties": false, "required": ["local_key", "statement_template", "value_refs", "fact_ids", "signal_ids"], "properties": {"local_key": {"type": "string"}, "statement_template": {"type": "string", "maxLength": 400}, "value_refs": {"type": "array", "items": {"$ref": "#/$defs/valueRef"}}, "fact_ids": {"$ref": "#/$defs/stringSet"}, "signal_ids": {"$ref": "#/$defs/stringSet"}}},
+    "materialClaim": {"type": "object", "additionalProperties": false, "required": ["local_key", "statement_template", "value_refs", "evidence_proposals"], "properties": {"local_key": {"type": "string"}, "statement_template": {"type": "string", "maxLength": 400}, "value_refs": {"type": "array", "items": {"$ref": "#/$defs/valueRef"}}, "evidence_proposals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/proposal"}}, "observation_local_keys": {"$ref": "#/$defs/stringSet"}, "target_problem_local_keys": {"$ref": "#/$defs/stringSet"}, "target_hypothesis_local_keys": {"$ref": "#/$defs/stringSet"}, "expert_trigger_ref": {"type": "string"}, "required_document_refs": {"$ref": "#/$defs/stringSet"}, "review_question_template": {"type": "string"}}},
+    "problem": {"type": "object", "additionalProperties": false, "required": ["local_key", "business_meaning_local_keys", "problem_family_ref", "statement_template", "value_refs", "evidence_proposals"], "properties": {"local_key": {"type": "string"}, "business_meaning_local_keys": {"$ref": "#/$defs/stringSet"}, "problem_family_ref": {"type": "string"}, "statement_template": {"type": "string"}, "value_refs": {"type": "array", "items": {"$ref": "#/$defs/valueRef"}}, "evidence_proposals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/proposal"}}}},
+    "cause": {"type": "object", "additionalProperties": false, "required": ["local_key", "problem_local_key", "mechanism_ref", "statement_template", "value_refs", "evidence_proposals", "support_condition_refs", "rejection_condition_refs", "distinguishing_test_refs"], "properties": {"local_key": {"type": "string"}, "problem_local_key": {"type": "string"}, "mechanism_ref": {"type": "string"}, "statement_template": {"type": "string"}, "value_refs": {"type": "array", "items": {"$ref": "#/$defs/valueRef"}}, "evidence_proposals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/proposal"}}, "support_condition_refs": {"$ref": "#/$defs/stringSet"}, "rejection_condition_refs": {"$ref": "#/$defs/stringSet"}, "distinguishing_test_refs": {"$ref": "#/$defs/stringSet"}}},
+    "counter": {"type": "object", "additionalProperties": false, "required": ["local_key", "challenged_hypothesis_local_key", "mechanism_ref", "statement_template", "value_refs", "evidence_proposals"], "properties": {"local_key": {"type": "string"}, "challenged_hypothesis_local_key": {"type": "string"}, "mechanism_ref": {"type": "string"}, "statement_template": {"type": "string"}, "value_refs": {"type": "array", "items": {"$ref": "#/$defs/valueRef"}}, "evidence_proposals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/proposal"}}}},
+    "challenge": {"type": "object", "additionalProperties": false, "required": ["target_hypothesis_local_key", "outcome", "searched_fact_ids", "searched_signal_ids", "missing_fact_codes", "statement_template"], "properties": {"target_hypothesis_local_key": {"type": "string"}, "outcome": {"enum": ["found", "none_found", "not_assessable"]}, "searched_fact_ids": {"$ref": "#/$defs/stringSet"}, "searched_signal_ids": {"$ref": "#/$defs/stringSet"}, "missing_fact_codes": {"$ref": "#/$defs/stringSet"}, "statement_template": {"type": "string"}}},
+    "verification": {"type": "object", "additionalProperties": false, "required": ["test_ref", "target_hypothesis_local_key", "status", "required_fact_codes", "result_fact_ids", "result_signal_ids"], "properties": {"test_ref": {"type": "string"}, "target_hypothesis_local_key": {"type": "string"}, "status": {"enum": ["ready", "needs_data", "human_confirmation", "completed"]}, "required_fact_codes": {"$ref": "#/$defs/stringSet"}, "result_fact_ids": {"$ref": "#/$defs/stringSet"}, "result_signal_ids": {"$ref": "#/$defs/stringSet"}}},
+    "disposition": {"type": "object", "additionalProperties": false, "required": ["signal_id", "disposition", "target_local_keys", "duplicate_of_signal_id", "context_evidence_ids", "rationale_template"], "properties": {"signal_id": {"type": "string"}, "disposition": {"enum": ["used_support", "used_counter", "boundary", "duplicate", "contextual_only"]}, "target_local_keys": {"$ref": "#/$defs/stringSet"}, "duplicate_of_signal_id": {"type": ["string", "null"]}, "context_evidence_ids": {"$ref": "#/$defs/stringSet"}, "rationale_template": {"type": "string"}}},
+    "openItem": {"type": "object", "additionalProperties": false, "required": ["local_key", "statement_template"], "properties": {"local_key": {"type": "string"}, "statement_template": {"type": "string"}, "target_local_keys": {"$ref": "#/$defs/stringSet"}, "reason_code": {"type": "string"}, "missing_fact_codes": {"$ref": "#/$defs/stringSet"}}}
+  }
+}

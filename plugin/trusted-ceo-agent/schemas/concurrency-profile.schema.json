@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "concurrency-profile.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "max_workers",
+    "execution_mode",
+    "baseline_profile_id",
+    "quality_policy_id",
+    "quality_policy_hash",
+    "lifecycle_status",
+    "rollback_profile_id",
+    "profile_hash"
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "profile_id": {"enum": ["sequential", "parallel_2", "parallel_3", "parallel_4"]},
+    "max_workers": {"type": "integer", "minimum": 1, "maximum": 4},
+    "execution_mode": {"enum": ["sequential", "bounded_parallel"]},
+    "baseline_profile_id": {"const": "sequential"},
+    "quality_policy_id": {"type": "string", "minLength": 1},
+    "quality_policy_hash": {"$ref": "#/$defs/hash"},
+    "lifecycle_status": {"enum": ["baseline", "experimental"]},
+    "rollback_profile_id": {"const": "sequential"},
+    "profile_hash": {"$ref": "#/$defs/hash"}
+  }
+}
+

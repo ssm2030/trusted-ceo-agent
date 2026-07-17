@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "professional-depth-assessment.schema.json",
+  "title": "Professional Depth Assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "assessment_id", "issue_family_id", "domain",
+    "jurisdiction", "industry_scope", "effective_on", "family_hash",
+    "slot_status", "referenced_artifact_ids", "authority_inputs",
+    "effective_authority", "product_display", "activation_allowed",
+    "full_allowed", "blockers", "assessment_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "assessment_id": {"type": "string", "pattern": "^depth_assessment_[0-9a-f]{24}$"},
+    "issue_family_id": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "jurisdiction": {"type": "string", "minLength": 1},
+    "industry_scope": {"type": "string", "minLength": 1},
+    "effective_on": {"type": "string", "format": "date"},
+    "family_hash": {"$ref": "knowledge-artifact.schema.json#/$defs/hash"},
+    "slot_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "D1", "D2", "D3", "D4", "D5", "D6",
+        "D7", "D8", "D9", "D10", "D11", "D12"
+      ],
+      "properties": {
+        "D1": {"type": "boolean"}, "D2": {"type": "boolean"},
+        "D3": {"type": "boolean"}, "D4": {"type": "boolean"},
+        "D5": {"type": "boolean"}, "D6": {"type": "boolean"},
+        "D7": {"type": "boolean"}, "D8": {"type": "boolean"},
+        "D9": {"type": "boolean"}, "D10": {"type": "boolean"},
+        "D11": {"type": "boolean"}, "D12": {"type": "boolean"}
+      }
+    },
+    "referenced_artifact_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^knowledge_[0-9a-f]{24}$"}
+    },
+    "authority_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "knowledge_trust", "knowledge_authority", "pack_authority",
+        "expert_authority", "release_authority"
+      ],
+      "properties": {
+        "knowledge_trust": {
+          "enum": [
+            "machine_draft", "source_grounded", "synthetic_tested",
+            "poc_stable", "expert_reviewed", "full"
+          ]
+        },
+        "knowledge_authority": {"enum": ["machine_draft", "boundary", "provisional", "full"]},
+        "pack_authority": {"enum": ["boundary", "provisional", "full"]},
+        "expert_authority": {"enum": ["provisional", "full"]},
+        "release_authority": {"enum": ["provisional", "full"]}
+      }
+    },
+    "effective_authority": {"enum": ["machine_draft", "boundary", "provisional", "full"]},
+    "product_display": {"enum": ["machine_draft", "Boundary", "Provisional", "Full"]},
+    "activation_allowed": {"type": "boolean"},
+    "full_allowed": {"type": "boolean"},
+    "blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "assessment_hash": {"$ref": "knowledge-artifact.schema.json#/$defs/hash"}
+  }
+}

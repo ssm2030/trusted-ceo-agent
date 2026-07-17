@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "normalized-card.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "card_id", "job_id", "artifact_ref", "pack_manifest_hash", "lens_id", "model_profile", "assessment_status", "used_fact_ids", "used_signal_ids", "normalized_payload", "evidence_link_ids", "evidence_links", "validation_result", "integrity"],
+  "properties": {
+    "schema_version": {"type": "string"}, "card_id": {"type": "string"}, "job_id": {"type": "string"},
+    "artifact_ref": {"type": "string"}, "pack_manifest_hash": {"type": "string"}, "lens_id": {"type": "string"},
+    "model_profile": {"type": "string"}, "assessment_status": {"enum": ["complete", "partial", "not_assessable"]},
+    "used_fact_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "used_signal_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "normalized_payload": {"type": "object"}, "evidence_link_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "evidence_links": {"type": "array", "items": {"type": "object"}},
+    "validation_result": {"type": "object"}, "integrity": {"type": "object"}
+  }
+}

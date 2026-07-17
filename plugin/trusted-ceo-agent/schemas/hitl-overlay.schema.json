@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "hitl-overlay.schema.json",
+  "type": "object", "additionalProperties": false,
+  "properties": {
+    "mission_contract": {"type": "object"}, "mapping": {"type": "object"}, "scope_narrowing": {"type": "object"},
+    "issue_dispositions": {"type": "object"}, "decision_dispositions": {"type": "object"}, "verification_authorizations": {"type": "object"},
+    "issue_groups": {"type": "object"}, "materiality_context": {"type": "object"}, "requested_counter_checks": {"type": "object"},
+    "deep_dive_scope": {"type": "object"}, "response_dispositions": {"type": "object"}, "expert_routing": {"type": "object"},
+    "ceo_wording": {"type": "object"}, "delivery_scope": {"type": "object"}
+  }
+}

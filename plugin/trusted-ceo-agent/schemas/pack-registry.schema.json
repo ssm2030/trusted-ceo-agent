@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pack-registry.schema.json",
+  "type": "object",
+  "required": ["schema_version", "entries"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pack_sha256", "pack_id", "pack_version", "effective_authority", "approval_record_hash", "approved_by_role", "approved_at", "contract_test_manifest_hash", "valid_from", "revoked_at"],
+        "properties": {
+          "pack_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "pack_id": {"type": "string", "minLength": 1},
+          "pack_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+          "effective_authority": {"enum": ["full", "boundary"]},
+          "approval_record_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "approved_by_role": {"type": "string", "minLength": 1},
+          "approved_at": {"type": "string", "format": "date-time"},
+          "contract_test_manifest_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "valid_from": {"type": "string", "format": "date-time"},
+          "revoked_at": {"type": ["string", "null"], "format": "date-time"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

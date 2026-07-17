@@ -1,0 +1,492 @@
+{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "$id":  "domain-pack.schema.json",
+    "type":  "object",
+    "required":  [
+                     "schema_version",
+                     "pack_type",
+                     "pack_id",
+                     "pack_version",
+                     "requested_authority",
+                     "title",
+                     "description",
+                     "applicability",
+                     "dependencies",
+                     "safety",
+                     "content"
+                 ],
+    "properties":  {
+                       "schema_version":  {
+                                              "const":  "1.0.0"
+                                          },
+                       "pack_type":  {
+                                         "const":  "domain"
+                                     },
+                       "pack_id":  {
+                                       "type":  "string",
+                                       "minLength":  1
+                                   },
+                       "pack_version":  {
+                                            "type":  "string"
+                                        },
+                       "requested_authority":  {
+                                                   "enum":  [
+                                                                "full",
+                                                                "provisional",
+                                                                "boundary"
+                                                            ]
+                                               },
+                       "title":  {
+                                     "type":  "string"
+                                 },
+                       "description":  {
+                                           "type":  "string"
+                                       },
+                       "applicability":  {
+                                             "$ref":  "#/$defs/applicability"
+                                         },
+                       "dependencies":  {
+                                            "type":  "array",
+                                            "items":  {
+                                                          "type":  "string"
+                                                      },
+                                            "uniqueItems":  true
+                                        },
+                       "safety":  {
+                                      "$ref":  "#/$defs/safety"
+                                  },
+                       "content":  {
+                                       "type":  "object",
+                                       "required":  [
+                                                        "domain_code",
+                                                        "applicability_dimensions",
+                                                        "applicability_rules",
+                                                        "exclusions",
+                                                        "terminology",
+                                                        "metric_definitions",
+                                                        "threshold_definitions",
+                                                        "expected_relationships",
+                                                        "analysis_lenses",
+                                                        "mechanism_catalog",
+                                                        "expert_triggers",
+                                                        "required_data",
+                                                        "forbidden_interpretations",
+                                                        "safe_stop_rules",
+                                                        "independence_policy",
+                                                        "privacy_policy"
+                                                    ],
+                                       "properties":  {
+                                                          "domain_code":  {
+                                                                              "type":  "string"
+                                                                          },
+                                                          "applicability_dimensions":  {
+                                                                                           "type":  "array",
+                                                                                           "items":  {
+                                                                                                         "type":  "string"
+                                                                                                     }
+                                                                                       },
+                                                          "applicability_rules":  {
+                                                                                      "type":  "array",
+                                                                                      "items":  {
+                                                                                                    "type":  "object"
+                                                                                                }
+                                                                                  },
+                                                          "exclusions":  {
+                                                                             "type":  "array",
+                                                                             "items":  {
+                                                                                           "type":  "string"
+                                                                                       }
+                                                                         },
+                                                          "terminology":  {
+                                                                              "type":  "object"
+                                                                          },
+                                                          "metric_definitions":  {
+                                                                                     "type":  "array",
+                                                                                     "items":  {
+                                                                                                   "$ref":  "#/$defs/metric"
+                                                                                               }
+                                                                                 },
+                                                          "threshold_definitions":  {
+                                                                                        "type":  "array",
+                                                                                        "items":  {
+                                                                                                      "$ref":  "#/$defs/threshold"
+                                                                                                  }
+                                                                                    },
+                                                          "expected_relationships":  {
+                                                                                         "type":  "array",
+                                                                                         "items":  {
+                                                                                                       "type":  "object"
+                                                                                                   }
+                                                                                     },
+                                                          "analysis_lenses":  {
+                                                                                  "type":  "array",
+                                                                                  "items":  {
+                                                                                                "type":  "object"
+                                                                                            }
+                                                                              },
+                                                          "mechanism_catalog":  {
+                                                                                    "type":  "array",
+                                                                                    "items":  {
+                                                                                                  "$ref":  "#/$defs/mechanism"
+                                                                                              }
+                                                                                },
+                                                          "expert_triggers":  {
+                                                                                  "type":  "array",
+                                                                                  "items":  {
+                                                                                                "$ref":  "#/$defs/expert"
+                                                                                            }
+                                                                              },
+                                                          "required_data":  {
+                                                                                "type":  "array",
+                                                                                "items":  {
+                                                                                              "type":  "string"
+                                                                                          }
+                                                                            },
+                                                          "forbidden_interpretations":  {
+                                                                                            "type":  "array",
+                                                                                            "items":  {
+                                                                                                          "type":  "string"
+                                                                                                      }
+                                                                                        },
+                                                          "safe_stop_rules":  {
+                                                                                  "type":  "array",
+                                                                                  "items":  {
+                                                                                                "type":  "string"
+                                                                                            }
+                                                                              },
+                                                          "independence_policy":  {
+                                                                                      "type":  "object"
+                                                                                  },
+                                                          "privacy_policy":  {
+                                                                                 "$ref":  "#/$defs/privacy"
+                                                                             }
+                                                      },
+                                       "additionalProperties":  false
+                                   }
+                   },
+    "additionalProperties":  false,
+    "$defs":  {
+                  "applicability":  {
+                                        "type":  "object",
+                                        "required":  [
+                                                         "business_models",
+                                                         "industries",
+                                                         "excluded_industries",
+                                                         "required_data_roles"
+                                                     ],
+                                        "properties":  {
+                                                           "business_models":  {
+                                                                                   "type":  "array",
+                                                                                   "items":  {
+                                                                                                 "type":  "string"
+                                                                                             },
+                                                                                   "uniqueItems":  true
+                                                                               },
+                                                           "industries":  {
+                                                                              "type":  "array",
+                                                                              "items":  {
+                                                                                            "type":  "string"
+                                                                                        },
+                                                                              "uniqueItems":  true
+                                                                          },
+                                                           "excluded_industries":  {
+                                                                                       "type":  "array",
+                                                                                       "items":  {
+                                                                                                     "type":  "string"
+                                                                                                 },
+                                                                                       "uniqueItems":  true
+                                                                                   },
+                                                           "required_data_roles":  {
+                                                                                       "type":  "array",
+                                                                                       "items":  {
+                                                                                                     "type":  "string"
+                                                                                                 },
+                                                                                       "uniqueItems":  true
+                                                                                   }
+                                                       },
+                                        "additionalProperties":  false
+                                    },
+                  "safety":  {
+                                 "type":  "object",
+                                 "required":  [
+                                                  "forbidden_interpretations",
+                                                  "safe_stop_rules"
+                                              ],
+                                 "properties":  {
+                                                    "forbidden_interpretations":  {
+                                                                                      "type":  "array",
+                                                                                      "items":  {
+                                                                                                    "type":  "string"
+                                                                                                }
+                                                                                  },
+                                                    "safe_stop_rules":  {
+                                                                            "type":  "array",
+                                                                            "items":  {
+                                                                                          "type":  "string"
+                                                                                      }
+                                                                        }
+                                                },
+                                 "additionalProperties":  false
+                             },
+                  "metric":  {
+                                 "type":  "object",
+                                 "required":  [
+                                                  "metric_code",
+                                                  "metric_origin",
+                                                  "business_definition",
+                                                  "accepted_observation_roles",
+                                                  "data_type",
+                                                  "unit_policy",
+                                                  "time_role",
+                                                  "allowed_dimensions",
+                                                  "aggregation_policy",
+                                                  "reconciliation_refs"
+                                              ],
+                                 "properties":  {
+                                                    "metric_code":  {
+                                                                        "type":  "string"
+                                                                    },
+                                                    "business_definition":  {
+                                                                                "type":  "string"
+                                                                            },
+                                                    "accepted_observation_roles":  {
+                                                                                       "type":  "array",
+                                                                                       "items":  {
+                                                                                                     "type":  "string"
+                                                                                                 },
+                                                                                       "minItems":  1,
+                                                                                       "uniqueItems":  true
+                                                                                   },
+                                                    "data_type":  {
+                                                                      "enum":  [
+                                                                                   "decimal",
+                                                                                   "integer",
+                                                                                   "date"
+                                                                               ]
+                                                                  },
+                                                    "unit_policy":  {
+                                                                        "enum":  [
+                                                                                     "single_currency_or_verified_conversion",
+                                                                                     "ratio",
+                                                                                     "hour",
+                                                                                     "percentage_point",
+                                                                                     "count",
+                                                                                     "day",
+                                                                                     "date"
+                                                                                 ]
+                                                                    },
+                                                    "time_role":  {
+                                                                      "type":  "string"
+                                                                  },
+                                                    "allowed_dimensions":  {
+                                                                               "type":  "array",
+                                                                               "items":  {
+                                                                                             "type":  "string"
+                                                                                         }
+                                                                           },
+                                                    "aggregation_policy":  {
+                                                                               "type":  "string"
+                                                                           },
+                                                    "reconciliation_refs":  {
+                                                                                "type":  "array",
+                                                                                "items":  {
+                                                                                              "type":  "string"
+                                                                                          }
+                                                                            },
+                                                    "metric_origin":  {
+                                                                          "enum":  [
+                                                                                       "raw_input",
+                                                                                       "derived_output"
+                                                                                   ]
+                                                                      }
+                                                },
+                                 "additionalProperties":  false
+                             },
+                  "threshold":  {
+                                    "type":  "object",
+                                    "required":  [
+                                                     "threshold_id",
+                                                     "condition_expression",
+                                                     "impact_band",
+                                                     "urgency_band",
+                                                     "provenance",
+                                                     "valid_from",
+                                                     "valid_to"
+                                                 ],
+                                    "properties":  {
+                                                       "threshold_id":  {
+                                                                            "type":  "string"
+                                                                        },
+                                                       "value":  {
+                                                                     "type":  [
+                                                                                  "string",
+                                                                                  "null"
+                                                                              ]
+                                                                 },
+                                                       "unit_code":  {
+                                                                         "type":  [
+                                                                                      "string",
+                                                                                      "null"
+                                                                                  ]
+                                                                     },
+                                                       "condition_expression":  {
+                                                                                    "type":  "object"
+                                                                                },
+                                                       "impact_band":  {
+                                                                           "enum":  [
+                                                                                        "critical",
+                                                                                        "high",
+                                                                                        "medium",
+                                                                                        "low",
+                                                                                        "unknown"
+                                                                                    ]
+                                                                       },
+                                                       "urgency_band":  {
+                                                                            "enum":  [
+                                                                                         "immediate",
+                                                                                         "near_term",
+                                                                                         "routine",
+                                                                                         "unknown"
+                                                                                     ]
+                                                                        },
+                                                       "provenance":  {
+                                                                          "type":  "string"
+                                                                      },
+                                                       "valid_from":  {
+                                                                          "type":  "string"
+                                                                      },
+                                                       "valid_to":  {
+                                                                        "type":  [
+                                                                                     "string",
+                                                                                     "null"
+                                                                                 ]
+                                                                    }
+                                                   },
+                                    "additionalProperties":  false
+                                },
+                  "mechanism":  {
+                                    "type":  "object",
+                                    "required":  [
+                                                     "mechanism_ref",
+                                                     "explanation",
+                                                     "expected_support_patterns",
+                                                     "expected_counter_patterns",
+                                                     "distinguishing_test_refs",
+                                                     "prohibited_conclusion"
+                                                 ],
+                                    "properties":  {
+                                                       "mechanism_ref":  {
+                                                                             "type":  "string"
+                                                                         },
+                                                       "explanation":  {
+                                                                           "type":  "string"
+                                                                       },
+                                                       "expected_support_patterns":  {
+                                                                                         "type":  "array",
+                                                                                         "items":  {
+                                                                                                       "type":  "string"
+                                                                                                   }
+                                                                                     },
+                                                       "expected_counter_patterns":  {
+                                                                                         "type":  "array",
+                                                                                         "items":  {
+                                                                                                       "type":  "string"
+                                                                                                   }
+                                                                                     },
+                                                       "distinguishing_test_refs":  {
+                                                                                        "type":  "array",
+                                                                                        "items":  {
+                                                                                                      "type":  "string"
+                                                                                                  }
+                                                                                    },
+                                                       "prohibited_conclusion":  {
+                                                                                     "type":  "string"
+                                                                                 }
+                                                   },
+                                    "additionalProperties":  false
+                                },
+                  "expert":  {
+                                 "type":  "object",
+                                 "required":  [
+                                                  "expert_trigger_ref",
+                                                  "profession",
+                                                  "trigger_condition",
+                                                  "required_evidence_roles",
+                                                  "required_documents",
+                                                  "review_question_template",
+                                                  "prohibited_agent_conclusions"
+                                              ],
+                                 "properties":  {
+                                                    "expert_trigger_ref":  {
+                                                                               "type":  "string"
+                                                                           },
+                                                    "profession":  {
+                                                                       "type":  "string"
+                                                                   },
+                                                    "trigger_condition":  {
+                                                                              "type":  "object"
+                                                                          },
+                                                    "required_evidence_roles":  {
+                                                                                    "type":  "array",
+                                                                                    "items":  {
+                                                                                                  "type":  "string"
+                                                                                              }
+                                                                                },
+                                                    "required_documents":  {
+                                                                               "type":  "array",
+                                                                               "items":  {
+                                                                                             "type":  "string"
+                                                                                         }
+                                                                           },
+                                                    "review_question_template":  {
+                                                                                     "type":  "string"
+                                                                                 },
+                                                    "prohibited_agent_conclusions":  {
+                                                                                         "type":  "array",
+                                                                                         "items":  {
+                                                                                                       "type":  "string"
+                                                                                                   }
+                                                                                     }
+                                                },
+                                 "additionalProperties":  false
+                             },
+                  "privacy":  {
+                                  "type":  "object",
+                                  "required":  [
+                                                   "direct_identifier_roles",
+                                                   "prohibited_dimensions",
+                                                   "minimum_group_size",
+                                                   "suppression_rule",
+                                                   "allowed_reasoning_dimensions"
+                                               ],
+                                  "properties":  {
+                                                     "direct_identifier_roles":  {
+                                                                                     "type":  "array",
+                                                                                     "items":  {
+                                                                                                   "type":  "string"
+                                                                                               }
+                                                                                 },
+                                                     "prohibited_dimensions":  {
+                                                                                   "type":  "array",
+                                                                                   "items":  {
+                                                                                                 "type":  "string"
+                                                                                             }
+                                                                               },
+                                                     "minimum_group_size":  {
+                                                                                "type":  "integer",
+                                                                                "minimum":  1
+                                                                            },
+                                                     "suppression_rule":  {
+                                                                              "type":  "string"
+                                                                          },
+                                                     "allowed_reasoning_dimensions":  {
+                                                                                          "type":  "array",
+                                                                                          "items":  {
+                                                                                                        "type":  "string"
+                                                                                                    }
+                                                                                      }
+                                                 },
+                                  "additionalProperties":  false
+                              }
+              }
+}

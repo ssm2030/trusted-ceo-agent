@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "counter-hypothesis-card.schema.json",
+  "allOf": [
+    {"$ref": "knowledge-artifact.schema.json#/$defs/base"},
+    {
+      "type": "object",
+      "required": ["artifact_type", "content"],
+      "properties": {
+        "artifact_type": {"const": "counter_hypothesis_card"},
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "hypothesis", "alternative_explanation", "counter_evidence_roles",
+            "distinguishing_procedure_refs"
+          ],
+          "properties": {
+            "hypothesis": {"type": "string", "minLength": 1},
+            "alternative_explanation": {"type": "string", "minLength": 1},
+            "counter_evidence_roles": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+            "distinguishing_procedure_refs": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"}
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

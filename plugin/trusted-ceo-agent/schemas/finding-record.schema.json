@@ -1,0 +1,351 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "finding-record.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "finding_id",
+    "schema_version",
+    "run_id",
+    "revision",
+    "case_id",
+    "event_id",
+    "signal_ids",
+    "domain_assessment_refs",
+    "issue_family_refs",
+    "fact_refs",
+    "evidence_link_refs",
+    "source_refs",
+    "procedure_result_refs",
+    "norm_refs",
+    "calculation_refs",
+    "hypotheses",
+    "counter_hypotheses",
+    "supporting_evidence_refs",
+    "contradicting_evidence_refs",
+    "unresolved_conflicts",
+    "disposition",
+    "conclusion",
+    "conclusion_strength",
+    "impact_dimensions",
+    "coverage",
+    "data_gaps",
+    "expert_review",
+    "grade",
+    "authority",
+    "uncertainty",
+    "verification",
+    "related_finding_ids",
+    "supersedes_finding_id",
+    "created_from_hash",
+    "content_hash",
+    "producer"
+  ],
+  "properties": {
+    "finding_id": {"type": "string", "pattern": "^finding_[0-9a-f]{24}$"},
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "pattern": "^run_[A-Za-z0-9_.-]+$"},
+    "revision": {"type": "integer", "minimum": 0},
+    "case_id": {"type": "string", "pattern": "^case_[0-9a-f]{24}$"},
+    "event_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "signal_ids": {"$ref": "#/$defs/signalSet"},
+    "domain_assessment_refs": {"$ref": "#/$defs/stringSet"},
+    "issue_family_refs": {"$ref": "#/$defs/stringSet"},
+    "fact_refs": {"$ref": "#/$defs/factSet"},
+    "evidence_link_refs": {"$ref": "#/$defs/evidenceSet"},
+    "source_refs": {"$ref": "#/$defs/sourceSet"},
+    "procedure_result_refs": {"$ref": "#/$defs/stringSet"},
+    "norm_refs": {"$ref": "#/$defs/stringSet"},
+    "calculation_refs": {"$ref": "#/$defs/stringSet"},
+    "hypotheses": {"$ref": "#/$defs/stringSet"},
+    "counter_hypotheses": {"$ref": "#/$defs/stringSet"},
+    "supporting_evidence_refs": {"$ref": "#/$defs/evidenceSet"},
+    "contradicting_evidence_refs": {"$ref": "#/$defs/evidenceSet"},
+    "unresolved_conflicts": {"$ref": "#/$defs/stringSet"},
+    "disposition": {
+      "enum": [
+        "substantiated",
+        "not_substantiated",
+        "inconclusive",
+        "merged",
+        "out_of_scope",
+        "expert_review_required",
+        "deferred",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "conclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "scope", "basis_refs", "qualifier"],
+      "properties": {
+        "statement": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "scope": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "basis_refs": {"$ref": "#/$defs/stringSet"},
+        "qualifier": {
+          "enum": [
+            "supported_within_current_scope",
+            "not_supported_within_current_scope",
+            "insufficient_evidence",
+            "expert_judgment_required",
+            "merged_into_other_finding",
+            "outside_approved_scope",
+            "deferred_follow_up",
+            "required_work_failed",
+            "cancelled_by_human"
+          ]
+        }
+      }
+    },
+    "conclusion_strength": {"enum": ["tentative", "supported", "strong"]},
+    "impact_dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "cash", "legal", "tax", "human", "operations", "control"],
+      "properties": {
+        "amount": {"$ref": "#/$defs/impactValue"},
+        "cash": {"$ref": "#/$defs/impactValue"},
+        "legal": {"$ref": "#/$defs/impactValue"},
+        "tax": {"$ref": "#/$defs/impactValue"},
+        "human": {"$ref": "#/$defs/impactValue"},
+        "operations": {"$ref": "#/$defs/impactValue"},
+        "control": {"$ref": "#/$defs/impactValue"}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_procedures_complete",
+        "counter_evidence_complete",
+        "evidence_coverage_complete",
+        "missing_evidence_refs",
+        "missing_procedure_refs",
+        "scope_note"
+      ],
+      "properties": {
+        "required_procedures_complete": {"type": "boolean"},
+        "counter_evidence_complete": {"type": "boolean"},
+        "evidence_coverage_complete": {"type": "boolean"},
+        "missing_evidence_refs": {"$ref": "#/$defs/stringSet"},
+        "missing_procedure_refs": {"$ref": "#/$defs/stringSet"},
+        "scope_note": {"type": "string", "minLength": 1, "maxLength": 2048}
+      }
+    },
+    "data_gaps": {"$ref": "#/$defs/stringSet"},
+    "expert_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "packet_ref", "decision_boundary", "owner"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "packet_ref": {"type": ["string", "null"], "minLength": 1},
+        "decision_boundary": {"type": ["string", "null"], "minLength": 1},
+        "owner": {"type": ["string", "null"], "minLength": 1}
+      }
+    },
+    "grade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "grade_record_ref"],
+      "properties": {
+        "status": {"enum": ["published", "withheld"]},
+        "grade_record_ref": {"type": ["string", "null"], "minLength": 1}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["effective_level", "pack_release_refs", "approval_refs"],
+      "properties": {
+        "effective_level": {
+          "enum": ["machine_draft", "Boundary", "Provisional", "Full"]
+        },
+        "pack_release_refs": {"$ref": "#/$defs/stringSet"},
+        "approval_refs": {"$ref": "#/$defs/approvalSet"}
+      }
+    },
+    "uncertainty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason_codes"],
+      "properties": {
+        "status": {"enum": ["resolved", "partial", "material"]},
+        "reason_codes": {"$ref": "#/$defs/stringSet"}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_procedure_refs",
+        "completed_procedure_refs",
+        "counter_evidence_checked",
+        "counter_evidence_refs",
+        "verification_step_refs"
+      ],
+      "properties": {
+        "required_procedure_refs": {"$ref": "#/$defs/stringSet"},
+        "completed_procedure_refs": {"$ref": "#/$defs/stringSet"},
+        "counter_evidence_checked": {"type": "boolean"},
+        "counter_evidence_refs": {"$ref": "#/$defs/evidenceSet"},
+        "verification_step_refs": {"$ref": "#/$defs/stringSet"}
+      }
+    },
+    "related_finding_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^finding_[0-9a-f]{24}$"}
+    },
+    "supersedes_finding_id": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^finding_[0-9a-f]{24}$"}
+      ]
+    },
+    "created_from_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "producer": {"const": "analysis_runtime"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"disposition": {"const": "substantiated"}}},
+      "then": {
+        "properties": {
+          "fact_refs": {"minItems": 1},
+          "evidence_link_refs": {"minItems": 1},
+          "procedure_result_refs": {"minItems": 1},
+          "supporting_evidence_refs": {"minItems": 1},
+          "coverage": {
+            "properties": {
+              "required_procedures_complete": {"const": true},
+              "counter_evidence_complete": {"const": true},
+              "evidence_coverage_complete": {"const": true}
+            }
+          },
+          "verification": {
+            "properties": {
+              "counter_evidence_checked": {"const": true}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"disposition": {"const": "not_substantiated"}}},
+      "then": {
+        "properties": {
+          "conclusion": {
+            "properties": {
+              "qualifier": {"const": "not_supported_within_current_scope"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"disposition": {"const": "inconclusive"}}},
+      "then": {
+        "properties": {
+          "data_gaps": {"minItems": 1},
+          "uncertainty": {"properties": {"status": {"const": "material"}}},
+          "coverage": {
+            "anyOf": [
+              {"properties": {"missing_evidence_refs": {"minItems": 1}}},
+              {"properties": {"missing_procedure_refs": {"minItems": 1}}}
+            ]
+          },
+          "conclusion": {
+            "properties": {"qualifier": {"const": "insufficient_evidence"}}
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"disposition": {"const": "expert_review_required"}}},
+      "then": {
+        "properties": {
+          "expert_review": {
+            "properties": {
+              "required": {"const": true},
+              "packet_ref": {"type": "string", "minLength": 1},
+              "decision_boundary": {"type": "string", "minLength": 1},
+              "owner": {"type": "string", "minLength": 1}
+            }
+          },
+          "conclusion": {
+            "properties": {"qualifier": {"const": "expert_judgment_required"}}
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"grade": {"properties": {"status": {"const": "published"}}}}},
+      "then": {
+        "properties": {
+          "grade": {
+            "properties": {
+              "grade_record_ref": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "grade": {"properties": {"grade_record_ref": {"type": "null"}}}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "authority": {
+            "properties": {"effective_level": {"const": "Full"}}
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "authority": {"properties": {"approval_refs": {"minItems": 1}}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "stringSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "signalSet": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^signal_[0-9a-f]{24}$"}
+    },
+    "factSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^fact_[0-9a-f]{24}$"}
+    },
+    "evidenceSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^evidence_[0-9a-f]{24}$"}
+    },
+    "sourceSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^source_[0-9a-f]{24}$"}
+    },
+    "approvalSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^approval_[0-9a-f]{24}$"}
+    },
+    "impactValue": {
+      "enum": ["material", "possible", "immaterial", "unknown", "not_assessed"]
+    }
+  }
+}

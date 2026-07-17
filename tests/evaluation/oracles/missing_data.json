@@ -1,0 +1,1 @@
+{"scenario_id":"missing_data","expected_fact_codes":["gross_margin"],"expected_signal_codes":["margin_deterioration","missing_causal_data"],"expected_issue_keys":["profitability_not_assessable"],"expected_primary_grades":{"profitability_not_assessable":"Not Assessable"},"forbidden_claim_codes":["confirmed_cause","unconditional_response"],"forbidden_professional_conclusions":[]}

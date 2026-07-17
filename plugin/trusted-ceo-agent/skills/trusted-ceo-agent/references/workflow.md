@@ -18,6 +18,12 @@ The CLI owns state and revisions. Do not edit artifact files. Read the single JS
 
 `pending-action` returns the current immutable Human Action Card without changing the revision. For an unconfirmed Mission, `start --run-owner-actor-id` binds the application actor to the local transport principal; it does not create approval authority. `preview-human-response` validates the card, policy, and response without mutation. `submit-human-response` records facts, meanings, scope choices, or change requests with CAS and idempotency after actor/gate and Source access-policy checks. A resolved card is not regenerated until workflow state or evidence changes. It cannot approve a gate; `terminal_approval_required` means the separate TTY approval flow is still required.
 
+## Approved professional execution
+
+At `deep_dive_authorized`, `run-components` may receive `--accounting-input` and `--professional-input`. Each file is a closed JSON contract whose `scope_ref` must match the approved deep-dive scope. The accounting request binds all 64 Issue Families to one run and target revision. The professional request binds deterministic task results or declared failure codes to finite Work Item plan keys.
+
+The CLI stores canonical requests, execution bundles, Event, Routes, Signal Cases, Work Graphs, CAS results, Findings, Join, Integration, and Completion in the same immutable revision. A required component or professional Work Item failure records a blocked revision and exit 3; it is never replaced by writer fallback. `prepare-finalization` revalidates any stored professional CompletionAssessment and proceeds only for `finalization_ready` or `limited_completion_ready`.
+
 ## Revision behavior
 
 Pass `--expected-revision` to every mutation. If a command returns exit 6, call `status`, discard the stale proposal, and reconstruct it against the current snapshot. Do not merge snapshots manually.

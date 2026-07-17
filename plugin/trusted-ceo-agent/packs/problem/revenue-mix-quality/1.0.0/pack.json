@@ -1,0 +1,272 @@
+{
+    "schema_version":  "1.0.0",
+    "pack_type":  "problem",
+    "pack_id":  "revenue-mix-quality",
+    "pack_version":  "1.0.0",
+    "requested_authority":  "full",
+    "title":  "Revenue Mix Quality",
+    "description":  "Tests whether growth is shifting toward lower-margin services or contracts.",
+    "applicability":  {
+                          "business_models":  [
+                                                  "project_b2b_services",
+                                                  "subscription_b2b_services",
+                                                  "hybrid_b2b_services"
+                                              ],
+                          "industries":  [
+
+                                         ],
+                          "excluded_industries":  [
+
+                                                  ],
+                          "required_data_roles":  [
+                                                      "monthly_financials"
+                                                  ]
+                      },
+    "dependencies":  [
+                         "trusted-ceo-default@1.0.0",
+                         "b2b-services@1.0.0"
+                     ],
+    "safety":  {
+                   "forbidden_interpretations":  [
+                                                     "Equating all custom work with poor quality revenue"
+                                                 ],
+                   "safe_stop_rules":  [
+                                           "Require segment definitions and reconciled population"
+                                       ]
+               },
+    "content":  {
+                    "problem_family_code":  "revenue_mix_quality",
+                    "domain_pack_refs":  [
+                                             "b2b-services@1.0.0"
+                                         ],
+                    "entry_conditions":  [
+                                             {
+                                                 "op":  "gte",
+                                                 "left":  {
+                                                              "fact_ref":  {
+                                                                               "fact_code":  "low_margin_segment_share",
+                                                                               "reducer":  "count"
+                                                                           }
+                                                          },
+                                                 "right":  {
+                                                               "literal":  {
+                                                                               "type":  "decimal",
+                                                                               "value":  "2"
+                                                                           }
+                                                           }
+                                             },
+                                             {
+                                                 "op":  "exists",
+                                                 "operand":  {
+                                                                 "fact_ref":  {
+                                                                                  "fact_code":  "low_margin_segment_share_change_pp",
+                                                                                  "reducer":  "only"
+                                                                              }
+                                                             }
+                                             }
+                                         ],
+                    "required_capabilities":  [
+                                                  "segment_revenue",
+                                                  "segment_margin"
+                                              ],
+                    "lens_plan":  [
+                                      {
+                                          "lens_id":  "mix_requested",
+                                          "role":  "requested",
+                                          "required":  true,
+                                          "capability_refs":  [
+                                                                  "segment_revenue"
+                                                              ],
+                                          "allowed_mechanism_refs":  [
+                                                                         "low_margin_mix_shift"
+                                                                     ],
+                                          "max_shards":  1
+                                      },
+                                      {
+                                          "lens_id":  "mix_challenge",
+                                          "role":  "challenge",
+                                          "required":  true,
+                                          "capability_refs":  [
+                                                                  "segment_margin"
+                                                              ],
+                                          "allowed_mechanism_refs":  [
+                                                                         "low_margin_mix_shift"
+                                                                     ],
+                                          "max_shards":  1
+                                      }
+                                  ],
+                    "analysis_plan":  [
+                                          {
+                                              "component_id":  "mix_concentration",
+                                              "purpose":  "Measure segment revenue concentration",
+                                              "parameter_template":  {
+                                                                         "input_fact_ids":  {
+                                                                                                "fact_selector":  {
+                                                                                                                      "fact_code":  "segment_revenue",
+                                                                                                                      "cardinality":  "many",
+                                                                                                                      "time_role":  "latest",
+                                                                                                                      "scope_relation":  "any",
+                                                                                                                      "unit_code":  "KRW"
+                                                                                                                  }
+                                                                                            },
+                                                                         "input_fact_code":  "segment_revenue",
+                                                                         "top_n":  3,
+                                                                         "share_output_fact_code":  "top3_segment_revenue_share",
+                                                                         "hhi_output_fact_code":  "segment_revenue_hhi"
+                                                                     }
+                                          },
+                                          {
+                                              "component_id":  "compare",
+                                              "purpose":  "Compare low-margin segment share over time",
+                                              "parameter_template":  {
+                                                                         "baseline_fact_id":  {
+                                                                                                  "fact_selector":  {
+                                                                                                                        "fact_code":  "low_margin_segment_share",
+                                                                                                                        "cardinality":  "one",
+                                                                                                                        "time_role":  "previous",
+                                                                                                                        "scope_relation":  "any",
+                                                                                                                        "unit_code":  "ratio"
+                                                                                                                    }
+                                                                                              },
+                                                                         "current_fact_id":  {
+                                                                                                 "fact_selector":  {
+                                                                                                                       "fact_code":  "low_margin_segment_share",
+                                                                                                                       "cardinality":  "one",
+                                                                                                                       "time_role":  "latest",
+                                                                                                                       "scope_relation":  "any",
+                                                                                                                       "unit_code":  "ratio"
+                                                                                                                   }
+                                                                                             },
+                                                                         "mode":  "percentage_point_change",
+                                                                         "output_fact_code":  "low_margin_segment_share_change_pp",
+                                                                         "output_metric_code":  "low_margin_segment_share_change_pp"
+                                                                     }
+                                          }
+                                      ],
+                    "hypothesis_templates":  [
+                                                 {
+                                                     "hypothesis_key":  "low_margin_mix_shift",
+                                                     "statement":  "Low-margin share growth may explain aggregate margin pressure."
+                                                 }
+                                             ],
+                    "evidence_requirements":  [
+                                                  {
+                                                      "target_type":  "cause",
+                                                      "required_roles":  [
+                                                                             "segment_share",
+                                                                             "segment_margin_gap"
+                                                                         ],
+                                                      "minimum_independent_chains":  1
+                                                  }
+                                              ],
+                    "distinguishing_tests":  [
+                                                 {
+                                                     "test_ref":  "mix_bridge",
+                                                     "required_data":  [
+                                                                           "segment_revenue",
+                                                                           "segment_margin"
+                                                                       ]
+                                                 }
+                                             ],
+                    "decision_type_catalog":  [
+                                                  {
+                                                      "decision_type_ref":  "offer_and_pricing_mix",
+                                                      "allowed_decision_unit_types":  [
+                                                                                          "product_portfolio",
+                                                                                          "contract"
+                                                                                      ]
+                                                  }
+                                              ],
+                    "blocking_counter_evidence_conditions":  [
+                                                                 {
+                                                                     "condition_ref":  "margin_gap_absent",
+                                                                     "target_problem_family":  "revenue_mix_quality",
+                                                                     "condition_expression":  {
+                                                                                                  "op":  "lte",
+                                                                                                  "left":  {
+                                                                                                               "fact_ref":  {
+                                                                                                                                "fact_code":  "segment_margin_gap_pp",
+                                                                                                                                "reducer":  "only"
+                                                                                                                            }
+                                                                                                           },
+                                                                                                  "right":  {
+                                                                                                                "literal":  {
+                                                                                                                                "type":  "decimal",
+                                                                                                                                "value":  "0"
+                                                                                                                            }
+                                                                                                            }
+                                                                                              },
+                                                                     "reason_code":  "no_adverse_margin_gap"
+                                                                 }
+                                                             ],
+                    "deep_dive_plan":  [
+                                           {
+                                               "component_id":  "bridge_decompose",
+                                               "purpose":  "Quantify mix contribution to gross margin movement",
+                                               "parameter_template":  {
+                                                                          "gap_fact_id":  {
+                                                                                              "fact_selector":  {
+                                                                                                                    "fact_code":  "gross_margin_change_pp",
+                                                                                                                    "cardinality":  "one",
+                                                                                                                    "time_role":  "latest",
+                                                                                                                    "scope_relation":  "issue",
+                                                                                                                    "unit_code":  "percentage_point"
+                                                                                                                }
+                                                                                          },
+                                                                          "driver_fact_ids":  {
+                                                                                                  "fact_selector":  {
+                                                                                                                        "fact_code":  "segment_mix_margin_contribution_pp",
+                                                                                                                        "cardinality":  "many",
+                                                                                                                        "time_role":  "latest",
+                                                                                                                        "scope_relation":  "issue",
+                                                                                                                        "unit_code":  "percentage_point"
+                                                                                                                    }
+                                                                                              },
+                                                                          "residual_tolerance_ref":  "driver_contribution_plausible",
+                                                                          "output_fact_code":  "revenue_mix_bridge_residual_pp",
+                                                                          "output_metric_code":  "revenue_mix_bridge_residual_pp"
+                                                                      }
+                                           }
+                                       ],
+                    "conditional_response_catalog":  [
+                                                         {
+                                                             "response_ref":  "mix_guardrails",
+                                                             "preconditions":  [
+                                                                                   "mix contribution verified"
+                                                                               ],
+                                                             "disqualifiers":  [
+                                                                                   "no adverse margin gap"
+                                                                               ]
+                                                         }
+                                                     ],
+                    "expert_trigger_refs":  [
+
+                                            ],
+                    "not_assessable_rules":  [
+                                                 "Segment population does not reconcile"
+                                             ],
+                    "stop_rules":  [
+                                       "Do not infer causality from share movement alone"
+                                   ],
+                    "capability_requirements":  [
+                                                    {
+                                                        "capability_code":  "segment_revenue",
+                                                        "required_fact_codes":  [
+                                                                                    "segment_revenue"
+                                                                                ],
+                                                        "required_observation_roles":  [
+                                                                                           "ledger"
+                                                                                       ]
+                                                    },
+                                                    {
+                                                        "capability_code":  "segment_margin",
+                                                        "required_fact_codes":  [
+                                                                                    "low_margin_segment_share"
+                                                                                ],
+                                                        "required_observation_roles":  [
+                                                                                           "calculated"
+                                                                                       ]
+                                                    }
+                                                ]
+                }
+}

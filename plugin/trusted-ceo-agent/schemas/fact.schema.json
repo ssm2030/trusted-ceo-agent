@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "scopeMember": {"type": "object", "additionalProperties": false, "required": ["dimension_code", "member_code"], "properties": {"dimension_code": {"type": "string", "minLength": 1}, "member_code": {"type": "string", "minLength": 1}}},
+    "timeContext": {"oneOf": [
+      {"type": "object", "additionalProperties": false, "required": ["period"], "properties": {"period": {"type": "string", "minLength": 1}}},
+      {"type": "object", "additionalProperties": false, "required": ["as_of"], "properties": {"as_of": {"type": "string", "format": "date"}}},
+      {"type": "object", "additionalProperties": false, "required": ["window"], "properties": {"window": {"type": "object", "additionalProperties": false, "required": ["start", "end"], "properties": {"start": {"type": "string", "format": "date"}, "end": {"type": "string", "format": "date"}}}}}
+    ]},
+    "derivation": {"type": "object", "additionalProperties": false, "required": ["component_id", "component_version", "operation_code", "formula_ref", "parameter_hash", "input_fact_ids", "component_run_id"], "properties": {
+      "component_id": {"type": "string", "minLength": 1}, "component_version": {"type": "string", "minLength": 1}, "operation_code": {"type": "string", "minLength": 1}, "formula_ref": {"type": "string", "minLength": 1},
+      "parameter_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "input_fact_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^fact_[0-9a-f]{24}$"}, "uniqueItems": true},
+      "component_run_id": {"type": "string", "pattern": "^component_run_[0-9a-f]{24}$"}
+    }}
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fact_id", "fact_code", "fact_type", "metric_code", "semantic_role", "observation_role", "scope", "time_context", "value", "source_refs", "derivation", "quality", "producer", "integrity"],
+  "properties": {
+    "fact_id": {"type": "string", "pattern": "^fact_[0-9a-f]{24}$"}, "fact_code": {"type": "string", "minLength": 1}, "fact_type": {"enum": ["observed", "aggregated", "calculated"]},
+    "metric_code": {"type": "string", "minLength": 1}, "semantic_role": {"type": "string", "minLength": 1}, "observation_role": {"type": "string", "minLength": 1},
+    "scope": {"type": "array", "items": {"$ref": "#/$defs/scopeMember"}, "uniqueItems": true}, "time_context": {"$ref": "#/$defs/timeContext"},
+    "value": {"type": "object", "additionalProperties": false, "required": ["value_type", "canonical_value", "unit_code", "currency_code", "scale"], "properties": {
+      "value_type": {"enum": ["decimal", "integer", "string", "boolean", "date", "datetime", "category"]}, "canonical_value": {"type": ["string", "integer", "boolean"]},
+      "unit_code": {"type": ["string", "null"]}, "currency_code": {"type": ["string", "null"]}, "scale": {"type": ["string", "null"]}
+    }},
+    "source_refs": {"type": "array", "items": {"$ref": "source-reference.schema.json"}}, "derivation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/derivation"}]},
+    "quality": {"type": "array", "items": {"type": "string", "pattern": "^quality_[0-9a-f]{24}$"}, "uniqueItems": true},
+    "producer": {"enum": ["runtime_intake", "deterministic_component"]},
+    "integrity": {"type": "object", "additionalProperties": false, "required": ["payload_hash"], "properties": {"payload_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}
+  },
+  "allOf": [
+    {"if": {"properties": {"fact_type": {"const": "observed"}}}, "then": {"properties": {"derivation": {"type": "null"}, "producer": {"const": "runtime_intake"}, "source_refs": {"minItems": 1}}}},
+    {"if": {"properties": {"fact_type": {"enum": ["aggregated", "calculated"]}}}, "then": {"properties": {"derivation": {"$ref": "#/$defs/derivation"}, "producer": {"const": "deterministic_component"}}}}
+  ]
+}

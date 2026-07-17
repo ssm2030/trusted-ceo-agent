@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "knowledge-release.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "release_id", "release_sequence", "base_release_id", "base_release_hash", "candidate_id", "candidate_hash", "patch_refs", "artifact_manifest", "stage2_approval_refs", "stage3_approval_ref", "activated_for_runs_after_revision", "rollback_release_id", "deployed_at", "status", "release_hash"],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "patchRef": {"type": "object", "additionalProperties": false, "required": ["patch_id", "patch_hash"], "properties": {"patch_id": {"type": "string", "pattern": "^patch_[0-9a-f]{24}$"}, "patch_hash": {"$ref": "#/$defs/hash"}}},
+    "approvalRef": {"type": "object", "additionalProperties": false, "required": ["knowledge_approval_id", "approval_hash", "approved_by", "approver_role"], "properties": {"knowledge_approval_id": {"type": "string", "pattern": "^knowledgeapproval_[0-9a-f]{24}$"}, "approval_hash": {"$ref": "#/$defs/hash"}, "approved_by": {"type": "string", "minLength": 1}, "approver_role": {"type": "string", "minLength": 1}}},
+    "artifact": {"type": "object", "additionalProperties": false, "required": ["artifact_ref", "artifact_hash", "artifact_type"], "properties": {"artifact_ref": {"type": "string", "minLength": 1}, "artifact_hash": {"$ref": "#/$defs/hash"}, "artifact_type": {"enum": ["kernel", "pack", "card", "component", "prompt", "parser", "mapping", "procedure", "norm", "method", "presentation"]}}}
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "release_id": {"type": "string", "pattern": "^knowledge_release_[0-9a-f]{24}$"},
+    "release_sequence": {"type": "integer", "minimum": 1},
+    "base_release_id": {"type": ["string", "null"], "pattern": "^knowledge_release_[0-9a-f]{24}$"},
+    "base_release_hash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+    "candidate_id": {"type": ["string", "null"], "pattern": "^releasecandidate_[0-9a-f]{24}$"},
+    "candidate_hash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+    "patch_refs": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/patchRef"}},
+    "artifact_manifest": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/artifact"}},
+    "stage2_approval_refs": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/approvalRef"}},
+    "stage3_approval_ref": {"anyOf": [{"$ref": "#/$defs/approvalRef"}, {"type": "null"}]},
+    "activated_for_runs_after_revision": {"type": "integer", "minimum": 0},
+    "rollback_release_id": {"type": ["string", "null"], "pattern": "^knowledge_release_[0-9a-f]{24}$"},
+    "deployed_at": {"type": "string", "format": "date-time"},
+    "status": {"const": "published"},
+    "release_hash": {"$ref": "#/$defs/hash"}
+  }
+}

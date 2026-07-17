@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "analysis-work-item.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "graph_id",
+    "signal_case_id",
+    "event_id",
+    "domain",
+    "issue_family",
+    "procedure_refs",
+    "dependency_ids",
+    "required",
+    "packet_ref",
+    "packet_hash",
+    "pack_release_id",
+    "policy_release_id",
+    "attempt",
+    "timeout_policy",
+    "status",
+    "lease_owner",
+    "result_ref",
+    "result_hash",
+    "failure_code"
+  ],
+  "properties": {
+    "task_id": {"type": "string", "pattern": "^task_[0-9a-f]{24}$"},
+    "graph_id": {"type": "string", "pattern": "^graph_[0-9a-f]{24}$"},
+    "signal_case_id": {"type": "string", "minLength": 1},
+    "event_id": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "issue_family": {"type": "string", "minLength": 1},
+    "procedure_refs": {"$ref": "#/$defs/stringSet"},
+    "dependency_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^task_[0-9a-f]{24}$"},
+      "uniqueItems": true
+    },
+    "required": {"type": "boolean"},
+    "packet_ref": {"type": "string", "minLength": 1},
+    "packet_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "pack_release_id": {"type": "string", "minLength": 1},
+    "policy_release_id": {"type": "string", "minLength": 1},
+    "attempt": {"type": "integer", "minimum": 0, "maximum": 2},
+    "timeout_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timeout_seconds", "retryable_failure_codes"],
+      "properties": {
+        "timeout_seconds": {"type": "integer", "minimum": 1},
+        "retryable_failure_codes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/retryableFailureCode"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "status": {"$ref": "#/$defs/workItemStatus"},
+    "lease_owner": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "minLength": 1}
+      ]
+    },
+    "result_ref": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "minLength": 1}
+      ]
+    },
+    "result_hash": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      ]
+    },
+    "failure_code": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/failureCode"}
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"enum": ["leased", "running"]}}},
+      "then": {
+        "properties": {
+          "lease_owner": {"type": "string", "minLength": 1},
+          "attempt": {"minimum": 1}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "succeeded"}}},
+      "then": {
+        "properties": {
+          "result_ref": {"type": "string", "minLength": 1},
+          "result_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "failure_code": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "cancelled"}}},
+      "then": {"properties": {"failure_code": {"const": "cancelled_by_human"}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "superseded"}}},
+      "then": {"properties": {"failure_code": {"const": "stale_revision"}}}
+    }
+  ],
+  "$defs": {
+    "stringSet": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "workItemStatus": {
+      "enum": [
+        "pending",
+        "ready",
+        "leased",
+        "running",
+        "succeeded",
+        "needs_input",
+        "deep_review_pending",
+        "failed",
+        "cancelled",
+        "superseded"
+      ]
+    },
+    "failureCode": {
+      "enum": [
+        "contract_invalid",
+        "packet_hash_mismatch",
+        "source_unavailable",
+        "model_timeout",
+        "model_contract_failure",
+        "procedure_failed",
+        "required_evidence_missing",
+        "stale_revision",
+        "cancelled_by_human",
+        "resource_exhausted",
+        "unsupported_pack"
+      ]
+    },
+    "retryableFailureCode": {
+      "enum": [
+        "contract_invalid",
+        "source_unavailable",
+        "model_timeout",
+        "model_contract_failure"
+      ]
+    }
+  }
+}

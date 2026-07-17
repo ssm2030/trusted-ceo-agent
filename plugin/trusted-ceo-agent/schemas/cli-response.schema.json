@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cli-response.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "ok", "code", "command", "message", "run_id", "revision", "state", "data"],
+  "properties": {
+    "contract_version": {"const": "1.0.0"},
+    "ok": {"type": "boolean"},
+    "code": {"enum": [0, 2, 3, 4, 5, 6]},
+    "command": {"type": "string", "minLength": 1},
+    "message": {"type": "string"},
+    "run_id": {"type": ["string", "null"]},
+    "revision": {"type": ["integer", "null"], "minimum": 0},
+    "state": {"type": ["string", "null"]},
+    "data": {}
+  }
+}

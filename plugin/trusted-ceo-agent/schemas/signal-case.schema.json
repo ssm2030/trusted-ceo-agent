@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "signal-case.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "schema_version",
+    "run_id",
+    "base_revision",
+    "case_revision",
+    "signal_ids",
+    "event_id",
+    "priority_record_ref",
+    "required_domain_routes",
+    "optional_domain_routes",
+    "current_stage",
+    "status",
+    "disposition",
+    "finding_ref",
+    "related_case_ids",
+    "checkpoint_ref",
+    "lease_owner",
+    "pause_reason",
+    "terminal_reason",
+    "created_from_hash",
+    "previous_content_hash",
+    "content_hash"
+  ],
+  "properties": {
+    "case_id": {"type": "string", "pattern": "^case_[0-9a-f]{24}$"},
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "pattern": "^run_[A-Za-z0-9_.-]+$"},
+    "base_revision": {"type": "integer", "minimum": 0},
+    "case_revision": {"type": "integer", "minimum": 0},
+    "signal_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^signal_[0-9a-f]{24}$"}
+    },
+    "event_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "priority_record_ref": {
+      "type": "string",
+      "pattern": "^priority_[0-9a-f]{24}$"
+    },
+    "required_domain_routes": {"$ref": "#/$defs/domainSet"},
+    "optional_domain_routes": {"$ref": "#/$defs/domainSet"},
+    "current_stage": {"type": "integer", "minimum": 1, "maximum": 5},
+    "status": {
+      "enum": [
+        "detected",
+        "triaged",
+        "queued",
+        "investigating",
+        "needs_prioritization",
+        "needs_input",
+        "needs_expert",
+        "paused",
+        "terminal"
+      ]
+    },
+    "disposition": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "enum": [
+            "substantiated",
+            "not_substantiated",
+            "inconclusive",
+            "merged",
+            "out_of_scope",
+            "expert_review_required",
+            "deferred",
+            "failed",
+            "cancelled"
+          ]
+        }
+      ]
+    },
+    "finding_ref": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^finding_[0-9a-f]{24}$"}
+      ]
+    },
+    "related_case_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^case_[0-9a-f]{24}$"}
+    },
+    "checkpoint_ref": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "minLength": 1, "maxLength": 512}
+      ]
+    },
+    "lease_owner": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "minLength": 1, "maxLength": 256}
+      ]
+    },
+    "pause_reason": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "minLength": 1, "maxLength": 2048}
+      ]
+    },
+    "terminal_reason": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "minLength": 1, "maxLength": 4096}
+      ]
+    },
+    "created_from_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "previous_content_hash": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      ]
+    },
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "investigating"}}},
+      "then": {"properties": {"lease_owner": {"type": "string", "minLength": 1}}},
+      "else": {"properties": {"lease_owner": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "terminal"}}},
+      "then": {
+        "properties": {
+          "disposition": {"not": {"type": "null"}},
+          "terminal_reason": {"type": "string", "minLength": 1}
+        }
+      },
+      "else": {
+        "properties": {
+          "disposition": {"type": "null"},
+          "finding_ref": {"type": "null"},
+          "terminal_reason": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "disposition": {
+            "enum": [
+              "substantiated",
+              "not_substantiated",
+              "inconclusive",
+              "expert_review_required"
+            ]
+          }
+        },
+        "required": ["disposition"]
+      },
+      "then": {
+        "properties": {
+          "finding_ref": {"type": "string", "pattern": "^finding_[0-9a-f]{24}$"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "needs_prioritization",
+              "needs_input",
+              "needs_expert",
+              "paused"
+            ]
+          }
+        }
+      },
+      "then": {"properties": {"pause_reason": {"type": "string", "minLength": 1}}}
+    }
+  ],
+  "$defs": {
+    "domainSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": ["accounting", "legal", "labor", "tax"]
+      }
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quality-policy.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "baseline_profile_id",
+    "metric_margins",
+    "require_byte_equivalence",
+    "min_workload_classes",
+    "min_runs_per_condition",
+    "require_external_model_evaluation",
+    "require_blinded_expert_evaluation",
+    "policy_hash"
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "margin": {
+      "type": "string",
+      "pattern": "^(0(\\.[0-9]+)?|1(\\.0+)?)$"
+    }
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "policy_id": {"type": "string", "minLength": 1},
+    "baseline_profile_id": {"const": "sequential"},
+    "metric_margins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "critical_recall",
+        "mandatory_recall",
+        "cross_domain_trigger_recall",
+        "evidence_role_coverage",
+        "counter_evidence_coverage",
+        "authority_state_accuracy",
+        "expert_practice_quality"
+      ],
+      "properties": {
+        "critical_recall": {"$ref": "#/$defs/margin"},
+        "mandatory_recall": {"$ref": "#/$defs/margin"},
+        "cross_domain_trigger_recall": {"$ref": "#/$defs/margin"},
+        "evidence_role_coverage": {"$ref": "#/$defs/margin"},
+        "counter_evidence_coverage": {"$ref": "#/$defs/margin"},
+        "authority_state_accuracy": {"$ref": "#/$defs/margin"},
+        "expert_practice_quality": {"$ref": "#/$defs/margin"}
+      }
+    },
+    "require_byte_equivalence": {"const": true},
+    "min_workload_classes": {"type": "integer", "minimum": 4},
+    "min_runs_per_condition": {"type": "integer", "minimum": 10},
+    "require_external_model_evaluation": {"const": true},
+    "require_blinded_expert_evaluation": {"const": true},
+    "policy_hash": {"$ref": "#/$defs/hash"}
+  }
+}
+

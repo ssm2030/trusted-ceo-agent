@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "component-run.schema.json",
+  "type": "object",
+  "required": ["component_run_id", "component_id", "component_version", "input_artifact_hash", "sorted_input_fact_ids", "parameter_hash", "pack_refs", "output_fact_ids", "output_signal_ids", "output_facts", "output_signals", "status", "reason_codes", "duration"],
+  "properties": {
+    "component_run_id": {"type": "string", "pattern": "^component_run_[0-9a-f]{24}$"},
+    "component_id": {"type": "string"},
+    "component_version": {"type": "string"},
+    "input_artifact_hash": {"type": "string"},
+    "sorted_input_fact_ids": {"type": "array", "items": {"type": "string"}},
+    "parameter_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "pack_refs": {"type": "array", "items": {"type": "string"}},
+    "output_fact_ids": {"type": "array", "items": {"type": "string"}},
+    "output_signal_ids": {"type": "array", "items": {"type": "string"}},
+    "output_facts": {"type": "array", "items": {"type": "object"}},
+    "output_signals": {"type": "array", "items": {"type": "object"}},
+    "status": {"enum": ["completed", "not_assessable", "failed"]},
+    "reason_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "duration": {"type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+)?$"}
+  },
+  "additionalProperties": false
+}

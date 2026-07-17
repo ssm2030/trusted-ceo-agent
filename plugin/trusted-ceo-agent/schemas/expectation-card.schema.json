@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "expectation-card.schema.json",
+  "allOf": [
+    {"$ref": "knowledge-artifact.schema.json#/$defs/base"},
+    {
+      "type": "object",
+      "required": ["artifact_type", "content"],
+      "properties": {
+        "artifact_type": {"const": "expectation_card"},
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["relationship", "metrics", "exclusion_conditions"],
+          "properties": {
+            "relationship": {"type": "string", "minLength": 1},
+            "metrics": {"$ref": "knowledge-artifact.schema.json#/$defs/nonEmptyStringSet"},
+            "exclusion_conditions": {"$ref": "knowledge-artifact.schema.json#/$defs/stringSet"}
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

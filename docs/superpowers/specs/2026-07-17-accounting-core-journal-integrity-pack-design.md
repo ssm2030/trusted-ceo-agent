@@ -171,7 +171,13 @@ IAS 8/K-IFRS 1008 관련 Norm Card와 전문가 검토 없이는 확정하지 �
 - 미래효익·통제·식별가능성·직접 관련성을 판단할 자료를 요청한다.
 - 단순 계정명만으로 자산성을 인정하지 않는다.
 
-### P-AC-15 Management bias stand-back
+### P-AC-15 Related-party trace
+
+- counterparty master, 법인 관계, 공동 은행계좌·주소·식별자와 분개를 연결한다.
+- 확인된 관계회사·특수관계 후보와 기존 공시·승인 기록을 대사한다.
+- 관계 성립, 공시 범위, 세무·법무 영향은 승인된 Norm과 전문가 검토 없이 확정하지 않는다.
+
+### P-AC-16 Management bias stand-back
 
 - KPI를 개선하는 방향의 수동분개 비중
 - 이익 증가·부채 감소·현금 분류 개선 방향

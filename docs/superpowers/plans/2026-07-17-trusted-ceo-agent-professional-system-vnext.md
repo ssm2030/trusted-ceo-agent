@@ -141,7 +141,7 @@ B를 DAG보다 먼저 두는 이유는 기존 CAS·overlay·approval을 그대�
 
 ## Task F. 회계 콘텐츠 Suite 64 Issue Family
 
-**상태:** 64 Family registry, Account Universe/Coverage/Tier 0, AC/RV/CF/CA 결정적 Boundary 절차 구현 및 focused·최종 Full 검증 완료; 공식 Norm grounding·전문가 승인·production Oracle 필요  
+**상태:** 원시 분개 adapter, AC15/16 분리, 64 Family 실제 Dispatcher·불변 실행 Manifest·승인된 CLI publish 구현 및 focused·최종 Full 검증 완료; 공식 Norm grounding·전문가 승인·production Oracle 필요  
 **출처:** D06 §§8–10,14–16; D07 §12,§18 Phase 4; D09 §§6,11 E/H,12.3–12.4; D10–D18 전체; Integration Index §§3–5
 
 **선행조건:** E Depth Gate, Account Universe/Coverage, 공식 Norm source, 9개 결정적 Component와 필요한 신규 Component, expert release boundary.  
@@ -152,16 +152,16 @@ B를 DAG보다 먼저 두는 이유는 기존 CAS·overlay·approval을 그대�
 **합격 기준:** Core Tier 0 → AC 16 → RV 16 → CF 16 → CA 16 각각 별도 수직 합격, 최종 64 unique와 cross-cycle stand-back 통과.  
 **제품 표시:** Core만 `accounting_core_screened`; 세 Cycle pre-expert `three_cycles_boundary`; 64+D1–D12+official source+oracle+blank 0+expert elevation 후에만 `senior_accountant_draft_scope`; `company_wide_accounting_full`은 계속 금지.
 
-- [ ] RED: manifest exact-ID/duplicate/missing/blank tests와 product claim downgrade tests를 작성한다.
-- [ ] GREEN-1: Account Universe·Coverage·Tier 0 AC-01~05를 end-to-end 구현한다.
-- [ ] GREEN-2: AC-01~16과 oracle를 완결한 뒤에만 `accounting_core_screened`를 연다.
-- [ ] GREEN-3: RV-01~16, CF-01~16, CA-01~16을 각각 독립 수직 단위로 구현한다.
-- [ ] GREEN-4: 64-family/cross-cycle/stand-back Gate와 finalization을 연결한다.
-- [ ] 회귀: 회계 contract/unit/integration/evaluation/determinism/safety 및 전체 suite를 실행한다.
+- [x] RED: manifest exact-ID/duplicate/missing/blank tests와 product claim downgrade tests를 작성한다.
+- [x] GREEN-1: Account Universe·Coverage·Tier 0 AC-01~05를 end-to-end 구현한다.
+- [x] GREEN-2: AC-01~16과 oracle를 완결한 뒤에만 `accounting_core_screened`를 연다.
+- [x] GREEN-3: RV-01~16, CF-01~16, CA-01~16을 각각 독립 수직 단위로 구현한다.
+- [x] GREEN-4: 64-family/cross-cycle/stand-back Gate와 finalization을 연결한다.
+- [x] 회귀: 회계 contract/unit/integration/evaluation/determinism/safety 및 전체 suite를 실행한다.
 
 ## Task G. Orchestration Harness와 유한 AnalysisWorkGraph
 
-**상태:** 유한 DAG·WorkItem·deterministic Join 구현 및 focused·최종 Full 검증 완료  
+**상태:** Event→Route→Signal Case→유한 DAG/Scheduler→CAS→Finding→Join/Integrator 최상위 Runtime과 CLI publish 구현 및 focused·최종 Full 검증 완료  
 **출처:** D01 §7; D02 AD-07; D03 §§10.9–10.11,13; D09 §§8.1–8.2,11 J,12.5; Integration Index §4 G
 
 **선행조건:** A 기준선, immutable inputs, Task type registry, concurrency profile.  
@@ -248,7 +248,7 @@ B를 DAG보다 먼저 두는 이유는 기존 CAS·overlay·approval을 그대�
 
 ## Task L. 정상·제한 완료와 Completion Controller
 
-**상태:** Artifact 기반 CompletionAssessment·normal/limited 차단·expert terminal 구현 및 focused·최종 Full 검증 완료  
+**상태:** Artifact 기반 CompletionAssessment·normal/limited·expert terminal과 required 실패의 CLI/finalization 차단 구현 및 focused·최종 Full 검증 완료  
 **출처:** D03 §§12,14.3; D06 §§12,16; D07 §§16,19; D09 §§8.8,10.5,11 L,12.7,13; D13 §7; Integration Index §4 L
 
 **선행조건:** 모든 중요 Case, required Domain/WorkItem, Finding, Coverage/authority 상태.  
@@ -360,14 +360,15 @@ Focused 실패 시에만 실패한 정확한 모듈을 `-v`로 다시 실행한�
 
 | Checkpoint | RED evidence | GREEN focused | Full regression | Product claim |
 |---|---|---|---|---|
-| A baseline | initial WebReport hash FAIL 1 | Trust Kernel baseline 222 PASS | Python 418 + hidden 41 PASS | unchanged |
+| A baseline | initial WebReport hash FAIL 1 | Trust Kernel baseline 222 PASS | Python 434 + hidden 41 PASS | unchanged |
 | B Human Response | missing schema/module/CLI: 1 FAIL+4 ERROR; 독립검토 경계 5건 | B 보강 focused 19/19 PASS (`7.775s`) | 공통 최종 게이트 PASS | no quality elevation; web transport는 N |
 | G/H orchestration | missing graph/checkpoint contracts | 26/26 PASS | 공통 최종 게이트 PASS | no quality elevation |
 | I/J case/finding | missing queue/finding contracts | 16/16 PASS | 공통 최종 게이트 PASS | terminal Finding only |
 | C/D/K multi-domain | missing Event/Route/Join contracts | C/D 15/15 PASS; K 9 focused assertions PASS | 공통 최종 게이트 PASS | unsupported Boundary |
 | L completion | missing CompletionAssessment | core 6/6 + artifact integration 2/2 PASS | 공통 최종 게이트 PASS | normal/limited explicit |
 | M/N web report | initial hash FAIL 및 hidden unit FAIL 재현 | converter/CLI 3/3 + preview 4/4 PASS | hidden 41, contract parity, web 135, build, E2E 3 PASS | eligibility-bound |
-| E/F accounting | missing depth/64-family execution contracts; AC-06~16 module RED 5 | E 9 PASS; Suite 22 + Pack procedures 29 PASS | 공통 최종 게이트 PASS | machine_draft/Boundary; Tier 0 증거에만 `accounting_core_screened` |
+| E/F accounting | missing depth/64-family execution contracts; AC-06~16 module RED 5 | Dispatcher·Registry·Raw adapter 9 PASS; CLI accounting 2 PASS | Python 434 PASS | machine_draft/Boundary; Tier 0 증거에만 `accounting_core_screened` |
+| C–L runtime wiring | top-level runtime/CLI entrypoint missing | Runtime 3 PASS; CLI professional 2 PASS; required failure blocked | Python 434 PASS | verified artifacts only; no authority elevation |
 | O Foundry | missing release/persistence contracts | core 20/20 + persistent CAS 4/4 PASS | 공통 최종 게이트 PASS | machine_draft until approval |
 | P evaluation | missing paired activation contracts | 21/21 PASS | harness Full PASS; 실제 외부 대조는 `not_evaluated` | experimental until pass |
 
