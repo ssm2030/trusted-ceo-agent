@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "web-report-contracts.schema.json",
+  "title": "WebReportContractsV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "web_report_bundle",
+    "viewer_eligibility_decision",
+    "presentation_manifest",
+    "result_question_job",
+    "result_answer_draft",
+    "result_answer"
+  ],
+  "properties": {
+    "web_report_bundle": {"$ref": "web-report-bundle.schema.json"},
+    "viewer_eligibility_decision": {
+      "$ref": "viewer-eligibility-decision.schema.json"
+    },
+    "presentation_manifest": {"$ref": "presentation-manifest.schema.json"},
+    "result_question_job": {"$ref": "result-question-job.schema.json"},
+    "result_answer_draft": {"$ref": "result-answer-draft.schema.json"},
+    "result_answer": {"$ref": "result-answer.schema.json"}
+  }
+}

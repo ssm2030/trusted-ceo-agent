@@ -1,0 +1,21 @@
+{
+  "name": "trusted-ceo-web-report-contracts",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.22.0"
+  },
+  "scripts": {
+    "generate": "node scripts/generate-types.mjs",
+    "generate:check": "node scripts/generate-types.mjs --check",
+    "generate:fixtures": "node scripts/generate-fixtures.mjs && node scripts/generate-question-fixtures.mjs",
+    "generate:fixtures:check": "node scripts/generate-fixtures.mjs --check && node scripts/generate-question-fixtures.mjs --check",
+    "validate:fixtures": "node scripts/validate-fixtures.mjs && node scripts/validate-question-fixtures.mjs",
+    "check": "npm run generate:check && npm run generate:fixtures:check && npm run validate:fixtures"
+  },
+  "devDependencies": {
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1",
+    "json-schema-to-typescript": "15.0.4"
+  }
+}

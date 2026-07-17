@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "result-answer.schema.json",
+  "title": "ResultAnswerV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "answer_version",
+    "job_id",
+    "run_id",
+    "revision",
+    "scope",
+    "validation",
+    "answer_blocks"
+  ],
+  "properties": {
+    "answer_version": {"const": "1.0.0"},
+    "job_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "scope": {"$ref": "result-question-job.schema.json#/$defs/scope"},
+    "validation": {"$ref": "#/$defs/validation"},
+    "answer_blocks": {
+      "type": "array",
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/supportedAnswerBlock"},
+          {"$ref": "#/$defs/notSupportedAnswerBlock"}
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "idSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "nonEmptyIdSet": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "emptyIdSet": {
+      "type": "array",
+      "maxItems": 0,
+      "items": false
+    },
+    "resolvedValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value_ref", "display_text"],
+      "properties": {
+        "value_ref": {"type": "string", "minLength": 1},
+        "display_text": {"type": "string"}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_valid",
+        "references_valid",
+        "values_valid",
+        "semantic_entailment_verified",
+        "label_ko"
+      ],
+      "properties": {
+        "schema_valid": {"const": true},
+        "references_valid": {"const": true},
+        "values_valid": {"const": true},
+        "semantic_entailment_verified": {"const": false},
+        "label_ko": {"const": "스키마·참조 검증 통과"}
+      }
+    },
+    "supportedAnswerBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_id",
+        "support_status",
+        "text",
+        "resolved_values",
+        "claim_refs",
+        "evidence_link_ids",
+        "source_refs"
+      ],
+      "properties": {
+        "block_id": {"type": "string", "minLength": 1},
+        "support_status": {"const": "supported"},
+        "text": {"type": "string", "minLength": 1, "maxLength": 800},
+        "resolved_values": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/resolvedValue"}
+        },
+        "claim_refs": {"$ref": "#/$defs/nonEmptyIdSet"},
+        "evidence_link_ids": {"$ref": "#/$defs/nonEmptyIdSet"},
+        "source_refs": {"$ref": "#/$defs/idSet"}
+      }
+    },
+    "notSupportedAnswerBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_id",
+        "support_status",
+        "text",
+        "resolved_values",
+        "claim_refs",
+        "evidence_link_ids",
+        "source_refs"
+      ],
+      "properties": {
+        "block_id": {"type": "string", "minLength": 1},
+        "support_status": {"const": "not_supported"},
+        "text": {"const": "현재 실행본의 근거로는 확인할 수 없습니다"},
+        "resolved_values": {
+          "type": "array",
+          "maxItems": 0,
+          "items": false
+        },
+        "claim_refs": {"$ref": "#/$defs/emptyIdSet"},
+        "evidence_link_ids": {"$ref": "#/$defs/emptyIdSet"},
+        "source_refs": {"$ref": "#/$defs/emptyIdSet"}
+      }
+    }
+  }
+}

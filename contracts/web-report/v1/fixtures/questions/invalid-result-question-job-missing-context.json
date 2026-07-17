@@ -1,0 +1,74 @@
+{
+  "job_version": "1.0.0",
+  "job_id": "job_01",
+  "job_hash": "f70bd98c916d9b714faa061fe37d07cfe1b84f3507fae8bcd4084e2f4f204beb",
+  "run_id": "run_20260717T010203Z_0123456789abcdef",
+  "revision": 2,
+  "question": "이 문제를 뒷받침하는 근거는 무엇인가요?",
+  "response_locale": "ko-KR",
+  "privacy_classification": "company_restricted",
+  "scope": {
+    "scope_kind": "issue",
+    "scope_instance_id": "issue_01",
+    "start_refs": [
+      "issue_01"
+    ],
+    "issue_id": "issue_01"
+  },
+  "allowed_issue_refs": [
+    "issue_01"
+  ],
+  "allowed_claim_refs": [
+    "claim_01"
+  ],
+  "allowed_fact_refs": [
+    "fact_01"
+  ],
+  "allowed_signal_refs": [],
+  "allowed_evidence_link_ids": [
+    "evidence_01"
+  ],
+  "allowed_source_refs": [
+    "source_01"
+  ],
+  "allowed_value_refs": [
+    "value_01"
+  ],
+  "allowed_expert_packet_refs": [],
+  "allowed_revision_diff_refs": [],
+  "value_table": [
+    {
+      "value_ref": "value_01",
+      "fact_or_signal_id": "fact_01",
+      "display_field": "value",
+      "display_text": "12.4%"
+    }
+  ],
+  "forbidden_conclusions": [],
+  "data_quality_conditions": [],
+  "not_assessable_conditions": [],
+  "deidentification": {
+    "poc_only": false,
+    "direct_identifiers_removed": true,
+    "notice_ko": "질문 작업에는 비식별화된 근거만 포함됩니다."
+  },
+  "privacy": {
+    "deidentified": true,
+    "excluded_fields": [
+      "direct_identifiers"
+    ]
+  },
+  "context_caps": {
+    "max_context_bytes": 131072,
+    "actual_context_bytes": 384,
+    "excluded_block_count": 0,
+    "max_answer_blocks": 12,
+    "max_block_characters": 800
+  },
+  "excluded_summary": {
+    "excluded": false,
+    "reason_codes": [],
+    "available_scope_instance_ids": []
+  },
+  "output_schema_version": "1.0.0"
+}

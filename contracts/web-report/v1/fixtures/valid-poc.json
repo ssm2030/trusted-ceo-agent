@@ -1,0 +1,374 @@
+{
+  "bundle_version": "1.0.0",
+  "canonicalization_version": "rfc8785-jcs-1",
+  "run": {
+    "run_id": "run_20260717T000000Z_aaaaaaaaaaaaaaaa",
+    "revision": 3,
+    "workflow_state": "finalized",
+    "semantic_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "finalization_event_time": null
+  },
+  "viewer_eligibility_receipt": {
+    "receipt_version": "1.0.0",
+    "claimed_viewer_mode": "poc_fixture",
+    "run_id": "run_20260717T000000Z_aaaaaaaaaaaaaaaa",
+    "approved_revision": 2,
+    "finalized_revision": 3,
+    "workflow_state": "finalized",
+    "snapshot_manifest_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "final_result_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "result_artifact_ref": "revisions/2/final/result.json",
+    "revision_ancestry_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "validator_version": "0.1.0",
+    "completed_checks": [
+      "evidence_core",
+      "final_package",
+      "grade_recomputation",
+      "snapshot_manifest"
+    ],
+    "final_approval_summary": {
+      "gate": "final",
+      "status": "current",
+      "input_method": "test_fixture",
+      "fixture_only": true,
+      "approval_id": "approval_fixture",
+      "actor_role": "ceo",
+      "result_artifact_ref": "revisions/2/final/result.json"
+    }
+  },
+  "final_result": {
+    "run_summary": {
+      "run_id": "run_20260717T000000Z_aaaaaaaaaaaaaaaa",
+      "revision": 3
+    },
+    "mission_summary": {
+      "objective": "승인된 실행본의 핵심 문제를 확인합니다."
+    },
+    "capability_summary": {
+      "status": "evaluated"
+    },
+    "issues": [
+      {
+        "issue_id": "issue_main",
+        "title_template": "수익성 점검 필요",
+        "primary_grade": "Decision Required",
+        "secondary_flags": [],
+        "why_it_matters_template": "승인된 관찰값에 따라 경영진 확인이 필요합니다.",
+        "value_refs": [
+          "fact_main"
+        ],
+        "evidence_link_ids": [
+          "evidence_main"
+        ],
+        "cause_hypotheses": [
+          {
+            "claim_code": "cause_main"
+          }
+        ],
+        "counter_hypotheses": [],
+        "unresolved_conflicts": [],
+        "verification_next_steps": [],
+        "conditional_response_refs": [],
+        "expert_review_refs": []
+      }
+    ],
+    "cross_issue_relations": [],
+    "conditional_responses": [],
+    "monitoring": [],
+    "blind_spots": [],
+    "expert_review_packets": [],
+    "approvals": [
+      {
+        "gate": "final",
+        "status": "current",
+        "input_method": "test_fixture",
+        "fixture_only": true,
+        "approval_id": "approval_fixture",
+        "actor_role": "ceo",
+        "result_artifact_ref": "revisions/2/final/result.json"
+      }
+    ],
+    "integrity": {
+      "semantic_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "presentation_manifest": {
+    "ceo_summary_issue_refs": [
+      "issue_main"
+    ],
+    "selection_basis": "grade_order_then_issue_id",
+    "metric_cards": [
+      {
+        "metric_card_id": "metric_main",
+        "issue_ref": "issue_main",
+        "label_ko": "관찰값",
+        "value_ref": "fact_main",
+        "display_value": "100",
+        "unit_code": "count",
+        "currency_code": null
+      }
+    ],
+    "chart_specs": [],
+    "issue_graph": {
+      "nodes": [
+        {
+          "issue_ref": "issue_main",
+          "label_ko": "수익성 점검 필요",
+          "grade": "Decision Required"
+        }
+      ],
+      "edges": []
+    },
+    "korean_labels": [
+      {
+        "code": "Decision Required",
+        "label_ko": "의사결정 필요"
+      }
+    ]
+  },
+  "evidence_view": {
+    "facts": [
+      {
+        "fact_id": "fact_main",
+        "fact_code": "metric.observed",
+        "fact_type": "observed",
+        "metric_code": "metric",
+        "semantic_role": "observation",
+        "observation_role": "ledger",
+        "scope": [
+          {
+            "dimension_code": "company",
+            "member_code": "all"
+          }
+        ],
+        "time_context": {
+          "period": "2026-06"
+        },
+        "value": {
+          "value_type": "decimal",
+          "canonical_value": "100",
+          "unit_code": "count",
+          "currency_code": null,
+          "scale": "1"
+        },
+        "source_refs": [
+          {
+            "source_id": "source_main",
+            "observation_role": "ledger",
+            "locator_type": "csv_records",
+            "locator": {
+              "record_indices": [
+                1
+              ]
+            },
+            "selected_fields": [
+              "metric"
+            ],
+            "record_count": 1,
+            "filters": [],
+            "group_by": [],
+            "operation": "observe",
+            "normalized_rows_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "row_multiset_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "lineage_set_ref": "lineage/sets/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.json",
+            "extraction_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          }
+        ],
+        "derivation": null,
+        "quality": [],
+        "producer": "runtime_intake",
+        "integrity": {
+          "payload_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    ],
+    "signals": [],
+    "evidence_links": [
+      {
+        "evidence_link_id": "evidence_main",
+        "target_ref": "issue_main",
+        "target_type": "integrated_issue",
+        "evidence_ref": "fact_main",
+        "evidence_kind": "fact",
+        "polarity": "supports",
+        "role": "observation",
+        "rationale_template": "관찰값이 문제를 뒷받침합니다.",
+        "value_refs": [
+          {
+            "token": "metric",
+            "fact_or_signal_id": "fact_main",
+            "display_field": "value.canonical_value",
+            "display_format_ref": "decimal"
+          }
+        ],
+        "stage": "final",
+        "materialized_by": "runtime_grader",
+        "origin": {
+          "origin_type": "deterministic_rule",
+          "origin_job_id": null,
+          "model_profile": null,
+          "prompt_hash": null,
+          "proposal_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "independence_group_id": "independence_main"
+      }
+    ],
+    "data_quality": [],
+    "capability_map": {
+      "capability_map_id": "capability_map_main",
+      "capabilities": []
+    },
+    "issue_claim_closure": [
+      {
+        "issue_ref": "issue_main",
+        "claim_refs": [
+          "cause_main"
+        ],
+        "evidence_link_ids": [
+          "evidence_main"
+        ],
+        "fact_refs": [
+          "fact_main"
+        ],
+        "signal_refs": [],
+        "source_refs": [
+          "source_main"
+        ],
+        "expert_packet_refs": []
+      }
+    ]
+  },
+  "source_view": [
+    {
+      "source_ref": "source_main",
+      "display_name_ko": "원장 자료",
+      "snapshot_locator": "sources/blobs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "extraction_hashes": [
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      ],
+      "locator_summaries": [
+        {
+          "locator_type": "csv_records",
+          "display_locator": "1행",
+          "extraction_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ],
+      "access_policy": "permitted",
+      "official_url": null,
+      "preview_refs": [
+        "preview_main"
+      ]
+    }
+  ],
+  "source_previews": [
+    {
+      "preview_ref": "preview_main",
+      "source_ref": "source_main",
+      "locator": {
+        "locator_type": "csv_records",
+        "record_indices": [
+          1
+        ],
+        "json_pointer": null,
+        "sheet": null,
+        "cell_range": null
+      },
+      "column_labels": [
+        "metric"
+      ],
+      "rows": [
+        [
+          "100"
+        ]
+      ],
+      "truncated": false,
+      "truncation_reason": null,
+      "masking_status": "none",
+      "access_policy": "permitted",
+      "preview_hash": "7698fb9c9b42cec03369fa35b8ac57fdd066d8a7537f617a4369898b6fca3abb"
+    }
+  ],
+  "official_url_policy": {
+    "allowed_schemes": [
+      "https"
+    ],
+    "allowed_origins": [],
+    "allow_redirects": false
+  },
+  "trust_view": {
+    "plugin_version": "0.1.0",
+    "pack_versions": [],
+    "schema_versions": [
+      {
+        "name": "web-report-bundle",
+        "version": "1.0.0"
+      }
+    ],
+    "validator_version": "0.1.0",
+    "completed_checks": [
+      "evidence_core",
+      "final_package",
+      "grade_recomputation",
+      "snapshot_manifest"
+    ],
+    "approval_summary": [
+      {
+        "gate": "final",
+        "status": "current",
+        "input_method": "test_fixture",
+        "fixture_only": true,
+        "approval_id": "approval_fixture",
+        "actor_role": "ceo",
+        "result_artifact_ref": "revisions/2/final/result.json"
+      }
+    ],
+    "trust_events": [
+      {
+        "event_id": "event_fixture",
+        "revision": 2,
+        "command": "poc-fixture",
+        "actor_kind": "runtime",
+        "gate": "final",
+        "sequence": 1,
+        "timestamp": null,
+        "invalidated_approval_refs": []
+      }
+    ],
+    "file_hashes": [
+      {
+        "logical_path": "final/result.json",
+        "length_bytes": 100,
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ],
+    "limitations": [],
+    "deidentification": {
+      "poc_only": true,
+      "direct_identifiers_removed": true,
+      "notice_ko": "검증된 POC 시연 실행본이며 실제 고객 승인 실행본이 아닙니다."
+    }
+  },
+  "expert_packet_view": [],
+  "revision_view": {
+    "available": false,
+    "unavailable_reason": "NO_PRIOR_FINAL_RESULT",
+    "base_revision": null,
+    "compare_revision": 3,
+    "change_categories": [],
+    "added_refs": [],
+    "changed_refs": [],
+    "removed_refs": [],
+    "invalidated_approval_refs": [],
+    "previous_semantic_fingerprint": null,
+    "current_semantic_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "display_message_ko": "이전 최종 결과가 없어 변경 정보를 제공할 수 없습니다."
+  },
+  "file_manifest": [
+    {
+      "logical_path": "final/result.json",
+      "length_bytes": 100,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "bundle_hash": "ef79be2cedebc8f90dd038ed335354ffd08195366cf01b591486296e0843725c"
+}

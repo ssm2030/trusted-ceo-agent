@@ -1,0 +1,23 @@
+{
+  "draft_version": "1.0.0",
+  "job_id": "job_01",
+  "run_id": "run_20260717T010203Z_0123456789abcdef",
+  "revision": 2,
+  "answer_blocks": [
+    {
+      "block_id": "block_01",
+      "support_status": "not_supported",
+      "text_template": "모델이 임의로 만든 판단불가 문구",
+      "value_refs": [],
+      "claim_refs": [
+        "claim_01"
+      ],
+      "evidence_link_ids": [
+        "evidence_01"
+      ],
+      "source_refs": [
+        "source_01"
+      ]
+    }
+  ]
+}

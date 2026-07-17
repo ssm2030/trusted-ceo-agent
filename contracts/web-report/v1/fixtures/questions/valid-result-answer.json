@@ -1,0 +1,43 @@
+{
+  "answer_version": "1.0.0",
+  "job_id": "job_01",
+  "run_id": "run_20260717T010203Z_0123456789abcdef",
+  "revision": 2,
+  "scope": {
+    "scope_kind": "issue",
+    "scope_instance_id": "issue_01",
+    "start_refs": [
+      "issue_01"
+    ],
+    "issue_id": "issue_01"
+  },
+  "validation": {
+    "schema_valid": true,
+    "references_valid": true,
+    "values_valid": true,
+    "semantic_entailment_verified": false,
+    "label_ko": "스키마·참조 검증 통과"
+  },
+  "answer_blocks": [
+    {
+      "block_id": "block_01",
+      "support_status": "supported",
+      "text": "매출총이익률은 12.4%입니다.",
+      "resolved_values": [
+        {
+          "value_ref": "value_01",
+          "display_text": "12.4%"
+        }
+      ],
+      "claim_refs": [
+        "claim_01"
+      ],
+      "evidence_link_ids": [
+        "evidence_01"
+      ],
+      "source_refs": [
+        "source_01"
+      ]
+    }
+  ]
+}

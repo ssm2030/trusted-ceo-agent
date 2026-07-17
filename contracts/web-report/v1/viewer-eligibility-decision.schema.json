@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "viewer-eligibility-decision.schema.json",
+  "title": "ViewerEligibilityDecisionV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision_version",
+    "eligible",
+    "viewer_mode",
+    "badge_label_ko",
+    "run_id",
+    "revision",
+    "bundle_hash",
+    "completed_checks",
+    "failure_code",
+    "failure_message"
+  ],
+  "properties": {
+    "decision_version": {"const": "1.0.0"},
+    "eligible": {"type": "boolean"},
+    "viewer_mode": {
+      "enum": [
+        "trusted_final",
+        "poc_fixture",
+        "unverified_import",
+        "rejected"
+      ]
+    },
+    "badge_label_ko": {
+      "enum": [
+        "승인·검증된 실행본",
+        "검증된 POC 시연 실행본",
+        "출처 미확인 묶음",
+        "열 수 없는 묶음"
+      ]
+    },
+    "run_id": {"type": ["string", "null"], "minLength": 1},
+    "revision": {"type": ["integer", "null"], "minimum": 1},
+    "bundle_hash": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "completed_checks": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "failure_code": {
+      "type": ["string", "null"],
+      "enum": [
+        "BUNDLE_SIZE_EXCEEDED",
+        "BUNDLE_JSON_INVALID",
+        "BUNDLE_SCHEMA_INVALID",
+        "BUNDLE_HASH_MISMATCH",
+        "REFERENCE_CLOSURE_BROKEN",
+        "RUN_ID_MISMATCH",
+        "REVISION_MISMATCH",
+        "WORKFLOW_NOT_FINALIZED",
+        "REQUIRED_CHECK_MISSING",
+        "FINAL_APPROVAL_INVALID",
+        "ANCESTRY_MISMATCH",
+        "FULL_RUN_MISMATCH",
+        "BYTE_MISMATCH",
+        "ABSOLUTE_PATH_LEAK",
+        null
+      ]
+    },
+    "failure_message": {"type": ["string", "null"], "minLength": 1}
+  }
+}

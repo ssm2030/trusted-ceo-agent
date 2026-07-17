@@ -1,0 +1,5 @@
+{
+  "fixture_kind": "generated_oversize",
+  "base_fixture": "valid-trusted.json",
+  "target_bytes": 52428801
+}

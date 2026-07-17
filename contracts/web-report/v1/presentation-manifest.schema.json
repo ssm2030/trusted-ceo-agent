@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "presentation-manifest.schema.json",
+  "title": "PresentationManifestV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ceo_summary_issue_refs",
+    "selection_basis",
+    "metric_cards",
+    "chart_specs",
+    "issue_graph",
+    "korean_labels"
+  ],
+  "properties": {
+    "ceo_summary_issue_refs": {
+      "type": "array",
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "selection_basis": {"const": "grade_order_then_issue_id"},
+    "metric_cards": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/metricCard"}
+    },
+    "chart_specs": {
+      "type": "array",
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/chartSpec"}
+    },
+    "issue_graph": {"$ref": "#/$defs/issueGraph"},
+    "korean_labels": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/koreanLabel"}
+    }
+  },
+  "$defs": {
+    "metricCard": {
+      "title": "MetricCardV1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_card_id",
+        "issue_ref",
+        "label_ko",
+        "value_ref",
+        "display_value",
+        "unit_code",
+        "currency_code"
+      ],
+      "properties": {
+        "metric_card_id": {"type": "string", "minLength": 1},
+        "issue_ref": {"type": "string", "minLength": 1},
+        "label_ko": {"type": "string", "minLength": 1},
+        "value_ref": {"type": "string", "minLength": 1},
+        "display_value": {"type": "string"},
+        "unit_code": {"type": ["string", "null"]},
+        "currency_code": {"type": ["string", "null"]}
+      }
+    },
+    "chartSpec": {
+      "title": "ChartSpecV1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chart_id",
+        "title_ko",
+        "description_ko",
+        "chart_kind",
+        "issue_refs",
+        "fact_refs",
+        "signal_refs",
+        "x_axis_label_ko",
+        "y_axis_label_ko",
+        "unit_code",
+        "currency_code",
+        "scale",
+        "display_format",
+        "float_safe",
+        "points"
+      ],
+      "properties": {
+        "chart_id": {"type": "string", "minLength": 1},
+        "title_ko": {"type": "string", "minLength": 1},
+        "description_ko": {"type": "string"},
+        "chart_kind": {"enum": ["line", "bar", "graph"]},
+        "issue_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "fact_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "signal_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "x_axis_label_ko": {"type": ["string", "null"]},
+        "y_axis_label_ko": {"type": ["string", "null"]},
+        "unit_code": {"type": ["string", "null"]},
+        "currency_code": {"type": ["string", "null"]},
+        "scale": {"type": ["string", "null"]},
+        "display_format": {"type": "string", "minLength": 1},
+        "float_safe": {"type": "boolean"},
+        "points": {
+          "type": "array",
+          "maxItems": 5000,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/chartPoint"}
+        }
+      }
+    },
+    "chartPoint": {
+      "title": "ChartPointV1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "point_id",
+        "x_label",
+        "period_sort_key",
+        "value_ref",
+        "fact_id",
+        "display_value",
+        "evidence_link_ids"
+      ],
+      "properties": {
+        "point_id": {"type": "string", "minLength": 1},
+        "x_label": {"type": "string"},
+        "period_sort_key": {"type": ["string", "null"]},
+        "value_ref": {"type": "string", "minLength": 1},
+        "fact_id": {"type": "string", "minLength": 1},
+        "display_value": {"type": "string"},
+        "evidence_link_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "issueGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes", "edges"],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/issueNode"}
+        },
+        "edges": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/issueEdge"}
+        }
+      }
+    },
+    "issueNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue_ref", "label_ko", "grade"],
+      "properties": {
+        "issue_ref": {"type": "string", "minLength": 1},
+        "label_ko": {"type": "string", "minLength": 1},
+        "grade": {
+          "enum": [
+            "Decision Required",
+            "Immediate Verification",
+            "Expert Review Required",
+            "Monitor",
+            "Appendix Signal",
+            "Not Assessable"
+          ]
+        }
+      }
+    },
+    "issueEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relation_id",
+        "from_issue_ref",
+        "to_issue_ref",
+        "relation_type"
+      ],
+      "properties": {
+        "relation_id": {"type": "string", "minLength": 1},
+        "from_issue_ref": {"type": "string", "minLength": 1},
+        "to_issue_ref": {"type": "string", "minLength": 1},
+        "relation_type": {"type": "string", "minLength": 1}
+      }
+    },
+    "koreanLabel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "label_ko"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "label_ko": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
