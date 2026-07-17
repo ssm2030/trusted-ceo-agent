@@ -165,7 +165,7 @@ Family ID가 존재하는 것만으로 구현 완료가 아니다. 각 Family는
 - [x] D09의 미추적 웹 초안 참조를 D04 final+D05 Addendum v2로 교체
 - [x] 요구사항→설계→Task→코드·Schema→테스트 추적표 작성
 - [x] 통합 인덱스·참조 수정 자체검토 통과
-- [ ] 문서 전용 커밋 완료 및 18개 필수 문서 tracked 확인
+- [x] 문서 전용 통합 커밋 `6adbfb9c7c33d61f369e0e4a46d504925d1fd414` 완료 및 18개 필수 문서 tracked 확인
 
 제품 구현 완료를 주장하려면 추가로 다음을 모두 만족해야 한다.
 
@@ -190,5 +190,7 @@ Family ID가 존재하는 것만으로 구현 완료가 아니다. 각 Family는
 2. 이 Professional System Integration Index
 3. D09의 웹 정본·회계 Suite 필수 참조 수정
 4. D10의 Norm Catalog·7개 payload 참조 수정
+
+Post-commit 검증 결과는 필수 문서 `18/18 tracked`, 누락 `0`, 통합 커밋 파일 `6개`, 범위 밖 staged 파일 `0개`다. 이 검증을 기록한 후속 커밋이 Hard Gate 증거 커밋이다.
 
 그 밖의 미추적 또는 동시 변경 파일은 사용자 소유로 보존하고 스테이징하지 않는다. 첫 문서 통합 커밋 후에는 그 커밋 ID와 18개 tracked 확인 결과를 이 문서에 기록하고, 이 인덱스만 포함하는 후속 Gate 증거 커밋으로 마지막 시작 체크를 닫는다. 두 커밋 ID는 구현계획과 완료 보고에 기록한다.
