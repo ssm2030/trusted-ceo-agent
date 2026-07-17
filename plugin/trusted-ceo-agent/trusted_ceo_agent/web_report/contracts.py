@@ -371,6 +371,41 @@ def validate_bundle_document(bundle: Mapping[str, Any]) -> None:
                 evidence_ids,
                 "Evidence Link",
             )
+    graph_nodes = _index(
+        presentation["issue_graph"]["nodes"],
+        "issue_ref",
+        "issue graph node",
+    )
+    if set(graph_nodes) != issue_ids:
+        raise WebReportContractError(
+            "issue graph nodes do not exactly match Final Result issues"
+        )
+    for issue_id, node in graph_nodes.items():
+        issue = issues[issue_id]
+        if (
+            node["label_ko"] != issue["title_template"]
+            or node["grade"] != issue["primary_grade"]
+        ):
+            raise WebReportContractError(
+                f"issue graph node differs from Final Result issue: {issue_id}"
+            )
+    graph_edges = _index(
+        presentation["issue_graph"]["edges"],
+        "relation_id",
+        "issue graph edge",
+    )
+    if set(graph_edges) != relation_ids:
+        raise WebReportContractError(
+            "issue graph edges do not exactly match Final Result relations"
+        )
+    for relation_id, edge in graph_edges.items():
+        relation = relations[relation_id]
+        if any(edge[field] != relation[field] for field in (
+            "from_issue_ref", "to_issue_ref", "relation_type",
+        )):
+            raise WebReportContractError(
+                f"issue graph edge differs from Final Result relation: {relation_id}"
+            )
     for node in presentation["issue_graph"]["nodes"]:
         _require_refs([node["issue_ref"]], issue_ids, "issue reference")
     for edge in presentation["issue_graph"]["edges"]:

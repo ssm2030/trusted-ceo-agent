@@ -7,16 +7,21 @@
     "schema_version",
     "run_id",
     "revision",
+    "execution_authority",
     "event",
     "routing_decisions",
     "domain_routes",
     "signal_cases",
     "priority_records",
     "graphs",
+    "checkpoints",
+    "budget_assessments",
     "work_items",
     "result_cas",
     "domain_assessments",
     "findings",
+    "grading_inputs",
+    "grade_records",
     "relations",
     "clusters",
     "finding_join_manifest",
@@ -29,6 +34,7 @@
     "schema_version": {"const": "1.0.0"},
     "run_id": {"type": "string", "pattern": "^run_[A-Za-z0-9_.-]+$"},
     "revision": {"type": "integer", "minimum": 1},
+    "execution_authority": {"$ref": "execution-authority-gate.schema.json"},
     "event": {"$ref": "economic-event.schema.json"},
     "routing_decisions": {
       "type": "array",
@@ -49,6 +55,14 @@
     "graphs": {
       "type": "array",
       "items": {"$ref": "analysis-work-graph.schema.json"}
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {"$ref": "work-checkpoint.schema.json"}
+    },
+    "budget_assessments": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/budgetAssessment"}
     },
     "work_items": {
       "type": "array",
@@ -78,6 +92,14 @@
       "type": "array",
       "items": {"$ref": "finding-record.schema.json"}
     },
+    "grading_inputs": {
+      "type": "array",
+      "items": {"$ref": "grading-input.schema.json"}
+    },
+    "grade_records": {
+      "type": "array",
+      "items": {"$ref": "grade-record.schema.json"}
+    },
     "relations": {
       "type": "array",
       "items": {"$ref": "finding-relation.schema.json"}
@@ -104,6 +126,55 @@
   },
   "$defs": {
     "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "budgetAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "graph_id",
+        "case_id",
+        "elapsed_seconds",
+        "status",
+        "required_task_ids",
+        "scheduled_task_ids",
+        "deferred_optional_task_ids",
+        "coverage_records",
+        "content_hash"
+      ],
+      "properties": {
+        "graph_id": {"type": "string", "pattern": "^graph_[0-9a-f]{24}$"},
+        "case_id": {"type": "string", "pattern": "^case_[0-9a-f]{24}$"},
+        "elapsed_seconds": {"type": "integer", "minimum": 0},
+        "status": {
+          "enum": [
+            "ready",
+            "needs_prioritization",
+            "needs_input",
+            "deep_review_pending"
+          ]
+        },
+        "required_task_ids": {"$ref": "#/$defs/taskIdSet"},
+        "scheduled_task_ids": {"$ref": "#/$defs/taskIdSet"},
+        "deferred_optional_task_ids": {"$ref": "#/$defs/taskIdSet"},
+        "coverage_records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["task_id", "reason"],
+            "properties": {
+              "task_id": {"type": "string", "pattern": "^task_[0-9a-f]{24}$"},
+              "reason": {"const": "optional_budget_deferred"}
+            }
+          }
+        },
+        "content_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "taskIdSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^task_[0-9a-f]{24}$"}
+    },
     "domainAssessment": {
       "type": "object",
       "additionalProperties": false,

@@ -30,7 +30,11 @@ def payloads(snapshot: Path) -> dict[str, bytes]:
     return {entry["path"]: (snapshot / entry["path"]).read_bytes() for entry in manifest["files"]}
 
 
-def prepare_authorized_scope(root: Path) -> tuple[Path, str, ArtifactStore, list[str], dict, str, object, tuple[dict, ...]]:
+def prepare_authorized_scope(
+    root: Path,
+    *,
+    required_inputs: tuple[str, ...] = (),
+) -> tuple[Path, str, ArtifactStore, list[str], dict, str, object, tuple[dict, ...]]:
     mission_path = root / "mission.json"
     source_path = root / "monthly.json"
     artifacts = root / "artifacts"
@@ -87,6 +91,7 @@ def prepare_authorized_scope(root: Path) -> tuple[Path, str, ArtifactStore, list
     scope = {
         "component_ids": ["bridge_decompose"],
         "issue_ids": ["issue_profitability"],
+        "required_inputs": list(required_inputs),
     }
     scope_ref = make_id("scope", scope)
     integrated = {
@@ -116,6 +121,26 @@ def prepare_authorized_scope(root: Path) -> tuple[Path, str, ArtifactStore, list
 
 
 class CliComponentsIntegrationTests(unittest.TestCase):
+    def test_required_specialist_inputs_fail_closed_before_publish(self) -> None:
+        for required_inputs in (("accounting",), ("professional",), ("accounting", "professional")):
+            with self.subTest(required_inputs=required_inputs):
+                with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+                    root = Path(directory)
+                    _, _, store, common, _, scope_ref, _, _ = prepare_authorized_scope(
+                        root,
+                        required_inputs=required_inputs,
+                    )
+
+                    code, result = call([
+                        "run-components", *common, "--scope-ref", scope_ref,
+                        "--expected-revision", "3",
+                    ])
+
+                    self.assertEqual(3, code, result)
+                    self.assertFalse(result["ok"])
+                    self.assertIn("required input", result["message"])
+                    self.assertEqual(3, store.state()["revision"])
+
     def test_only_approved_components_execute_and_are_published(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             root = Path(directory)
@@ -134,6 +159,12 @@ class CliComponentsIntegrationTests(unittest.TestCase):
             self.assertEqual("not_assessable", run["status"])
             scope_doc = json.loads((snapshot / "components" / "scope.json").read_text("utf-8"))
             self.assertEqual(scope_ref, scope_doc["scope_ref"])
+
+            requirements = json.loads(
+                (snapshot / "components" / "input-requirements.json").read_text("utf-8")
+            )
+            self.assertEqual([], requirements["required_inputs"])
+            self.assertEqual([], requirements["provided_inputs"])
 
     def test_failed_approved_component_is_published_and_blocks_workflow(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:

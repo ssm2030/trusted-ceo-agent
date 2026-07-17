@@ -210,6 +210,119 @@ def _uncertainties(
     return result
 
 
+def _bound_refs(
+    packet: Mapping[str, Any],
+    field: str,
+) -> tuple[str, ...]:
+    raw = packet.get(field)
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
+        raise IntegrityError(f"professional expert packet {field} must be an array")
+    refs: list[str] = []
+    for reference in raw:
+        if not isinstance(reference, str) or not reference:
+            raise IntegrityError(
+                f"professional expert packet {field} contains an invalid reference"
+            )
+        if reference in refs:
+            raise IntegrityError(
+                f"professional expert packet {field} contains duplicate reference: "
+                f"{reference}"
+            )
+        refs.append(reference)
+    return tuple(refs)
+
+
+def _professional_packet_bindings(
+    packet: Mapping[str, Any],
+    *,
+    trigger_ref: str,
+    issue: Mapping[str, Any],
+    facts: Mapping[str, Mapping[str, Any]],
+    signals: Mapping[str, Mapping[str, Any]],
+    links: Mapping[str, Mapping[str, Any]],
+    known_sources: set[str],
+) -> tuple[set[str], list[str], set[str], list[str], list[dict[str, str]]]:
+    if not isinstance(packet.get("_required"), bool):
+        raise IntegrityError("professional expert packet _required must be boolean")
+
+    issue_triggers = issue.get("expert_review_refs", [])
+    if not isinstance(issue_triggers, list) or trigger_ref not in issue_triggers:
+        raise IntegrityError(
+            f"professional expert packet trigger is not bound to issue: {trigger_ref}"
+        )
+
+    fact_refs = set(_bound_refs(packet, "_fact_refs"))
+    evidence_link_ids = list(_bound_refs(packet, "_evidence_link_ids"))
+    source_refs = set(_bound_refs(packet, "_source_refs"))
+    required_documents = list(_bound_refs(packet, "_required_document_refs"))
+
+    for fact_ref in sorted(fact_refs):
+        if fact_ref not in facts:
+            raise IntegrityError(
+                f"professional expert packet references unknown Fact: {fact_ref}"
+            )
+
+    for link_id in evidence_link_ids:
+        link = links.get(link_id)
+        if link is None:
+            raise IntegrityError(
+                f"professional expert packet references unknown Evidence Link: {link_id}"
+            )
+        evidence_ref = link.get("evidence_ref")
+        if evidence_ref in facts:
+            if evidence_ref not in fact_refs:
+                raise IntegrityError(
+                    "professional expert packet Evidence Link references an unbound "
+                    f"Fact: {evidence_ref}"
+                )
+            continue
+        signal = signals.get(evidence_ref) if isinstance(evidence_ref, str) else None
+        if signal is None:
+            raise IntegrityError(
+                "professional expert packet Evidence Link references unknown evidence: "
+                f"{evidence_ref}"
+            )
+        signal_inputs = signal.get("input_fact_ids", [])
+        if not isinstance(signal_inputs, list):
+            raise IntegrityError(f"Signal input facts are invalid: {evidence_ref}")
+        for fact_ref in signal_inputs:
+            if not isinstance(fact_ref, str) or fact_ref not in facts:
+                raise IntegrityError(f"Signal references unknown Fact: {fact_ref}")
+            if fact_ref not in fact_refs:
+                raise IntegrityError(
+                    "professional expert packet Signal references an unbound Fact: "
+                    f"{fact_ref}"
+                )
+
+    unknown_sources = source_refs - known_sources
+    if unknown_sources:
+        raise IntegrityError(
+            "professional expert packet references unknown Source: "
+            f"{sorted(unknown_sources)[0]}"
+        )
+
+    lineage_sources: set[str] = set()
+    source_locators: list[dict[str, str]] = []
+    for fact_ref in sorted(fact_refs):
+        nested_sources, nested_locators = _fact_sources(fact_ref, facts)
+        lineage_sources.update(nested_sources)
+        source_locators.extend(nested_locators)
+    if source_refs != lineage_sources:
+        mismatch = sorted(source_refs ^ lineage_sources)
+        raise IntegrityError(
+            "professional expert packet Source refs do not match bound Fact lineage: "
+            f"{mismatch[0]}"
+        )
+
+    return (
+        fact_refs,
+        evidence_link_ids,
+        source_refs,
+        required_documents,
+        source_locators,
+    )
+
+
 def build_expert_packet_view(
     files: Mapping[str, bytes],
     final_result: Mapping[str, Any],
@@ -304,48 +417,66 @@ def build_expert_packet_view(
             raise IntegrityError(f"structured expert packet is incomplete: {packet_id}")
         if target_issue_ref not in issues:
             raise IntegrityError(f"expert packet targets unknown issue: {target_issue_ref}")
-        candidates = _matching_candidates(
-            integrated,
-            deep,
-            trigger_ref=trigger_ref,
-            target_issue_ref=target_issue_ref,
-            issue_aliases=issue_aliases,
-        )
-        if not candidates:
-            raise IntegrityError(
-                f"public expert packet lacks an accepted candidate: {packet_id}"
-            )
-        evidence_refs = _candidate_evidence(candidates)
-        fact_refs = _facts_for_evidence(evidence_refs, facts, signals)
-        evidence_link_ids = sorted(
-            link_id
-            for link_id, link in links.items()
-            if link.get("target_ref") == target_issue_ref
-            and (
-                link.get("evidence_ref") in evidence_refs
-                or link.get("evidence_ref") in fact_refs
-            )
-        )
-        source_refs: set[str] = set()
-        source_locators: list[dict[str, str]] = []
-        for fact_id in sorted(fact_refs):
-            nested_sources, nested_locators = _fact_sources(fact_id, facts)
-            source_refs.update(nested_sources)
-            source_locators.extend(nested_locators)
-        unknown_sources = source_refs - known_sources
-        if unknown_sources:
-            raise IntegrityError(
-                f"expert packet references unknown Source: {sorted(unknown_sources)[0]}"
-            )
-        required_documents = sorted(
-            {
-                str(reference)
-                for candidate in candidates
-                for reference in candidate.get("required_document_refs", [])
-                if isinstance(reference, str) and reference
-            }
-        )
         issue = issues[target_issue_ref]
+        if structured_packet.get("_professional_packet") is True:
+            (
+                fact_refs,
+                evidence_link_ids,
+                source_refs,
+                required_documents,
+                source_locators,
+            ) = _professional_packet_bindings(
+                structured_packet,
+                trigger_ref=trigger_ref,
+                issue=issue,
+                facts=facts,
+                signals=signals,
+                links=links,
+                known_sources=known_sources,
+            )
+        else:
+            candidates = _matching_candidates(
+                integrated,
+                deep,
+                trigger_ref=trigger_ref,
+                target_issue_ref=target_issue_ref,
+                issue_aliases=issue_aliases,
+            )
+            if not candidates:
+                raise IntegrityError(
+                    f"public expert packet lacks an accepted candidate: {packet_id}"
+                )
+            evidence_refs = _candidate_evidence(candidates)
+            fact_refs = _facts_for_evidence(evidence_refs, facts, signals)
+            evidence_link_ids = sorted(
+                link_id
+                for link_id, link in links.items()
+                if link.get("target_ref") == target_issue_ref
+                and (
+                    link.get("evidence_ref") in evidence_refs
+                    or link.get("evidence_ref") in fact_refs
+                )
+            )
+            source_refs = set()
+            source_locators = []
+            for fact_id in sorted(fact_refs):
+                nested_sources, nested_locators = _fact_sources(fact_id, facts)
+                source_refs.update(nested_sources)
+                source_locators.extend(nested_locators)
+            unknown_sources = source_refs - known_sources
+            if unknown_sources:
+                raise IntegrityError(
+                    "expert packet references unknown Source: "
+                    f"{sorted(unknown_sources)[0]}"
+                )
+            required_documents = sorted(
+                {
+                    str(reference)
+                    for candidate in candidates
+                    for reference in candidate.get("required_document_refs", [])
+                    if isinstance(reference, str) and reference
+                }
+            )
         cause_hypotheses = sorted(
             str(item["claim_code"])
             for item in issue.get("cause_hypotheses", [])

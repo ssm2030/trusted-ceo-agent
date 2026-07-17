@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "execution-authority-gate.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "gate_id",
+    "run_id",
+    "revision",
+    "policy_release_id",
+    "policy_hash",
+    "requested_authority",
+    "depth_assessments",
+    "knowledge_release",
+    "concurrency",
+    "effective_authority",
+    "product_display",
+    "execution_allowed",
+    "requested_authority_allowed",
+    "full_allowed",
+    "blockers",
+    "content_hash"
+  ],
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullableHash": {
+      "anyOf": [
+        {"$ref": "#/$defs/hash"},
+        {"type": "null"}
+      ]
+    },
+    "nullableText": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "authority": {
+      "enum": ["machine_draft", "boundary", "provisional", "full"]
+    }
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "gate_id": {
+      "type": "string",
+      "pattern": "^executionauthority_[0-9a-f]{24}$"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^run_[A-Za-z0-9._-]+$"
+    },
+    "revision": {"type": "integer", "minimum": 1},
+    "policy_release_id": {"type": "string", "minLength": 1},
+    "policy_hash": {"$ref": "#/$defs/hash"},
+    "requested_authority": {"$ref": "#/$defs/authority"},
+    "depth_assessments": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assessment_id",
+          "assessment_hash",
+          "issue_family_id",
+          "effective_authority",
+          "activation_allowed"
+        ],
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^depth_assessment_[0-9a-f]{24}$"
+          },
+          "assessment_hash": {"$ref": "#/$defs/hash"},
+          "issue_family_id": {"type": "string", "minLength": 1},
+          "effective_authority": {"$ref": "#/$defs/authority"},
+          "activation_allowed": {"type": "boolean"}
+        }
+      }
+    },
+    "knowledge_release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "release_id",
+        "release_hash",
+        "binding_hash",
+        "approval_complete",
+        "active_for_revision"
+      ],
+      "properties": {
+        "release_id": {
+          "type": "string",
+          "pattern": "^knowledge_release_[0-9a-f]{24}$"
+        },
+        "release_hash": {"$ref": "#/$defs/hash"},
+        "binding_hash": {"$ref": "#/$defs/nullableHash"},
+        "approval_complete": {"type": "boolean"},
+        "active_for_revision": {"type": "boolean"}
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "profile_hash",
+        "quality_policy_id",
+        "quality_policy_hash",
+        "report_id",
+        "report_hash",
+        "performance_policy_id",
+        "performance_policy_hash",
+        "activation_id",
+        "activation_hash",
+        "activation_effective"
+      ],
+      "properties": {
+        "profile_id": {
+          "enum": ["sequential", "parallel_2", "parallel_3", "parallel_4"]
+        },
+        "profile_hash": {"$ref": "#/$defs/hash"},
+        "quality_policy_id": {"type": "string", "minLength": 1},
+        "quality_policy_hash": {"$ref": "#/$defs/hash"},
+        "report_id": {"$ref": "#/$defs/nullableText"},
+        "report_hash": {"$ref": "#/$defs/nullableHash"},
+        "performance_policy_id": {"$ref": "#/$defs/nullableText"},
+        "performance_policy_hash": {"$ref": "#/$defs/nullableHash"},
+        "activation_id": {"$ref": "#/$defs/nullableText"},
+        "activation_hash": {"$ref": "#/$defs/nullableHash"},
+        "activation_effective": {"type": "boolean"}
+      }
+    },
+    "effective_authority": {"$ref": "#/$defs/authority"},
+    "product_display": {
+      "enum": ["machine_draft", "Boundary", "Provisional", "Full"]
+    },
+    "execution_allowed": {"type": "boolean"},
+    "requested_authority_allowed": {"type": "boolean"},
+    "full_allowed": {"type": "boolean"},
+    "blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "content_hash": {"$ref": "#/$defs/hash"}
+  }
+}

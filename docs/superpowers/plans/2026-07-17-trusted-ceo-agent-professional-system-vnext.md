@@ -383,3 +383,31 @@ Focused 실패 시에만 실패한 정확한 모듈을 `-v`로 다시 실행한�
 - 전문 authority 또는 공식 규범 승격을 위한 실제 전문가 승인 부재
 
 그 밖의 additive Schema, 새 module, 실패 테스트, read-only adapter와 reversible integration은 이 계획에 따라 계속 진행한다.
+
+## 5. 2026-07-18 구현 폐쇄 Addendum
+
+A–P 구현계획은 변경하거나 축소하지 않았다. 최종 통합 검토에서 발견한 계획 간 결속 공백을 다음 수직 단위로 닫았다.
+
+| 연결 대상 | 완료 구현 | 실패·복구 및 합격 증거 |
+|---|---|---|
+| E/G/H/P → 실행 권한 | Knowledge Release·D1–D12·WorkBudget·Concurrency를 `ExecutionAuthorityGate`로 선검사하고 grade authority를 상한 처리 | blocked/machine draft 실행 0, required budget 실패 finalization 0, checkpoint hash 검증·resume/cancel idempotency |
+| F → C–L 전문 런타임 | 승인 scope의 `required_inputs`와 회계 64 Family parent result hash를 전문 Work Item·Finding procedure refs에 결속 | 누락 입력 publish 0, 64/64가 아닌 manifest·packet/procedure mismatch 거부 |
+| J/K/L → M | fixed runtime result가 Finding·relation·cluster·Completion·Grade·authority 분할 산출물과 byte-equivalent일 때만 publication | foreign Completion 혼합, authority overclaim, post-publication structured output 변조를 모두 fail-closed |
+| M → N | 입력 manifest가 동일 revision의 `final/result.json` SHA-256을 고정하고 변환기가 기존 배열만 매핑 | run/revision/SHA mismatch output 0, node/edge/grade exact parity, 동일 revision byte-equivalence |
+| L/N → 전문가 이관 | `expert_review_required`의 packet·판단 경계·owner와 정확한 Fact/Evidence/Source refs를 탭 2 packet view까지 전달 | 미확인 참조 거부, merged/failed/cancelled active issue 승격 0, 새 전문 결론 생성 0 |
+| A/H → Windows 지속성 | 공통 atomic replace가 `PermissionError`에만 10–320ms 제한 재시도 | 원자 rename 유지, target revision 경합 fail-closed, 단위·전체 회귀 통과 |
+
+최종 검증:
+
+```text
+npm --prefix contracts/web-report run check                         PASS
+python -m unittest discover -s tests -q                            455/455 PASS
+python -m unittest discover -s tests/unit/web_report -p test_*.py  47/47 PASS
+npm --prefix web run typecheck                                     PASS
+npm --prefix web run lint                                          PASS
+npm --prefix web test                                              144/144 PASS
+npm --prefix web run build                                         PASS
+npm --prefix web run test:e2e                                      3/3 PASS
+```
+
+따라서 A–O의 로컬 결정적 계약·실패 처리·웹 연결은 구현 완료다. P의 evaluator와 activation/rollback 계약은 구현됐지만 실제 외부 모델·전문가 대조 평가는 여전히 `not_evaluated`다. 공식 Norm grounding·production Oracle·전문가 승인이 없으므로 제품 표시는 `machine_draft`/`Boundary`, 병렬 profile은 `experimental`을 유지한다.

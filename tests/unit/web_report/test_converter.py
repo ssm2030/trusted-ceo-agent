@@ -13,7 +13,8 @@ from trusted_ceo_agent.canonical import canonical_bytes
 from trusted_ceo_agent.evidence.core import assemble_evidence_core
 from trusted_ceo_agent.evidence.facts import build_observed_fact
 from trusted_ceo_agent.evidence.links import build_evidence_link
-from trusted_ceo_agent.errors import IntegrityError
+from trusted_ceo_agent.contracts.schema_store import SchemaStore
+from trusted_ceo_agent.errors import ContractError, IntegrityError
 from trusted_ceo_agent.grading.grader import grade
 from trusted_ceo_agent.intake.adapters.csv import CsvAdapter
 from trusted_ceo_agent.outputs.final_result import build_final_result
@@ -302,6 +303,25 @@ def _build_finalized_run(
 
 
 class FinalResultConverterTests(unittest.TestCase):
+    def test_input_manifest_is_closed_and_pins_one_final_result(self) -> None:
+        manifest = {
+            "schema_version": "1.0.0",
+            "run_id": RUN_ID,
+            "revision": 2,
+            "files": [{"path": "final/result.json", "sha256": SHA}],
+        }
+        SchemaStore().validate("web-report-input-manifest.schema.json", manifest)
+
+        unknown = dict(manifest)
+        unknown["unexpected"] = True
+        with self.assertRaises(ContractError):
+            SchemaStore().validate("web-report-input-manifest.schema.json", unknown)
+
+        wrong_path = dict(manifest)
+        wrong_path["files"] = [{"path": "other.json", "sha256": SHA}]
+        with self.assertRaises(ContractError):
+            SchemaStore().validate("web-report-input-manifest.schema.json", wrong_path)
+
     def test_export_is_valid_byte_equivalent_and_does_not_infer_conclusions(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             store, result_hash = _build_finalized_run(Path(directory))
@@ -396,9 +416,19 @@ class FinalResultConverterTests(unittest.TestCase):
     def test_cli_exports_to_workspace_without_mutating_snapshot(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             root = Path(directory)
-            store, _ = _build_finalized_run(root)
+            store, result_hash = _build_finalized_run(root)
             output = root / "web-report-bundle.json"
             state_before = (store.run_dir / "state.json").read_bytes()
+            input_manifest = root / "web-report-input-manifest.json"
+            input_manifest.write_bytes(canonical_bytes({
+                "schema_version": "1.0.0",
+                "run_id": RUN_ID,
+                "revision": 2,
+                "files": [{
+                    "path": "final/result.json",
+                    "sha256": result_hash,
+                }],
+            }))
             stdout = io.StringIO()
             with contextlib.redirect_stdout(stdout):
                 code = cli.main([
@@ -411,6 +441,8 @@ class FinalResultConverterTests(unittest.TestCase):
                     "2",
                     "--output",
                     str(output),
+                    "--input-manifest",
+                    str(input_manifest),
                 ])
 
             self.assertEqual(0, code, stdout.getvalue())
@@ -419,6 +451,59 @@ class FinalResultConverterTests(unittest.TestCase):
             self.assertEqual(2, response["revision"])
             load_bundle_bytes(output.read_bytes())
             self.assertEqual(state_before, (store.run_dir / "state.json").read_bytes())
+
+    def test_cli_rejects_manifest_identity_and_hash_mismatches_without_output(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            root = Path(directory)
+            _build_finalized_run(root)
+            cases = (
+                (
+                    "run",
+                    "run_20260717T010203Z_ffffffffffffffff",
+                    2,
+                    SHA,
+                    "run or revision mismatch",
+                ),
+                ("revision", RUN_ID, 1, SHA, "run or revision mismatch"),
+                ("sha256", RUN_ID, 2, "0" * 64, "Final Result hash"),
+            )
+            for name, manifest_run_id, revision, sha256, message in cases:
+                with self.subTest(name=name):
+                    output = root / f"{name}-web-report-bundle.json"
+                    input_manifest = root / f"{name}-input-manifest.json"
+                    input_manifest.write_bytes(canonical_bytes({
+                        "schema_version": "1.0.0",
+                        "run_id": manifest_run_id,
+                        "revision": revision,
+                        "files": [{
+                            "path": "final/result.json",
+                            "sha256": sha256,
+                        }],
+                    }))
+                    stdout = io.StringIO()
+                    with contextlib.redirect_stdout(stdout):
+                        code = cli.main([
+                            "export-web-report",
+                            "--artifact-root",
+                            str(root / "artifacts"),
+                            "--run-id",
+                            RUN_ID,
+                            "--revision",
+                            "2",
+                            "--output",
+                            str(output),
+                            "--input-manifest",
+                            str(input_manifest),
+                        ])
+
+                    response = json.loads(stdout.getvalue())
+                    self.assertEqual(cli.EXIT_INTEGRITY, code)
+                    self.assertFalse(response["ok"])
+                    self.assertEqual(cli.EXIT_INTEGRITY, response["code"])
+                    self.assertRegex(response["message"], message)
+                    self.assertFalse(output.exists())
 
 
 if __name__ == "__main__":

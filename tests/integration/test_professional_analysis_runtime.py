@@ -3,6 +3,20 @@ from __future__ import annotations
 import copy
 import hashlib
 import unittest
+from functools import lru_cache
+from tests.foundry_support import make_initial_release
+from tests.professional_knowledge_support import make_knowledge_bundle
+from trusted_ceo_agent.analysis.execution_authority import (
+    build_knowledge_release_binding,
+)
+from trusted_ceo_agent.evaluation.metrics import QUALITY_SCORE_METRICS
+from trusted_ceo_agent.evaluation.non_inferiority import (
+    build_concurrency_profile,
+    build_quality_policy,
+)
+from trusted_ceo_agent.grading.grader import grade
+from trusted_ceo_agent.knowledge.depth_gate import assess_professional_depth
+
 
 from tests.integrator_support import finding_spec
 from tests.unit.analysis.test_economic_events import (
@@ -125,12 +139,66 @@ def _policy() -> dict:
     )
 
 
+@lru_cache(maxsize=1)
+def _authority_material() -> tuple[dict, dict, dict]:
+    quality_policy = build_quality_policy(
+        policy_id="quality_policy_professional_runtime",
+        metric_margins={metric: "0" for metric in QUALITY_SCORE_METRICS},
+        min_workload_classes=4,
+        min_runs_per_condition=10,
+    )
+    profile = build_concurrency_profile("sequential", quality_policy)
+    family, cards, expert, pack_release = make_knowledge_bundle(
+        pack_authority="full"
+    )
+    depth = assess_professional_depth(
+        family,
+        cards,
+        effective_on="2026-06-30",
+        jurisdiction="KR",
+        industry_scope="b2b_services",
+        expert_approval=expert,
+        release=pack_release,
+    )
+    knowledge_release = make_initial_release()
+    return profile, depth, knowledge_release
+
+
+def _execution_authority_inputs(policy: dict) -> dict:
+    profile, depth, knowledge_release = copy.deepcopy(_authority_material())
+    policy_release_id = "policy_release_professional_runtime"
+    return {
+        "expected_policy_release_id": policy_release_id,
+        "depth_assessments": [depth],
+        "knowledge_release": knowledge_release,
+        "knowledge_release_binding": build_knowledge_release_binding(
+            run_id=RUN_ID,
+            revision=REVISION,
+            policy_release_id=policy_release_id,
+            work_budget_policy=policy,
+            knowledge_release=knowledge_release,
+        ),
+        "concurrency_profile": profile,
+        "requested_authority": "full",
+    }
+
+
+def _runtime_control() -> dict:
+    return {
+        "resume_checkpoints": [],
+        "result_payloads": {},
+        "cancel_task_ids": [],
+        "elapsed_seconds": 0,
+    }
+
+
 def _base_input(*, legal_boundary: bool = False) -> dict:
     core = core_fixture()
     party, amount = bound_facts(core)
     signal = _signal(amount["fact_id"])
     manifest, catalog = _manifest(include_legal=False)
     domains = ("accounting", "legal") if legal_boundary else ("accounting",)
+    policy = _policy()
     return {
         "run_id": RUN_ID,
         "revision": REVISION,
@@ -179,9 +247,11 @@ def _base_input(*, legal_boundary: bool = False) -> dict:
             },
         }],
         "priority_policy_ref": "priority_policy_v1",
-        "policy": _policy(),
+        "policy": policy,
         "policy_release_id": "policy_release_professional_runtime",
         "concurrency_profile_id": "sequential",
+        "execution_authority_inputs": _execution_authority_inputs(policy),
+        "runtime_control": _runtime_control(),
         "relation_plans": [],
         "cluster_plans": [{
             "cluster_key": "primary",
@@ -217,11 +287,37 @@ def _successful_executor(request: dict) -> dict:
     ):
         spec.pop(field)
     spec["fact_refs"] = [request["event"]["fact_refs"][0]]
+    grading_input = {
+        "issue_id": request["signal_case"]["case_id"],
+        "assessability": "assessable",
+        "not_assessable_reason_codes": [],
+        "evidence_state": "sufficient",
+        "impact_band": "high",
+        "urgency_band": "near_term",
+        "mission_priority_match": True,
+        "executive_materiality": True,
+        "decision_needed": True,
+        "expert_trigger_state": "none",
+        "pack_authority": "boundary",
+        "diagnostic_disposition": "accepted",
+        "verification_authorized": True,
+        "issue_disposition": "standalone",
+        "trackable": True,
+        "response_eligibility": "eligible",
+        "provenance_refs": list(spec["fact_refs"]),
+    }
+    grade_record = grade(grading_input)
+    spec["grade"] = {
+        "status": grade_record["publication_status"],
+        "grade_record_ref": grade_record["grade_record_id"],
+    }
     return {
         "status": "succeeded",
         "findings": [{
             "finding_key": "primary-accounting",
             "assessment_domains": ["accounting"],
+            "grading_input": grading_input,
+            "grade_record": grade_record,
             "spec": spec,
         }],
         "expert_packet_refs": [],
@@ -246,6 +342,9 @@ class ProfessionalAnalysisRuntimeTests(unittest.TestCase):
         self.assertEqual("terminal", first["signal_cases"][0]["status"])
         self.assertEqual("substantiated", first["signal_cases"][0]["disposition"])
         self.assertEqual(1, len(first["findings"]))
+        self.assertTrue(first["execution_authority"]["execution_allowed"])
+        self.assertEqual(1, len(first["grading_inputs"]))
+        self.assertEqual(1, len(first["grade_records"]))
         self.assertEqual(1, len(first["result_cas"]))
         cas = first["result_cas"][0]
         self.assertEqual(
@@ -259,6 +358,157 @@ class ProfessionalAnalysisRuntimeTests(unittest.TestCase):
         self.assertEqual(
             first["finding_join_manifest"]["integrity"]["payload_hash"],
             first["cross_domain_integration"]["manifest_hash"],
+        )
+
+    def test_blocked_execution_authority_never_calls_pack_executor(self) -> None:
+        from trusted_ceo_agent.analysis.runtime import ProfessionalAnalysisRuntime
+
+        arguments = _base_input()
+        arguments["execution_authority_inputs"]["knowledge_release_binding"] = None
+        calls = 0
+
+        def executor(request: dict) -> dict:
+            nonlocal calls
+            calls += 1
+            return _successful_executor(request)
+
+        result = ProfessionalAnalysisRuntime().run(
+            **arguments,
+            task_executor=executor,
+        )
+
+        self.assertEqual(0, calls)
+        self.assertFalse(result["execution_authority"]["execution_allowed"])
+        self.assertEqual("not_ready", result["completion"]["status"])
+        self.assertFalse(result["finalization_allowed"])
+
+    def test_forged_grade_record_is_rejected_before_finding_build(self) -> None:
+        from trusted_ceo_agent.analysis.runtime import ProfessionalAnalysisRuntime
+        from trusted_ceo_agent.errors import ContractError
+
+        def forged(request: dict) -> dict:
+            result = _successful_executor(request)
+            result["findings"][0]["grade_record"]["primary_grade"] = "Monitor"
+            return result
+
+        with self.assertRaisesRegex(ContractError, "Grade Record"):
+            ProfessionalAnalysisRuntime().run(
+                **_base_input(),
+                task_executor=forged,
+            )
+
+    def test_grade_cannot_exceed_execution_authority(self) -> None:
+        from trusted_ceo_agent.analysis.runtime import ProfessionalAnalysisRuntime
+        from trusted_ceo_agent.errors import ContractError
+
+        def overclaimed(request: dict) -> dict:
+            result = _successful_executor(request)
+            entry = result["findings"][0]
+            entry["grading_input"]["pack_authority"] = "full"
+            entry["grade_record"] = grade(entry["grading_input"])
+            entry["spec"]["grade"] = {
+                "status": entry["grade_record"]["publication_status"],
+                "grade_record_ref": entry["grade_record"]["grade_record_id"],
+            }
+            return result
+
+        with self.assertRaisesRegex(
+            ContractError,
+            "pack authority exceeds",
+        ):
+            ProfessionalAnalysisRuntime().run(
+                **_base_input(),
+                task_executor=overclaimed,
+            )
+
+    def test_required_budget_overflow_blocks_executor_and_records_assessment(self) -> None:
+        from trusted_ceo_agent.analysis.runtime import ProfessionalAnalysisRuntime
+
+        arguments = _base_input()
+        arguments["runtime_control"]["elapsed_seconds"] = arguments["policy"][
+            "case_timeout"
+        ]
+        calls = 0
+
+        def executor(request: dict) -> dict:
+            nonlocal calls
+            calls += 1
+            return _successful_executor(request)
+
+        result = ProfessionalAnalysisRuntime().run(
+            **arguments,
+            task_executor=executor,
+        )
+
+        self.assertEqual(0, calls)
+        self.assertEqual(
+            "deep_review_pending", result["budget_assessments"][0]["status"]
+        )
+        self.assertEqual("not_ready", result["completion"]["status"])
+        self.assertFalse(result["finalization_allowed"])
+
+    def test_cancellation_propagates_without_pack_execution(self) -> None:
+        from trusted_ceo_agent.analysis.runtime import ProfessionalAnalysisRuntime
+
+        source = ProfessionalAnalysisRuntime().run(
+            **_base_input(), task_executor=_successful_executor
+        )
+        arguments = _base_input()
+        arguments["runtime_control"]["cancel_task_ids"] = [
+            source["work_items"][0]["task_id"]
+        ]
+        calls = 0
+
+        def executor(request: dict) -> dict:
+            nonlocal calls
+            calls += 1
+            return _successful_executor(request)
+
+        result = ProfessionalAnalysisRuntime().run(
+            **arguments,
+            task_executor=executor,
+        )
+
+        self.assertEqual(0, calls)
+        self.assertEqual("cancelled", result["work_items"][0]["status"])
+        self.assertEqual("not_ready", result["completion"]["status"])
+        self.assertTrue(result["checkpoints"])
+
+    def test_resume_reuses_verified_success_without_pack_execution(self) -> None:
+        from trusted_ceo_agent.analysis.runtime import ProfessionalAnalysisRuntime
+
+        source = ProfessionalAnalysisRuntime().run(
+            **_base_input(), task_executor=_successful_executor
+        )
+        checkpoint = source["checkpoints"][-1]
+        arguments = _base_input()
+        arguments["runtime_control"] = {
+            "resume_checkpoints": [checkpoint],
+            "result_payloads": {
+                item["result_ref"]: canonical_bytes(item["payload"])
+                for item in source["result_cas"]
+            },
+            "cancel_task_ids": [],
+            "elapsed_seconds": 0,
+        }
+        calls = 0
+
+        def executor(_request: dict) -> dict:
+            nonlocal calls
+            calls += 1
+            raise AssertionError("a verified terminal result must not execute twice")
+
+        resumed = ProfessionalAnalysisRuntime().run(
+            **arguments,
+            task_executor=executor,
+        )
+
+        self.assertEqual(0, calls)
+        self.assertEqual(source["findings"], resumed["findings"])
+        self.assertEqual(source["grade_records"], resumed["grade_records"])
+        self.assertEqual(
+            f"checkpoints/{checkpoint['checkpoint_id']}.json",
+            resumed["checkpoints"][0]["previous_checkpoint_ref"],
         )
 
     def test_required_task_failure_blocks_join_and_finalization(self) -> None:

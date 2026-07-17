@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from trusted_ceo_agent.analysis.economic_events import materialize_economic_event
+from trusted_ceo_agent.analysis.execution_authority import evaluate_execution_authority
 from trusted_ceo_agent.analysis.findings import (
     build_finding,
     build_finding_relation,
@@ -23,6 +25,7 @@ from trusted_ceo_agent.analysis.signal_queue import (
 from trusted_ceo_agent.canonical import canonical_bytes
 from trusted_ceo_agent.contracts.schema_store import SchemaStore
 from trusted_ceo_agent.errors import ContractError
+from trusted_ceo_agent.grading.grader import grade
 from trusted_ceo_agent.orchestration.budget import verify_work_budget_policy
 from trusted_ceo_agent.orchestration.graph import (
     FAILURE_CODES,
@@ -68,6 +71,8 @@ _EXECUTOR_RESULT_FIELDS = frozenset({
 _FINDING_ENTRY_FIELDS = frozenset({
     "finding_key",
     "assessment_domains",
+    "grading_input",
+    "grade_record",
     "spec",
 })
 _RUNTIME_FINDING_FIELDS = frozenset({
@@ -99,6 +104,24 @@ _BOUNDARY_ROUTE_STATUSES = frozenset({
     "not_assessable",
     "expert_review_required",
 })
+_EXECUTION_AUTHORITY_REQUIRED_FIELDS = frozenset({
+    "expected_policy_release_id",
+    "depth_assessments",
+    "knowledge_release",
+    "knowledge_release_binding",
+    "concurrency_profile",
+    "requested_authority",
+})
+_EXECUTION_AUTHORITY_OPTIONAL_FIELDS = frozenset({
+    "non_inferiority_report",
+    "performance_policy",
+    "profile_activation_receipt",
+})
+_RUNTIME_CONTROL_FIELDS = frozenset({
+    "resume_checkpoints", "result_payloads", "cancel_task_ids", "elapsed_seconds",
+})
+
+
 
 
 def _digest(value: Any) -> str:
@@ -132,6 +155,67 @@ def _string_set(value: Any, label: str, *, non_empty: bool = False) -> list[str]
     if non_empty and not normalized:
         raise ContractError(f"{label} cannot be empty")
     return normalized
+
+def _execution_authority_gate(
+    value: Mapping[str, Any],
+    *,
+    run_id: str,
+    revision: int,
+    policy_release_id: str,
+    policy: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ContractError("execution_authority_inputs must be an object")
+    inputs = copy.deepcopy(dict(value))
+    actual = set(inputs)
+    missing = _EXECUTION_AUTHORITY_REQUIRED_FIELDS - actual
+    extra = actual - (
+        _EXECUTION_AUTHORITY_REQUIRED_FIELDS | _EXECUTION_AUTHORITY_OPTIONAL_FIELDS
+    )
+    if missing or extra:
+        raise ContractError(
+            "execution_authority_inputs fields are invalid: "
+            f"missing={sorted(missing)}, extra={sorted(extra)}"
+        )
+    return evaluate_execution_authority(
+        run_id=run_id,
+        revision=revision,
+        policy_release_id=policy_release_id,
+        work_budget_policy=policy,
+        **inputs,
+    )
+
+
+def _runtime_controls(value: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ContractError("runtime_control must be an object")
+    control = dict(value)
+    _exact_fields(control, _RUNTIME_CONTROL_FIELDS, "runtime_control")
+    checkpoints = control["resume_checkpoints"]
+    if isinstance(checkpoints, (str, bytes, bytearray)) or not isinstance(
+        checkpoints, Sequence
+    ):
+        raise ContractError("resume_checkpoints must be an array")
+    if not all(isinstance(item, Mapping) for item in checkpoints):
+        raise ContractError("resume checkpoint must be an object")
+    payloads = control["result_payloads"]
+    if not isinstance(payloads, Mapping) or not all(
+        isinstance(key, str) and isinstance(payload, bytes)
+        for key, payload in payloads.items()
+    ):
+        raise ContractError("result_payloads must map refs to bytes")
+    elapsed = control["elapsed_seconds"]
+    if isinstance(elapsed, bool) or not isinstance(elapsed, int) or elapsed < 0:
+        raise ContractError("elapsed_seconds must be a non-negative integer")
+    return {
+        "resume_checkpoints": [copy.deepcopy(dict(item)) for item in checkpoints],
+        "result_payloads": dict(payloads),
+        "cancel_task_ids": _string_set(
+            control["cancel_task_ids"], "cancel_task_ids"
+        ),
+        "elapsed_seconds": elapsed,
+    }
+
 
 
 class TaskExecutionFailure(Exception):
@@ -316,6 +400,31 @@ def _task_result(
         spec = item["spec"]
         if not isinstance(spec, Mapping):
             raise ContractError("task Finding spec must be an object")
+        grading_input = item["grading_input"]
+        grade_record = item["grade_record"]
+        if not isinstance(grading_input, Mapping):
+            raise ContractError("task Finding grading_input must be an object")
+        if not isinstance(grade_record, Mapping):
+            raise ContractError("task Finding Grade Record must be an object")
+        grading_input = copy.deepcopy(dict(grading_input))
+        grade_record = copy.deepcopy(dict(grade_record))
+        SchemaStore().validate("grading-input.schema.json", grading_input)
+        SchemaStore().validate("grade-record.schema.json", grade_record)
+        recomputed_grade = grade(grading_input)
+        if canonical_bytes(recomputed_grade) != canonical_bytes(grade_record):
+            raise ContractError("task Finding Grade Record does not match engine grade")
+        expected_grade = {
+            "status": grade_record["publication_status"],
+            "grade_record_ref": (
+                grade_record["grade_record_id"]
+                if grade_record["publication_status"] == "published"
+                else None
+            ),
+        }
+        if spec.get("grade") != expected_grade:
+            raise ContractError(
+                "task Finding grade reference does not match engine Grade Record"
+            )
         forbidden = set(spec) & _RUNTIME_FINDING_FIELDS
         if forbidden:
             raise ContractError(
@@ -324,6 +433,8 @@ def _task_result(
         normalized_findings.append({
             "finding_key": key,
             "assessment_domains": domains,
+            "grading_input": grading_input,
+            "grade_record": grade_record,
             "spec": copy.deepcopy(dict(spec)),
         })
     body = {
@@ -343,6 +454,44 @@ def _task_result(
     }
     record = {**body, "content_hash": _digest(body)}
     SchemaStore().validate("professional-task-result.schema.json", record)
+    return record
+
+
+def _task_record_from_payload(
+    payload: bytes,
+    *,
+    task_id: str,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    try:
+        decoded = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ContractError("checkpoint task result is not canonical JSON") from error
+    if not isinstance(decoded, Mapping):
+        raise ContractError("checkpoint task result must be an object")
+    record = copy.deepcopy(dict(decoded))
+    SchemaStore().validate("professional-task-result.schema.json", record)
+    body = {key: record[key] for key in record if key != "content_hash"}
+    if record["content_hash"] != _digest(body):
+        raise ContractError("checkpoint task result content hash mismatch")
+    if record["task_id"] != task_id:
+        raise ContractError("checkpoint task result task mismatch")
+    if record["work_idempotency_key"] != idempotency_key:
+        raise ContractError("checkpoint task result idempotency mismatch")
+    for entry in record["findings"]:
+        recomputed = grade(entry["grading_input"])
+        if canonical_bytes(recomputed) != canonical_bytes(entry["grade_record"]):
+            raise ContractError("checkpoint Grade Record does not match engine grade")
+        expected_ref = (
+            recomputed["grade_record_id"]
+            if recomputed["publication_status"] == "published"
+            else None
+        )
+        if entry["spec"].get("grade") != {
+            "status": recomputed["publication_status"],
+            "grade_record_ref": expected_ref,
+        }:
+            raise ContractError("checkpoint Finding grade reference mismatch")
     return record
 
 
@@ -414,6 +563,8 @@ class ProfessionalAnalysisRuntime:
         policy: Mapping[str, Any],
         policy_release_id: str,
         concurrency_profile_id: str,
+        execution_authority_inputs: Mapping[str, Any],
+        runtime_control: Mapping[str, Any],
         task_executor: TaskExecutor,
         relation_plans: Sequence[Mapping[str, Any]],
         cluster_plans: Sequence[Mapping[str, Any]],
@@ -437,6 +588,14 @@ class ProfessionalAnalysisRuntime:
             raise ContractError("Professional runtime requires one active Signal Case")
         if policy["approved_concurrency_profile_id"] != concurrency_profile_id:
             raise ContractError("runtime concurrency profile differs from WorkBudgetPolicy")
+        execution_authority = _execution_authority_gate(
+            execution_authority_inputs,
+            run_id=run_id,
+            revision=revision,
+            policy_release_id=policy_release_id,
+            policy=policy,
+        )
+        controls = _runtime_controls(runtime_control)
 
         event = materialize_economic_event(
             evidence_core=evidence_core,
@@ -474,11 +633,52 @@ class ProfessionalAnalysisRuntime:
         )
         route_by_domain = {str(route["domain"]): route for route in routes}
         original_case_by_id = {str(case["case_id"]): case for case in cases}
+        compiled_by_case: dict[str, tuple[dict[str, Any], list[dict[str, Any]]]] = {}
+        graph_ids: set[str] = set()
+        all_task_ids: set[str] = set()
+        for planned_case in sorted(cases, key=lambda item: str(item["case_id"])):
+            planned_case_id = str(planned_case["case_id"])
+            planned_graph, planned_items = compile_work_graph(
+                run_id=run_id,
+                base_revision=revision,
+                signal_case_ids=[planned_case_id],
+                work_item_specs=specs_by_case[planned_case_id],
+                policy_release_id=policy_release_id,
+                concurrency_profile_id=concurrency_profile_id,
+            )
+            compiled_by_case[planned_case_id] = (planned_graph, planned_items)
+            graph_ids.add(str(planned_graph["graph_id"]))
+            all_task_ids.update(str(item["task_id"]) for item in planned_items)
+
+        resume_by_graph: dict[str, dict[str, Any]] = {}
+        expected_result_refs: set[str] = set()
+        for checkpoint in controls["resume_checkpoints"]:
+            SchemaStore().validate("work-checkpoint.schema.json", checkpoint)
+            graph_id = str(checkpoint["graph_id"])
+            if graph_id not in graph_ids:
+                raise ContractError("resume checkpoint does not belong to this run graph")
+            if graph_id in resume_by_graph:
+                raise ContractError("duplicate resume checkpoint for graph")
+            resume_by_graph[graph_id] = checkpoint
+            expected_result_refs.update(
+                str(item["result_ref"]) for item in checkpoint["result_records"]
+            )
+        if set(controls["result_payloads"]) != expected_result_refs:
+            raise ContractError("checkpoint result payload refs do not match resume records")
+        unknown_cancel_ids = set(controls["cancel_task_ids"]) - all_task_ids
+        if unknown_cancel_ids:
+            raise ContractError(
+                f"cancel_task_ids contain unknown tasks: {sorted(unknown_cancel_ids)}"
+            )
         cas = _ResultCAS()
         graphs: list[dict[str, Any]] = []
+        checkpoints: list[dict[str, Any]] = []
+        budget_assessments: list[dict[str, Any]] = []
         final_work_items: list[dict[str, Any]] = []
         finding_by_key: dict[str, dict[str, Any]] = {}
         all_findings: list[dict[str, Any]] = []
+        grading_input_by_issue: dict[str, dict[str, Any]] = {}
+        grade_record_by_issue: dict[str, dict[str, Any]] = {}
         failure_refs: list[str] = []
         clock = 0
         lease_sequence = 0
@@ -493,16 +693,122 @@ class ProfessionalAnalysisRuntime:
             if case is None:
                 break
             case_id = str(case["case_id"])
-            graph, work_items = compile_work_graph(
-                run_id=run_id,
-                base_revision=revision,
-                signal_case_ids=[case_id],
-                work_item_specs=specs_by_case[case_id],
-                policy_release_id=policy_release_id,
-                concurrency_profile_id=concurrency_profile_id,
+            graph, work_items = copy.deepcopy(compiled_by_case[case_id])
+            resume_checkpoint = resume_by_graph.get(str(graph["graph_id"]))
+            if resume_checkpoint is None:
+                scheduler = WorkScheduler(graph, work_items, policy)
+            else:
+                scheduler = WorkScheduler.from_checkpoint(
+                    graph,
+                    work_items,
+                    policy,
+                    resume_checkpoint,
+                    active_created_from_hash=str(graph["created_from_hash"]),
+                    result_payloads=controls["result_payloads"],
+                )
+
+            graph_task_ids = set(str(item["task_id"]) for item in work_items)
+            for task_id in controls["cancel_task_ids"]:
+                if task_id in graph_task_ids:
+                    scheduler.cancel(task_id)
+
+            checkpoint_state = {
+                "sequence": (
+                    int(resume_checkpoint["sequence"]) + 1
+                    if resume_checkpoint is not None
+                    else 0
+                ),
+                "previous_ref": (
+                    f"checkpoints/{resume_checkpoint['checkpoint_id']}.json"
+                    if resume_checkpoint is not None
+                    else None
+                ),
+            }
+
+            def capture_checkpoint() -> None:
+                checkpoint = scheduler.checkpoint(
+                    sequence=checkpoint_state["sequence"],
+                    previous_checkpoint_ref=checkpoint_state["previous_ref"],
+                )
+                checkpoints.append(checkpoint)
+                checkpoint_state["sequence"] += 1
+                checkpoint_state["previous_ref"] = (
+                    f"checkpoints/{checkpoint['checkpoint_id']}.json"
+                )
+
+            budget = scheduler.assess_budget(
+                elapsed_seconds=controls["elapsed_seconds"]
             )
-            scheduler = WorkScheduler(graph, work_items, policy)
+            budget_body = {
+                "graph_id": graph["graph_id"],
+                "case_id": case_id,
+                "elapsed_seconds": controls["elapsed_seconds"],
+                **budget,
+            }
+            budget_assessments.append({
+                **budget_body,
+                "content_hash": _digest(budget_body),
+            })
+            capture_checkpoint()
+
+            if not execution_authority["execution_allowed"]:
+                snapshot = scheduler.graph_snapshot()
+                snapshot["checkpoint_ref"] = checkpoint_state["previous_ref"]
+                graphs.append(snapshot)
+                final_work_items.extend(scheduler.work_items())
+                failure_refs.append(
+                    f"{case_id}:execution_authority_blocked:"
+                    f"{execution_authority['gate_id']}"
+                )
+                queue.pause(
+                    case_id,
+                    worker_id,
+                    status="needs_expert",
+                    reason="ExecutionAuthorityGate blocked specialist execution",
+                    expected_revision=queue.revision,
+                    idempotency_key=f"runtime-case-authority-{case_id}",
+                )
+                continue
+            if budget["status"] != "ready":
+                snapshot = scheduler.graph_snapshot()
+                snapshot["checkpoint_ref"] = checkpoint_state["previous_ref"]
+                graphs.append(snapshot)
+                final_work_items.extend(scheduler.work_items())
+                failure_refs.append(f"{case_id}:required_budget:{budget['status']}")
+                queue.pause(
+                    case_id,
+                    worker_id,
+                    status="needs_expert",
+                    reason="required Work Item exceeded the approved WorkBudgetPolicy",
+                    expected_revision=queue.revision,
+                    idempotency_key=f"runtime-case-budget-{case_id}",
+                )
+                continue
+
             task_records: list[dict[str, Any]] = []
+            for restored_item in scheduler.work_items():
+                if restored_item["status"] != "succeeded":
+                    continue
+                payload = controls["result_payloads"].get(
+                    str(restored_item["result_ref"])
+                )
+                if not isinstance(payload, bytes):
+                    raise ContractError("resumed success lacks its result payload")
+                restored_record = _task_record_from_payload(
+                    payload,
+                    task_id=str(restored_item["task_id"]),
+                    idempotency_key=work_idempotency_key(restored_item),
+                )
+                restored_ref, restored_payload = cas.put(
+                    str(restored_item["task_id"]), restored_record
+                )
+                if (
+                    restored_ref != restored_item["result_ref"]
+                    or hashlib.sha256(restored_payload).hexdigest()
+                    != restored_item["result_hash"]
+                ):
+                    raise ContractError("resumed result differs from checkpoint hash")
+                task_records.append(restored_record)
             while True:
                 leased = scheduler.lease(worker_id, now=clock)
                 clock += 1
@@ -549,6 +855,7 @@ class ProfessionalAnalysisRuntime:
                         failure_code=error.failure_code,
                         active_created_from_hash=graph["created_from_hash"],
                     )
+                    capture_checkpoint()
                     if failed["status"] not in {"ready", "succeeded"}:
                         failure_refs.append(
                             f"{failed['task_id']}:{failed['failure_code']}"
@@ -562,9 +869,11 @@ class ProfessionalAnalysisRuntime:
                     result_payload=result_payload,
                     active_created_from_hash=graph["created_from_hash"],
                 )
+                capture_checkpoint()
                 task_records.append(record)
 
             graph = scheduler.graph_snapshot()
+            graph["checkpoint_ref"] = checkpoint_state["previous_ref"]
             current_items = scheduler.work_items()
             graphs.append(graph)
             final_work_items.extend(current_items)
@@ -600,6 +909,30 @@ class ProfessionalAnalysisRuntime:
                 )
                 continue
             record, entry = entries[0]
+            grading_input = copy.deepcopy(entry["grading_input"])
+            grade_record = copy.deepcopy(entry["grade_record"])
+            grade_authority_order = {
+                "boundary": 0,
+                "provisional": 1,
+                "full": 2,
+            }
+            effective_authority = execution_authority["effective_authority"]
+            if (
+                effective_authority not in grade_authority_order
+                or grade_authority_order[grading_input["pack_authority"]]
+                > grade_authority_order[effective_authority]
+            ):
+                raise ContractError("task Finding pack authority exceeds ExecutionAuthorityGate")
+            if grading_input["issue_id"] != case_id:
+                raise ContractError(
+                    "task Finding Grading Input must bind to its Signal Case"
+                )
+            if grade_record["issue_id"] != case_id:
+                raise ContractError("task Finding Grade Record issue mismatch")
+            if case_id in grading_input_by_issue or case_id in grade_record_by_issue:
+                raise ContractError("duplicate runtime grade issue")
+            grading_input_by_issue[case_id] = grading_input
+            grade_record_by_issue[case_id] = grade_record
             finding_key = str(entry["finding_key"])
             if finding_key in finding_by_key:
                 raise ContractError(f"duplicate runtime Finding key: {finding_key}")
@@ -860,16 +1193,33 @@ class ProfessionalAnalysisRuntime:
             "schema_version": "1.0.0",
             "run_id": run_id,
             "revision": revision,
+            "execution_authority": execution_authority,
             "event": event,
             "routing_decisions": routing_decisions,
             "domain_routes": routes,
             "signal_cases": current_cases,
             "priority_records": priorities,
             "graphs": graphs,
+            "checkpoints": sorted(
+                checkpoints,
+                key=lambda item: (item["graph_id"], item["sequence"]),
+            ),
+            "budget_assessments": sorted(
+                budget_assessments,
+                key=lambda item: item["graph_id"],
+            ),
             "work_items": final_work_items,
             "result_cas": cas.records(),
             "domain_assessments": domain_assessments,
             "findings": all_findings,
+            "grading_inputs": [
+                grading_input_by_issue[key]
+                for key in sorted(grading_input_by_issue)
+            ],
+            "grade_records": [
+                grade_record_by_issue[key]
+                for key in sorted(grade_record_by_issue)
+            ],
             "relations": sorted(relations, key=lambda item: item["relation_id"]),
             "clusters": sorted(clusters, key=lambda item: item["cluster_id"]),
             "finding_join_manifest": join_manifest,

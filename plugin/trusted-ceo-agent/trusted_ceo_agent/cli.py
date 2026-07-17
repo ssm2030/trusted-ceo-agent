@@ -44,9 +44,11 @@ from trusted_ceo_agent.questions import (
 from trusted_ceo_agent.questions.scope import SCOPE_KINDS
 from trusted_ceo_agent.runtime_scan import build_scan_artifacts
 from trusted_ceo_agent.runtime_components import (
+    bind_accounting_professional_inputs,
     component_input_documents,
     execute_authorized_scope,
     merge_component_runs,
+    normalize_authorized_scope,
 )
 from trusted_ceo_agent.runtime_finalization import build_delivery_package, prepare_finalization
 from trusted_ceo_agent.reasoning.attempts import next_attempt_action
@@ -61,7 +63,8 @@ from trusted_ceo_agent.reasoning.stage_drafts import (
 from trusted_ceo_agent.trust.artifact_store import ArtifactStore
 from trusted_ceo_agent.trust.revision_validation import validate_revision
 from trusted_ceo_agent.web_report.eligibility import decide_viewer_eligibility
-from trusted_ceo_agent.web_report.exporter import export_web_report
+from trusted_ceo_agent.web_report.contracts import load_bundle_bytes
+from trusted_ceo_agent.web_report.converter import convert_final_revision
 from trusted_ceo_agent.web_report.output import publish_web_report_output
 from trusted_ceo_agent.workflow.approvals import ApprovalService, current_approvals
 from trusted_ceo_agent.workflow.human_actions import (
@@ -161,6 +164,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_run(export_web_report)
     export_web_report.add_argument("--revision", type=int, required=True)
     export_web_report.add_argument("--output", type=Path, required=True)
+    export_web_report.add_argument("--input-manifest", type=Path, required=True)
 
     validate_web_report = commands.add_parser("validate-web-report")
     _add_run(validate_web_report)
@@ -671,20 +675,44 @@ def _render(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
 
 def _export_web_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     store = _store_for(args)
-    exported = export_web_report(store, run_id=args.run_id, revision=args.revision)
+    _, manifest_payload = _stable_read(
+        args.input_manifest.resolve(strict=True)
+    )
+    try:
+        strict_loads(manifest_payload)
+        manifest = json.loads(manifest_payload.decode("utf-8"))
+    except (UnicodeError, ValueError) as error:
+        raise ContractError("web report input manifest is invalid JSON") from error
+    if not isinstance(manifest, Mapping):
+        raise ContractError("web report input manifest must be an object")
+    SchemaStore().validate("web-report-input-manifest.schema.json", manifest)
+    if (
+        manifest["run_id"] != args.run_id
+        or manifest["revision"] != args.revision
+    ):
+        raise IntegrityError("web report input manifest run or revision mismatch")
+    expected_hash = manifest["files"][0]["sha256"]
+    payload = convert_final_revision(
+        store,
+        run_id=args.run_id,
+        revision=args.revision,
+        expected_final_result_hash=expected_hash,
+    )
+    bundle = load_bundle_bytes(payload)
     run_dir = store.open_run(args.run_id)
     publish_web_report_output(
-        args.output.resolve(strict=False), exported.payload,
+        args.output.resolve(strict=False), payload,
         workspace=Path.cwd(), run_dir=run_dir, plugin_root=PLUGIN_ROOT,
     )
+    receipt = bundle["viewer_eligibility_receipt"]
     return 0, response(
         command="export-web-report", ok=True, code=0,
         message="web report exported", run_id=args.run_id,
         revision=args.revision,
         data={
-            "bundle_hash": exported.bundle["bundle_hash"],
-            "viewer_mode": exported.bundle["viewer_eligibility_receipt"]["claimed_viewer_mode"],
-            "checks": list(exported.checks),
+            "bundle_hash": bundle["bundle_hash"],
+            "viewer_mode": receipt["claimed_viewer_mode"],
+            "checks": list(receipt["completed_checks"]),
         },
     )
 
@@ -1185,7 +1213,7 @@ def _accounting_component_artifacts(
     run_id: str,
     revision: int,
     approved_scope_ref: str,
-) -> tuple[dict[str, bytes], dict[str, Any]]:
+) -> tuple[dict[str, bytes], dict[str, Any], dict[str, Any]]:
     raw_bytes = path.read_bytes()
     strict_loads(raw_bytes)
     request = json.loads(raw_bytes.decode("utf-8"))
@@ -1229,6 +1257,7 @@ def _accounting_component_artifacts(
             ),
             "accounting_result_artifact_count": len(bundle["result_artifacts"]),
         },
+        bundle,
     )
 
 
@@ -1255,6 +1284,8 @@ _PROFESSIONAL_RUNTIME_KEYS = frozenset({
     "policy",
     "policy_release_id",
     "concurrency_profile_id",
+    "execution_authority_inputs",
+    "runtime_control",
     "relation_plans",
     "cluster_plans",
     "boundary_packet_refs",
@@ -1285,6 +1316,7 @@ def _professional_component_artifacts(
     revision: int,
     approved_scope_ref: str,
     evidence_core: Mapping[str, Any],
+    accounting_bundle: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, bytes], dict[str, Any], dict[str, Any]]:
     raw_bytes = path.read_bytes()
     strict_loads(raw_bytes)
@@ -1338,6 +1370,11 @@ def _professional_component_artifacts(
             f"unknown={sorted(declared_keys - set(work_keys))}"
         )
 
+    accounting_binding = (
+        bind_accounting_professional_inputs(accounting_bundle, request)
+        if accounting_bundle is not None else None
+    )
+
     def execute_task(task_request: dict[str, Any]) -> Mapping[str, Any]:
         work_key = task_request.get("work_plan_key")
         if not isinstance(work_key, str) or work_key not in declared_keys:
@@ -1368,6 +1405,7 @@ def _professional_component_artifacts(
     result_hash = str(result["content_hash"])
     artifact_files: dict[str, bytes] = {
         f"analysis/professional/requests/{request_hash}.json": request_bytes,
+        "analysis/professional/runtime-result.json": canonical_bytes(result),
         f"analysis/professional/runs/{result_hash}.json": canonical_bytes(result),
         "analysis/professional/economic-event.json": canonical_bytes(result["event"]),
         "analysis/professional/routing-decisions.json": canonical_bytes(
@@ -1394,7 +1432,20 @@ def _professional_component_artifacts(
         "analysis/professional/completion-assessment.json": canonical_bytes(
             result["completion"]
         ),
+        "analysis/professional/grading-inputs.json": canonical_bytes(
+            result["grading_inputs"]
+        ),
+        "analysis/professional/grade-records.json": canonical_bytes(
+            result["grade_records"]
+        ),
+        "analysis/professional/execution-authority.json": canonical_bytes(
+            result["execution_authority"]
+        ),
     }
+    if accounting_binding is not None:
+        artifact_files["analysis/professional/accounting-binding.json"] = (
+            canonical_bytes(accounting_binding)
+        )
     if result["finding_join_manifest"] is not None:
         artifact_files["analysis/professional/finding-join-manifest.json"] = (
             canonical_bytes(result["finding_join_manifest"])
@@ -1411,6 +1462,11 @@ def _professional_component_artifacts(
             "professional_completion_status": result["completion"]["status"],
             "professional_finalization_allowed": result["finalization_allowed"],
             "professional_finding_count": len(result["findings"]),
+            "professional_product_display": result["execution_authority"]["product_display"],
+            "accounting_professional_binding_hash": (
+                accounting_binding["content_hash"]
+                if accounting_binding is not None else None
+            ),
         },
         result,
     )
@@ -1459,17 +1515,35 @@ def _mutation(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         scope = overlay.get("deep_dive_scope") if isinstance(overlay, dict) else None
         if not isinstance(scope, dict):
             raise ContractError("approved deep-dive scope is missing")
+        normalized_scope = normalize_authorized_scope(scope)
+        required_inputs = set(normalized_scope["required_inputs"])
+        provided_inputs = {
+            name
+            for name, value in (
+                ("accounting", args.accounting_input),
+                ("professional", args.professional_input),
+            )
+            if value is not None
+        }
+        missing_inputs = sorted(required_inputs - provided_inputs)
+        if missing_inputs:
+            raise ContractError(
+                f"required input is missing from approved scope: {missing_inputs}"
+            )
         core = json.loads(files["evidence/core.json"].decode("utf-8"))
         integrated = strict_loads(files.get("reasoning/integrated-assessment.json", b"{}"))
         plan, runs = execute_authorized_scope(
             files, core, integrated, scope, args.scope_ref,
         )
+        accounting_bundle: dict[str, Any] | None = None
         if args.accounting_input is not None:
-            accounting_files, accounting_data = _accounting_component_artifacts(
+            accounting_files, accounting_data, accounting_bundle = (
+                _accounting_component_artifacts(
                 args.accounting_input,
                 run_id=args.run_id,
                 revision=current + 1,
                 approved_scope_ref=args.scope_ref,
+                )
             )
             files.update(accounting_files)
             data.update(accounting_data)
@@ -1486,11 +1560,18 @@ def _mutation(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         files["evidence/core.json"] = canonical_bytes(updated_core)
         scope_doc = {
             "scope_ref": args.scope_ref,
-            "component_ids": sorted(set(scope.get("component_ids", []))),
-            "issue_ids": sorted(set(scope.get("issue_ids", []))),
+            "component_ids": normalized_scope["component_ids"],
+            "issue_ids": normalized_scope["issue_ids"],
+            "required_inputs": normalized_scope["required_inputs"],
             "component_run_ids": [run["component_run_id"] for run in runs],
         }
         files["components/scope.json"] = canonical_bytes(scope_doc)
+        files["components/input-requirements.json"] = canonical_bytes({
+            "schema_version": "1.0.0",
+            "scope_ref": args.scope_ref,
+            "required_inputs": normalized_scope["required_inputs"],
+            "provided_inputs": sorted(provided_inputs),
+        })
         data["component_run_ids"] = scope_doc["component_run_ids"]
         failed_run_ids = [
             str(run["component_run_id"])
@@ -1506,6 +1587,7 @@ def _mutation(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                     revision=current + 1,
                     approved_scope_ref=args.scope_ref,
                     evidence_core=updated_core,
+                    accounting_bundle=accounting_bundle,
                 )
             )
             files.update(professional_files)

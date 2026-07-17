@@ -27,7 +27,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["finding_key", "assessment_domains", "spec"],
+        "required": [
+          "finding_key",
+          "assessment_domains",
+          "grading_input",
+          "grade_record",
+          "spec"
+        ],
         "properties": {
           "finding_key": {
             "type": "string",
@@ -39,6 +45,8 @@
             "uniqueItems": true,
             "items": {"enum": ["accounting", "labor", "legal", "tax"]}
           },
+          "grading_input": {"$ref": "grading-input.schema.json"},
+          "grade_record": {"$ref": "grade-record.schema.json"},
           "spec": {"type": "object"}
         }
       }

@@ -202,3 +202,29 @@ Family ID가 존재하는 것만으로 구현 완료가 아니다. 각 Family는
 Post-commit 검증 결과는 필수 문서 `18/18 tracked`, 누락 `0`, 통합 커밋 파일 `6개`, 범위 밖 staged 파일 `0개`다. 이 검증을 기록한 후속 커밋이 Hard Gate 증거 커밋이다.
 
 그 밖의 미추적 또는 동시 변경 파일은 사용자 소유로 보존하고 스테이징하지 않는다. 첫 문서 통합 커밋 후에는 그 커밋 ID와 18개 tracked 확인 결과를 이 문서에 기록하고, 이 인덱스만 포함하는 후속 Gate 증거 커밋으로 마지막 시작 체크를 닫는다. 두 커밋 ID는 구현계획과 완료 보고에 기록한다.
+
+## 9. 2026-07-18 최종 구현 폐쇄 Addendum
+
+이 절은 §4.1의 이전 테스트 수와 “완료” 판정을 최신 구현 증거로 대체한다. 기존 A–P 계획은 유지하며, 아래 폐쇄 항목은 새 요구사항이 아니라 A–P 사이의 실제 런타임 결속을 검증한 수직 완료 단위다.
+
+| 요구사항 | 설계·Task | 코드·Schema | 최종 검증·상태 |
+|---|---|---|---|
+| 승인된 전문 권한과 D1–D12·Knowledge Release·병렬 profile 결속 | D07 §§11,14–16,19; D09 §§7–9,11 E/H/P | `analysis/execution_authority.py`, `analysis/runtime.py`; `execution-authority-gate`, professional task/runtime result schemas | 차단·Boundary 상한·grade overclaim·budget/cancel/checkpoint/resume 테스트 포함, 구현 완료 |
+| 회계 Suite 64 Family를 전문 Work Item·Finding에 결속 | D10–D18; D09 §11 F | `runtime_components.bind_accounting_professional_inputs`, CLI `run-components`; accounting binding·input requirements artifacts | 64/64 manifest, packet/result hash 불일치 fail-closed, 구현 완료 |
+| Finding·관계·Cluster·Completion을 한 runtime result에 동결하고 Final Result로 투영 | D09 §§10.2–10.6,11 J–M | `outputs/professional_publication.py`, `runtime_finalization.py`; fixed `runtime-result.json`·authority·grade artifacts | split artifact byte-equivalence, Completion/authority/hash 결속, post-publication 변조 차단, 구현 완료 |
+| 기존 값을 탭 2 그래프가 읽는 배열로 무추론 변환 | D04 §§5–6,10,17; D05; D09 §§10.6,11 M/N | `web_report/{converter,contracts,expert_packets}.py`, `web-report-input-manifest.schema.json`, TS bundle validator | Finding case→`issues[]`→node, verified relation→edge, GradeRecord exact 일치, Python/TS 정렬 동등, 구현 완료 |
+| 전문가 경계·패킷과 Trust Kernel 원자 publish 보존 | D01 §§7–8; D07 §16; D09 §§10.2,10.5 | professional packet projection, `filesystem.replace_with_retry`, `ArtifactStore` | packet refs·Fact/Evidence/Source fail-closed; Windows 일시 잠금만 제한 재시도, revision 원자성 유지 |
+
+최종 완료 Gate 증거:
+
+- WebReport 계약 생성·fixture 검사: PASS
+- Python 기본 discovery: `455/455` PASS (`227.255s`)
+- Python WebReport 별도 discovery: `47/47` PASS (`12.405s`)
+- Web typecheck·lint: PASS
+- Web unit: `144/144` PASS (`33.63s`)
+- Next production build: PASS
+- Playwright 탭 1·탭 2 E2E: `3/3` PASS (`11.9s`)
+
+현재 제품 표시는 공식 Norm grounding, production Oracle, 실제 외부 모델 non-inferiority 및 외부 전문가 승인 전까지 `machine_draft`/`Boundary` 상한이다. 테스트 fixture가 `Full` 경로를 검증해도 실제 제품 권한을 승격하지 않는다. `senior_accountant`, `Full` 또는 미지원 법무·노무·세무 전문 결론은 해당 승인 전 주장할 수 없다.
+
+구현 완료 판정은 이 인덱스, D01–D18, vNext 계획, 코드·Schema와 위 최종 증거를 함께 읽어야 한다. 마지막 문서 하나만 읽은 판정, runtime result 없이 분할 산출물만 사용한 finalization, 입력 manifest 없는 변환, 탭 2의 새 분석 판단은 모두 완료 Gate 실패다.

@@ -11,7 +11,7 @@ from typing import Mapping
 
 from trusted_ceo_agent.canonical import canonical_bytes
 from trusted_ceo_agent.errors import IntegrityError, RevisionConflict
-from trusted_ceo_agent.filesystem import atomic_write, ensure_within
+from trusted_ceo_agent.filesystem import atomic_write, ensure_within, replace_with_retry
 
 
 _LOCKS_GUARD = threading.Lock()
@@ -143,7 +143,14 @@ class ArtifactStore:
 
                 if target.exists():
                     raise IntegrityError(f"revision already exists: {revision}")
-                os.replace(staging, target)
+                try:
+                    replace_with_retry(
+                        staging, target, target_must_not_exist=True
+                    )
+                except FileExistsError as error:
+                    raise IntegrityError(
+                        f"revision already exists during snapshot publish: {revision}"
+                    ) from error
                 new_state = {
                     "run_id": state["run_id"],
                     "revision": revision,

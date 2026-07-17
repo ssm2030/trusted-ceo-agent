@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import os
 import stat
+import time
 from pathlib import Path
 
 
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_REPLACE_RETRY_DELAYS = (0.01, 0.02, 0.04, 0.08, 0.16, 0.32)
 
 
 def _is_reparse(path: Path) -> bool:
@@ -48,6 +50,24 @@ def ensure_within(root: Path, candidate: Path, *, allow_hardlink: bool = False) 
     return resolved
 
 
+def replace_with_retry(
+    source: Path,
+    target: Path,
+    *,
+    target_must_not_exist: bool = False,
+) -> None:
+    for delay in (*_REPLACE_RETRY_DELAYS, None):
+        if target_must_not_exist and target.exists():
+            raise FileExistsError(target)
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if delay is None:
+                raise
+            time.sleep(delay)
+
+
 def atomic_write(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -55,5 +75,5 @@ def atomic_write(path: Path, payload: bytes) -> None:
         handle.write(payload)
         handle.flush()
         os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    replace_with_retry(temporary, path)
 

@@ -210,6 +210,9 @@ class WebReportContractSemanticBoundaryTests(unittest.TestCase):
     def test_bundle_hash_detects_other_tampering(self) -> None:
         bundle = _valid_bundle()
         bundle["final_result"]["issues"][0]["title_template"] = "변조"
+        bundle["presentation_manifest"]["issue_graph"]["nodes"][0][
+            "label_ko"
+        ] = bundle["final_result"]["issues"][0]["title_template"]
         with self.assertRaisesRegex(WebReportContractError, "bundle hash"):
             load_bundle_bytes(jcs_bytes(bundle))
 
@@ -266,6 +269,43 @@ class WebReportContractSemanticBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(WebReportContractError, "failure code and message"):
             validate_eligibility_decision(decision)
 
+
+    def test_issue_graph_exactly_projects_final_result_values(self) -> None:
+        node_mismatch = _valid_bundle()
+        node_mismatch["presentation_manifest"]["issue_graph"]["nodes"][0][
+            "label_ko"
+        ] = "tampered label"
+        with self.assertRaisesRegex(
+            WebReportContractError,
+            "graph node differs",
+        ):
+            validate_bundle_document(node_mismatch)
+
+        edge_mismatch = _valid_bundle()
+        peer = copy.deepcopy(edge_mismatch["final_result"]["issues"][0])
+        peer["issue_id"] = "issue_peer"
+        edge_mismatch["final_result"]["issues"].append(peer)
+        edge_mismatch["presentation_manifest"]["issue_graph"]["nodes"].append({
+            "issue_ref": "issue_peer",
+            "label_ko": peer["title_template"],
+            "grade": peer["primary_grade"],
+        })
+        relation = {
+            "relation_id": "relation_main",
+            "from_issue_ref": "issue_main",
+            "to_issue_ref": "issue_peer",
+            "relation_type": "supports",
+        }
+        edge_mismatch["final_result"]["cross_issue_relations"].append(relation)
+        edge_mismatch["presentation_manifest"]["issue_graph"]["edges"].append({
+            **relation,
+            "relation_type": "contradicts",
+        })
+        with self.assertRaisesRegex(
+            WebReportContractError,
+            "graph edge differs",
+        ):
+            validate_bundle_document(edge_mismatch)
 
 if __name__ == "__main__":
     unittest.main()

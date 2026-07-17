@@ -188,8 +188,10 @@ function indexBy<T, K extends keyof T>(
   items: readonly T[],
   field: K,
   label: string,
+  requireSorted = false,
 ): Map<string, T> {
   const result = new Map<string, T>();
+  const identifiers: string[] = [];
   for (const item of items) {
     const identifier = item[field];
     if (typeof identifier !== "string" || identifier.length === 0) {
@@ -201,6 +203,15 @@ function indexBy<T, K extends keyof T>(
       );
     }
     result.set(identifier, item);
+    identifiers.push(identifier);
+  }
+  if (
+    requireSorted &&
+    identifiers.some(
+      (identifier, index) => index > 0 && identifiers[index - 1] > identifier,
+    )
+  ) {
+    throw new WebReportValidationError(`${label} IDs must be sorted`);
   }
   return result;
 }
@@ -267,6 +278,53 @@ function validateSemantic(bundle: WebReportBundleV1): void {
     "chart_id",
     "chart",
   );
+  const graphNodes = indexBy(
+    bundle.presentation_manifest.issue_graph.nodes,
+    "issue_ref",
+    "issue graph node",
+    true,
+  );
+  if (graphNodes.size !== issues.size) {
+    throw new WebReportValidationError(
+      "issue graph nodes do not exactly match Final Result issues",
+    );
+  }
+  for (const [issueId, node] of graphNodes) {
+    const issue = issues.get(issueId);
+    if (
+      issue === undefined ||
+      node.label_ko !== issue.title_template ||
+      node.grade !== issue.primary_grade
+    ) {
+      throw new WebReportValidationError(
+        `issue graph node differs from Final Result issue: ${issueId}`,
+      );
+    }
+  }
+  const graphEdges = indexBy(
+    bundle.presentation_manifest.issue_graph.edges,
+    "relation_id",
+    "issue graph edge",
+    true,
+  );
+  if (graphEdges.size !== relations.size) {
+    throw new WebReportValidationError(
+      "issue graph edges do not exactly match Final Result relations",
+    );
+  }
+  for (const [relationId, edge] of graphEdges) {
+    const relation = relations.get(relationId);
+    if (
+      relation === undefined ||
+      edge.from_issue_ref !== relation.from_issue_ref ||
+      edge.to_issue_ref !== relation.to_issue_ref ||
+      edge.relation_type !== relation.relation_type
+    ) {
+      throw new WebReportValidationError(
+        `issue graph edge differs from Final Result relation: ${relationId}`,
+      );
+    }
+  }
 
   for (const issue of issues.values()) {
     requireRefs(evidenceLinks, issue.evidence_link_ids, "Evidence Link");

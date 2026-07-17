@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hmac
 import hashlib
 import json
 import re
@@ -17,6 +18,7 @@ from trusted_ceo_agent.evidence.core import assemble_evidence_core
 from trusted_ceo_agent.grading.grader import grade
 from trusted_ceo_agent.grading.reducer import derive_grading_input
 from trusted_ceo_agent.outputs.final_result import build_final_result
+from trusted_ceo_agent.outputs.professional_publication import build_professional_publication_from_files
 from trusted_ceo_agent.outputs.render import render_package
 from trusted_ceo_agent.outputs.validation import revalidate_package
 from trusted_ceo_agent.packs.runtime_index import RuntimePackIndex
@@ -707,9 +709,120 @@ def _verification_steps(
     return steps or ["Confirm the approved evidence conditions and unresolved counter-evidence."]
 
 
+_PROFESSIONAL_PUBLICATION_PATHS = {
+    "analysis/professional/findings.json",
+    "analysis/professional/relations.json",
+    "analysis/professional/issue-clusters.json",
+    "analysis/professional/completion-assessment.json",
+    "analysis/professional/grading-inputs.json",
+    "analysis/professional/grade-records.json",
+    "analysis/professional/execution-authority.json",
+    "analysis/professional/runtime-result.json",
+}
+
+
+def _prepare_professional_finalization(
+    files: Mapping[str, bytes],
+    *,
+    run_id: str,
+    revision: int,
+    parent_artifact_hash: str,
+) -> tuple[dict[str, bytes], dict[str, Any]]:
+    core = _load(files, "evidence/core.json")
+    if not isinstance(core, Mapping) or not isinstance(core.get("envelope"), Mapping):
+        raise ContractError("Evidence Core envelope is missing")
+    source_revision = core["envelope"].get("revision")
+    if (
+        core["envelope"].get("run_id") != run_id
+        or not isinstance(source_revision, int)
+        or source_revision + 1 != revision
+    ):
+        raise IntegrityError("professional publication revision lineage mismatch")
+    publication = build_professional_publication_from_files(
+        files,
+        expected_run_id=run_id,
+        expected_revision=source_revision,
+    )
+    grading_inputs = _load(
+        files, "analysis/professional/grading-inputs.json"
+    )
+    grade_records = _load(
+        files, "analysis/professional/grade-records.json"
+    )
+    if not isinstance(grading_inputs, list) or not isinstance(grade_records, list):
+        raise ContractError("professional grading artifacts must be arrays")
+
+    semantic_seed = {
+        "previous": core["envelope"]["semantic_fingerprint"],
+        "professional_publication_hash": publication["content_hash"],
+        "grade_record_ids": publication["structured_output"]["grade_record_ids"],
+        "evidence_link_ids": sorted(
+            item["evidence_link_id"] for item in core["evidence_links"]
+        ),
+    }
+    semantic_fingerprint = hashlib.sha256(
+        canonical_bytes(semantic_seed)
+    ).hexdigest()
+    envelope_seed = {
+        "run_id": run_id,
+        "revision": revision,
+        "parent_artifact_hash": parent_artifact_hash,
+        "semantic_fingerprint": semantic_fingerprint,
+    }
+    envelope = {
+        "schema_version": "1.0.0",
+        "artifact_id": make_id("artifact", envelope_seed),
+        "run_id": run_id,
+        "revision": revision,
+        "parent_artifact_hash": parent_artifact_hash,
+        "stage": "finalization_jobs_ready",
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "semantic_fingerprint": semantic_fingerprint,
+        "artifact_hash": hashlib.sha256(canonical_bytes(envelope_seed)).hexdigest(),
+    }
+    advanced_core = assemble_evidence_core(
+        envelope=envelope,
+        mission_contract_ref=core["mission_contract_ref"],
+        pack_manifest=core["pack_manifest"],
+        component_manifest=core["component_manifest"],
+        source_registry=core["source_registry"],
+        data_quality_register=core["data_quality_register"],
+        fact_register=core["fact_register"],
+        signal_register=core["signal_register"],
+        evidence_links=core["evidence_links"],
+        capability_map=core["capability_map"],
+    )
+    structured = publication["structured_output"]
+    updates = {
+        "evidence/core.json": canonical_bytes(advanced_core),
+        "final/structured-output.json": canonical_bytes(structured),
+        "final/professional-publication.json": canonical_bytes(publication),
+        "grading/inputs.json": canonical_bytes(grading_inputs),
+        "grading/diagnostic-audit.json": canonical_bytes(
+            structured["diagnostic_audit"]
+        ),
+    }
+    for record in grade_records:
+        updates[f"grading/records/{record['grade_record_id']}.json"] = canonical_bytes(
+            record
+        )
+    return updates, {
+        "grade_record_ids": structured["grade_record_ids"],
+        "active_issue_count": len(structured["issues"]),
+        "professional_publication_hash": publication["content_hash"],
+        "effective_authority": publication["effective_authority"],
+        "product_display": publication["product_display"],
+    }
+
 def prepare_finalization(
     files: Mapping[str, bytes], *, run_id: str, revision: int, parent_artifact_hash: str,
 ) -> tuple[dict[str, bytes], dict[str, Any]]:
+    professional_paths = _PROFESSIONAL_PUBLICATION_PATHS & set(files)
+    if professional_paths:
+        return _prepare_professional_finalization(
+            files, run_id=run_id, revision=revision,
+            parent_artifact_hash=parent_artifact_hash,
+        )
     integrated = _load(files, "reasoning/integrated-assessment.json")
     integrated_payload = _artifact_payload(integrated, "integrated assessment")
     issues = integrated_payload.get("integrated_issues", [])
@@ -1176,6 +1289,33 @@ def _verify_structured_grades(
             raise IntegrityError(f"structured issue flags differ from Grade Record: {issue['issue_id']}")
 
 
+def _verify_professional_publication_binding(
+    files: Mapping[str, bytes],
+    structured: Mapping[str, Any],
+) -> None:
+    path = "final/professional-publication.json"
+    if path not in files:
+        return
+    publication = _load(files, path)
+    if not isinstance(publication, Mapping):
+        raise IntegrityError("professional publication must be an object")
+    claimed_hash = publication.get("content_hash")
+    body = {
+        key: copy.deepcopy(value)
+        for key, value in publication.items()
+        if key != "content_hash"
+    }
+    if (
+        not isinstance(claimed_hash, str)
+        or not hmac.compare_digest(
+            claimed_hash, hashlib.sha256(canonical_bytes(body)).hexdigest()
+        )
+    ):
+        raise IntegrityError("professional publication content hash mismatch")
+    if canonical_bytes(body.get("structured_output")) != canonical_bytes(structured):
+        raise IntegrityError("professional publication structured output mismatch")
+
+
 def build_delivery_package(
     files: Mapping[str, bytes], *, run_id: str, revision: int,
 ) -> dict[str, bytes]:
@@ -1183,6 +1323,7 @@ def build_delivery_package(
     if not isinstance(loaded, Mapping):
         raise ContractError("structured output must be an object")
     structured = copy.deepcopy(dict(loaded))
+    _verify_professional_publication_binding(files, structured)
     _verify_structured_grades(structured, files)
     core = _load(files, "evidence/core.json")
     if not isinstance(core, Mapping):

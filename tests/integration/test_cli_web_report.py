@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -170,12 +171,32 @@ def _finalized_run(root: Path) -> tuple[Path, str, ArtifactStore]:
     return artifacts, run_id, store
 
 
+def _web_report_input_manifest(
+    root: Path, store: ArtifactStore, run_id: str, revision: int,
+) -> Path:
+    result_bytes = (store.verify_revision(revision) / "final/result.json").read_bytes()
+    path = root / "web-report-input-manifest.json"
+    path.write_bytes(canonical_bytes({
+        "schema_version": "1.0.0",
+        "run_id": run_id,
+        "revision": revision,
+        "files": [{
+            "path": "final/result.json",
+            "sha256": hashlib.sha256(result_bytes).hexdigest(),
+        }],
+    }))
+    return path
+
+
 class CliWebReportTests(unittest.TestCase):
     def test_export_and_cross_validate_are_read_only(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             root = Path(directory)
             artifacts, run_id, store = _finalized_run(root)
             bundle = root / "web-report-bundle.json"
+            input_manifest = _web_report_input_manifest(
+                root, store, run_id, 10
+            )
             state_before = (
                 artifacts / run_id / "state.json"
             ).read_bytes()
@@ -192,7 +213,10 @@ class CliWebReportTests(unittest.TestCase):
             ]
 
             code, exported = call(
-                ["export-web-report", *common, "--output", str(bundle)]
+                [
+                    "export-web-report", *common, "--output", str(bundle),
+                    "--input-manifest", str(input_manifest),
+                ]
             )
             self.assertEqual(0, code, exported)
             self.assertTrue(bundle.is_file())
@@ -214,7 +238,10 @@ class CliWebReportTests(unittest.TestCase):
     def test_export_refuses_overwrite_and_immutable_run_destination(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             root = Path(directory)
-            artifacts, run_id, _ = _finalized_run(root)
+            artifacts, run_id, store = _finalized_run(root)
+            input_manifest = _web_report_input_manifest(
+                root, store, run_id, 10
+            )
             existing = root / "existing.json"
             existing.write_bytes(b"keep")
             common = [
@@ -227,14 +254,20 @@ class CliWebReportTests(unittest.TestCase):
             ]
 
             code, response = call(
-                ["export-web-report", *common, "--output", str(existing)]
+                [
+                    "export-web-report", *common, "--output", str(existing),
+                    "--input-manifest", str(input_manifest),
+                ]
             )
             self.assertEqual(3, code, response)
             self.assertEqual(b"keep", existing.read_bytes())
 
             inside = artifacts / run_id / "forbidden.json"
             code, response = call(
-                ["export-web-report", *common, "--output", str(inside)]
+                [
+                    "export-web-report", *common, "--output", str(inside),
+                    "--input-manifest", str(input_manifest),
+                ]
             )
             self.assertEqual(3, code, response)
             self.assertFalse(inside.exists())
