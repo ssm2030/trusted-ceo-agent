@@ -1,6 +1,6 @@
 # Trusted CEO Agent 대회 당일 Runbook·Prompt Pack 설계
 
-- 상태: 사용자 승인 설계, 구현 전 검토본
+- 상태: 사용자 승인 설계, Runbook·HD-01~HD-07 구현 기준
 - 기준일: 2026-07-18
 - 적용 범위: 대회 데이터 진단, 조건부 Adapter·Pack·Component 변경, 실제 분석, 웹 결과 변환·게시
 - 비적용 범위: Trust Kernel 변경, 전문 콘텐츠 승격, 분석 엔진 또는 웹의 신규 기능 설계
@@ -95,6 +95,35 @@ Runbook은 번호 계약, 공통 안전 규칙, 라우팅, handoff 형식, 새 �
 - 실패를 약한 성공으로 바꾸지 않는다.
 - 완료 상태와 다음 Prompt ID를 명시한다.
 
+### 5.1 표준 다음 의사결정 안내
+
+모든 프롬프트는 Handoff 전에 다음 `NEXT_DECISION`을 출력한다.
+
+```yaml
+NEXT_DECISION:
+  decision_status: "READY | USER_ACTION_REQUIRED | BLOCKED | COMPLETE"
+  decision_required: <true|false>
+  summary: "<현재 상태와 왜 결정이 필요한지>"
+  options:
+    - option_id: "<stable option id>"
+      action: "<사용자가 선택할 행동>"
+      reason: "<이 선택지가 유효한 근거>"
+      tradeoff: "<범위·품질·시간·위험 영향>"
+      approval_required: <true|false>
+      next_prompt_id: "HD-0X | USER_RESPONSE | MANUAL_UPLOAD | STOP"
+      next_prompt_path: "<repo-relative path or null>"
+      user_action: "<선택지에 필요한 정확한 한 가지 행동>"
+  recommended_option_id: "<option id or null>"
+  recommendation_reason: "<근거 또는 추천할 수 없는 이유>"
+  exact_user_action: "<사용자가 지금 해야 할 정확한 행동>"
+  if_no_decision: "<안전한 대기·중단 상태>"
+```
+
+실제로 유효한 선택지만 나열한다. Red 변경, 승인 우회, 근거 없는 전문 결론은
+선택지로 제시하지 않는다. 추천은 코드·Schema·검증 증거로 정당화할 수 있을
+때만 하며 전문 판단이나 이해상충 때문에 추천할 수 없으면 `null`과 이유를
+기록한다.
+
 ## 6. 표준 Handoff Envelope
 
 각 프롬프트의 마지막 출력은 사람이 복사해 새 대화에 붙일 수 있는 다음
@@ -111,15 +140,33 @@ HANDOFF:
   artifact_root: "<absolute path or null>"
   run_id: "<run id or null>"
   revision: "<integer or null>"
+  input_handoff_hash: "<prior HANDOFF.handoff_hash or null>"
+  handoff_hash: "<JCS SHA-256 of this HANDOFF with handoff_hash omitted>"
+  proposed_gap_ids: []
   approved_gap_ids: []
+  approval_refs: []
+  approved_write_paths: []
   produced_paths: []
   validation_evidence: []
+  analysis_artifact_refs: []
+  projection_coverage:
+    status: "not_applicable | not_started | complete | partial | blocked"
+    mapped: []
+    omitted: []
+    chat_only_forbidden: []
+    blocked: []
   blocking_questions: []
   limitations: []
-  next_prompt_id: "HD-0X | MANUAL_UPLOAD | STOP"
+  next_prompt_id: "HD-0X | USER_RESPONSE | MANUAL_UPLOAD | STOP"
   next_prompt_path: "<repo-relative path or null>"
   prompts_after_success: []
 ```
+`handoff_hash`는 `handoff_hash` 자체를 제외한 JSON 호환 Handoff 객체를
+RFC 8785 JCS로 canonicalize한 UTF-8 bytes의 SHA-256 lowercase hex다.
+후속 Prompt는 이전 값을 재계산해 이전 `handoff_hash`와 비교하고 이를 새
+`input_handoff_hash`로 복사한다. 이는 서명이나 승인이 아니므로 Gap 승인,
+run/revision과 Artifact hash는 원본에서 별도로 검증한다.
+
 
 Prompt별 추가 필드는 허용하지만 위 필드를 제거하거나 의미를 바꿀 수 없다.
 민감한 원본 값과 비밀정보는 Handoff에 넣지 않는다.
@@ -189,7 +236,8 @@ HD-01 → USER_RESPONSE → HD-02 → HD-03 → HD-05 → HD-06
 - 원본 불변, 행·셀 locator, semantic hash, canonical mapping, lineage를 보존한다.
 - 정상·경계·실패·변형 테스트와 기존 Adapter 회귀를 요구한다.
 - 완료 상태는 `ADAPTER_READY`, `NEEDS_USER_CLARIFICATION`,
-  `BLOCKED_RED_CHANGE` 중 하나다.
+  `BLOCKED_UNAPPROVED_GAP`, `BLOCKED_RED_CHANGE`,
+  `BLOCKED_CONTRACT_CONFLICT` 중 하나다.
 
 ### 8.3 HD-03 Provisional Pack
 
@@ -199,7 +247,8 @@ HD-01 → USER_RESPONSE → HD-02 → HD-03 → HD-05 → HD-06
 - 공식 근거 또는 전문가 승격이 없으면 `Provisional`을 넘지 않는다.
 - D1~D12, 정상·오류·경계·반증·복합 회귀사례를 요구한다.
 - 완료 상태는 `PROVISIONAL_PACK_READY`, `NEEDS_EXPERT_SOURCE`,
-  `BLOCKED_RED_CHANGE` 중 하나다.
+  `BLOCKED_UNAPPROVED_GAP`, `BLOCKED_RED_CHANGE`,
+  `BLOCKED_CONTRACT_CONFLICT` 중 하나다.
 
 ### 8.4 HD-04 Deterministic Component
 
@@ -209,7 +258,8 @@ HD-01 → USER_RESPONSE → HD-02 → HD-03 → HD-05 → HD-06
 - LLM 계산이나 자유서술 결과를 계산 Artifact로 사용하지 않는다.
 - 정상·경계·실패, 순차·병렬 동등성, 결정성, Pack 계약 회귀를 요구한다.
 - 완료 상태는 `COMPONENT_READY`, `NEEDS_CANONICAL_FACT`,
-  `BLOCKED_RED_CHANGE` 중 하나다.
+  `BLOCKED_UNAPPROVED_GAP`, `BLOCKED_RED_CHANGE`,
+  `BLOCKED_CONTRACT_CONFLICT` 중 하나다.
 
 ### 8.5 HD-05 Analysis, HITL and Finalize
 
@@ -217,12 +267,39 @@ HD-01 → USER_RESPONSE → HD-02 → HD-03 → HD-05 → HD-06
 - Intake, Canonical Mapping, Data HITL, Fact·Lineage·Quality,
   결정적 계산, Signal Queue, 사건별 심층화, 반증, Finding,
   Cross-Finding Join, Completion을 실제로 실행한다.
+- Analysis Persistence Gate는 같은 run/revision에 다음 Artifact가 존재하고
+  Schema·hash·참조 폐쇄성 검증을 통과했는지 확인한다.
+  - `analysis/professional/runtime-result.json`
+  - `analysis/professional/signal-cases.json`
+  - `analysis/professional/findings.json`
+  - `analysis/professional/relations.json`
+  - `analysis/professional/issue-clusters.json`
+  - `analysis/professional/completion-assessment.json`
+  - `analysis/professional/grading-inputs.json`
+  - `analysis/professional/grade-records.json`
+  - `analysis/professional/execution-authority.json`
+  - `final/structured-output.json`
+  - `final/result.json`
+  - `final/ceo-brief.md`
+  - `final/issue-tree.json`
+  - `final/evidence-cards.json`
+  - `final/monitoring-and-blind-spots.json`
+  - `final/expert-packets.json`
+  - `final/validation-summary.json`
+  - `final/audit-manifest.json`
+  - 전문 분석 흐름이면 `final/professional-publication.json`
+- 중요한 결론·가설·반증·충돌·검증 계획·전문가 경계가 대화에만 있고
+  불변 Artifact로 저장되지 않았다면 `BLOCKED_ANALYSIS_PERSISTENCE`로
+  종료한다. 대화문이나 별도 임시 Markdown은 정본 Artifact를 대체하지 않는다.
+- 분석에 영향을 주는 사용자 답변은 공식 Human Response 흐름으로 정확히
+  하나의 새 revision에 저장돼야 하며, 대화 응답만으로 분석을 갱신하지 않는다.
 - 질문은 한 건씩 흩뿌리지 않고 현재 결론을 바꾸는 항목을 Action Card로 묶는다.
 - 새 답변은 새 revision으로 연결하고 영향받는 downstream만 재실행한다.
 - 모든 required 사건은 terminal disposition을 가져야 한다.
 - Final HITL과 전체 Validator 없이는 `finalized`가 될 수 없다.
 - 완료 상태는 `FINALIZED`, `LIMITED_FINALIZED`, `NEEDS_INPUT`,
-  `BLOCKED_REQUIRED_FAILURE` 중 하나다.
+  `BLOCKED_REQUIRED_FAILURE`, `BLOCKED_ANALYSIS_PERSISTENCE`,
+  `BLOCKED_CONTRACT_CONFLICT` 중 하나다.
 
 ### 8.6 HD-06 Export Web Report
 
@@ -231,18 +308,36 @@ HD-01 → USER_RESPONSE → HD-02 → HD-03 → HD-05 → HD-06
   `exports/<run_id>/revision-<revision>/web-report-bundle.json`이다.
 - input manifest, full validate, render byte-equivalence,
   `export-web-report`, `validate-web-report`를 수행한다.
+- CLI의 작업 디렉터리를 `project_root`로 고정하고 안전한 출력 부모를 먼저 만든다.
+- 기존 고정 경로 bundle은 덮어쓰지 않으며 같은 identity로 재검증해 유효할
+  때만 재사용한다.
+- Converter가 읽는 모든 source JSON Pointer를 inventory로 만들고 각 pointer를
+  `mapped`, `omitted`, `blocked` 중 정확히 하나에 넣는다. 누락·중복 pointer가
+  있으면 coverage는 `blocked`다.
+- Projection Coverage Gate는 저장된 분석 Artifact 중 WebReportBundle에
+  공개 매핑된 필드, 의도적으로 비공개·생략된 필드, 매핑 실패를 구분한다.
+  매핑 실패를 성공으로 숨기거나 “모든 분석이 웹에 표시된다”고 보고하지 않는다.
+- 대화에만 있는 내용은 변환 입력이 아니며 `chat_only_forbidden`으로 기록한다.
 - Converter는 새 Finding, Grade, 관계, 근거 충분성을 만들지 않는다.
-- 완료 상태는 `READY_FOR_WEB_IMPORT` 또는 `BLOCKED`다.
+- 완료 상태는 `READY_FOR_WEB_IMPORT`, `BLOCKED`, `BLOCKED_CONTRACT_CONFLICT`다.
 
 ### 8.7 HD-07 Publish Tab 2
 
-- `READY_FOR_WEB_IMPORT` Handoff와 실제 bundle을 다시 검증한다.
+- `READY_FOR_WEB_IMPORT` Handoff와 실제 bundle을 플러그인으로 다시 검증한다.
+- 이 Prompt의 공식 파일 import는 source `viewer_mode`를 보존하지 않고 웹에서
+  `unverified_import`로 재분류한다. 이를 `trusted_final`로 보고하지 않는다.
 - 기존 Trusted CEO Agent 웹을 재사용하고 필요할 때만 공식 명령으로 실행한다.
 - 지원되는 Browser·Chrome 제어 지침을 따라 `/report`를 연다.
 - 공식 파일 입력과 `리포트 가져오기`를 사용한다.
-- 성공 메시지, run ID, revision, bundle hash와 다섯 결과 화면을 확인한다.
+- 성공 메시지, `report.run.run_id`, `report.run.revision`,
+  `report.bundle_hash`, `eligibility.mode=unverified_import`와 다섯 결과 화면을
+  확인한다.
+- `컨설턴트 근거 분석` 안의 `분석 결론`, `근거·출처`, `검증 계획`을 각각 열어
+  선택한 run/revision의 공개 매핑 데이터와 명시적 빈 상태를 확인한다.
+- HD-06 projection coverage를 그대로 보존하고 UI 표시와 대조한다.
 - 실패 시 기존 웹 결과를 유지하고 검증을 우회하지 않는다.
-- 완료 상태는 `WEB_PUBLISHED` 또는 `BLOCKED`다.
+- 완료 상태는 `WEB_PUBLISHED_UNVERIFIED`, `BLOCKED`,
+  `BLOCKED_CONTRACT_CONFLICT`다.
 
 ## 9. 새 대화 부트스트랩
 
@@ -268,7 +363,7 @@ Runbook에는 다음 두 템플릿을 제공한다.
 1. docs/operations/HACKATHON_DAY_RUNBOOK.md
 2. <HANDOFF.next_prompt_path>
 
-이전 단계 HANDOFF:
+prior_handoff:
 <paste the complete HANDOFF block>
 ```
 
@@ -287,9 +382,19 @@ Runbook에는 다음 두 템플릿을 제공한다.
    `HD-07`은 분석 결과 수정 금지를 명시한다.
 6. Prompt 2~4는 승인된 Gap ID 없이는 실행하지 않는다.
 7. 단순 숫자만으로 다음 프롬프트를 참조하는 문구가 없다.
-8. `HD-05` 전처리·HITL·종료와 `HD-06` 변환 책임이 섞이지 않는다.
-9. `HD-06`과 `HD-07`의 성공 상태와 실패 보존 규칙이 일치한다.
-10. Placeholder는 사용자 입력 블록에만 존재한다.
+8. 모든 프롬프트가 선택지·이유·대가·권장안·사용자 행동을 포함한
+   `NEXT_DECISION`을 출력한다.
+9. `HD-05`가 Analysis Persistence Gate를 통과하지 못하면 finalization
+   성공으로 보고하지 않는다.
+10. `HD-05` 전처리·HITL·종료와 `HD-06` 변환 책임이 섞이지 않는다.
+11. `HD-06`과 `HD-07`의 성공 상태와 실패 보존 규칙이 일치한다.
+12. 소스 문서의 입력·출력 템플릿 외에는 Placeholder를 사용하지 않으며,
+    실제 실행 결과의 `NEXT_DECISION`과 `HANDOFF`에는 해결되지 않은
+    Placeholder를 남기지 않는다.
+13. Runbook의 `NEXT_DECISION`과 `HANDOFF`가 유일한 정본이며 설계서와
+    HD-01~HD-07의 필드명·타입·hash chain이 일치한다.
+14. HD-07은 파일 import의 `unverified_import` 하향을 공개하고
+    `trusted_final` 게시 성공으로 과장하지 않는다.
 
 추가로 문서를 사람이 읽어 다음 경로를 시뮬레이션한다.
 
@@ -308,10 +413,12 @@ Runbook에는 다음 두 템플릿을 제공한다.
 2. 각 파일은 이전 대화 없이 자신의 진입 조건과 완료 조건을 설명한다.
 3. 모든 후속 참조가 Prompt ID와 실제 상대경로를 함께 사용한다.
 4. Prompt 1의 출력만으로 다음 작업 파일을 선택할 수 있다.
-5. Prompt 6의 출력만으로 사용자가 탭 2에 올릴 파일을 찾을 수 있다.
-6. Prompt 7이 파일 선택부터 다섯 화면 확인까지 수행할 수 있다.
-7. 기존 D01~D18, Trust Kernel, authority, Validator를 완화하지 않는다.
-8. 정적 검증과 여섯 운영 경로 시뮬레이션이 모두 통과한다.
+5. Prompt 5의 Handoff만으로 저장된 분석 Artifact와 검증 revision을
+   식별할 수 있다.
+6. Prompt 6의 출력만으로 사용자가 탭 2에 올릴 파일과 투영 한계를 찾을 수 있다.
+7. Prompt 7이 파일 선택부터 다섯 화면 확인까지 수행할 수 있다.
+8. 기존 D01~D18, Trust Kernel, authority, Validator를 완화하지 않는다.
+9. 정적 검증과 여섯 운영 경로 시뮬레이션이 모두 통과한다.
 
 ## 12. 비목표
 
