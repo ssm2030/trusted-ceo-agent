@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import unittest
 from pathlib import Path
@@ -18,6 +19,25 @@ def load_bootstrap():
 
 
 class BootstrapTests(unittest.TestCase):
+    def test_runtime_lock_hash_matches_checked_in_baseline(self) -> None:
+        expected = (PLUGIN / "trust" / "runtime-lock.sha256").read_text(
+            encoding="ascii"
+        ).strip()
+        actual = hashlib.sha256((PLUGIN / "uv.lock").read_bytes()).hexdigest()
+
+        self.assertEqual(expected, actual)
+
+    def test_runtime_lock_uses_lf_bytes(self) -> None:
+        payload = (PLUGIN / "uv.lock").read_bytes()
+
+        self.assertNotIn(b"\r\n", payload)
+        self.assertTrue(payload.endswith(b"\n"))
+
+    def test_gitattributes_pins_runtime_lock_to_lf(self) -> None:
+        attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8").splitlines()
+
+        self.assertIn("plugin/trusted-ceo-agent/uv.lock text eol=lf", attributes)
+
     def test_analysis_command_is_frozen_offline_and_no_sync(self) -> None:
         module = load_bootstrap()
         command = module.analysis_command(PLUGIN, ["status"])
