@@ -13,8 +13,11 @@ import {
   QuestionExperience,
   type QuestionReferenceKind,
 } from "@/features/questions/QuestionExperience";
+import {
+  ConsultantAnalysisView,
+  type ConsultantAnalysisSection,
+} from "@/features/report/ConsultantAnalysisView";
 import { DecisionBrief } from "@/features/report/DecisionBrief";
-import { EvidenceWorkbench } from "@/features/report/EvidenceWorkbench";
 import { ExpertPackets } from "@/features/report/ExpertPackets";
 import type {
   ReportClientPayload,
@@ -38,6 +41,12 @@ type PreviewState = {
   previewRef: string;
   sourceName: string;
 };
+
+export function consultantViewForQuestionReference(
+  kind: QuestionReferenceKind,
+): ConsultantAnalysisSection {
+  return kind === "claim" ? "analysis" : "evidence";
+}
 
 export function ReportWorkspace({
   csrfToken = null,
@@ -63,6 +72,8 @@ export function ReportWorkspace({
   );
   const [activeSection, setActiveSection] =
     useState<ReportSection>("decision");
+  const [activeConsultantView, setActiveConsultantView] =
+    useState<ConsultantAnalysisSection>("analysis");
   const [activeRef, setActiveRef] = useState<string | null>(
     fallbackIssue?.issue_id ?? null,
   );
@@ -141,6 +152,7 @@ export function ReportWorkspace({
     setActiveRef(evidenceLinkId);
     setActiveScopeKind("evidence");
     setActiveSection("evidence");
+    setActiveConsultantView("evidence");
   };
   const handleQuestionReference = (
     kind: QuestionReferenceKind,
@@ -159,6 +171,9 @@ export function ReportWorkspace({
       }
       setActiveIssueRef(closure.issue_ref);
       setActiveSection("evidence");
+      setActiveConsultantView(
+        consultantViewForQuestionReference(kind),
+      );
       setActiveRef(reference);
       setActiveScopeKind(kind);
       const targetId =
@@ -166,7 +181,7 @@ export function ReportWorkspace({
           ? `evidence-${reference}`
           : kind === "source"
             ? `source-${reference}`
-            : "evidence-title";
+            : "consultant-analysis-title";
       queueMicrotask(() =>
         document.getElementById(targetId)?.scrollIntoView?.({ block: "center" }),
       );
@@ -244,15 +259,17 @@ export function ReportWorkspace({
           onIssueSelect={selectIssue}
         />
       ) : activeSection === "evidence" ? (
-        <EvidenceWorkbench
+        <ConsultantAnalysisView
           activeEvidenceRef={activeRef}
           activeIssue={activeIssue}
+          activeView={activeConsultantView}
           onPreviewRequest={({ previewRef, sourceRef, sourceName, trigger }) => {
             previewTriggerRef.current = trigger;
             setPreviewState({ previewRef, sourceName });
             setActiveRef(sourceRef);
             setActiveScopeKind("source");
           }}
+          onViewSelect={setActiveConsultantView}
           report={report}
         />
       ) : activeSection === "trust" ? (

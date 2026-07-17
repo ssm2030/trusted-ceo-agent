@@ -432,6 +432,114 @@
   font-size: 0.8rem;
 }
 
+.analysisTabs {
+  display: inline-flex;
+  gap: 0.35rem;
+  margin: 0 0 1.25rem;
+  padding: 0.3rem;
+  border: 1px solid var(--report-line);
+  border-radius: 0.85rem;
+  background: #f3f7f6;
+}
+
+.analysisTab {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  border-radius: 0.65rem;
+  color: var(--report-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.analysisTab:hover,
+.analysisTab:focus-visible {
+  color: var(--report-ink);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.analysisTabActive {
+  color: var(--report-ink);
+  background: white;
+  box-shadow: 0 0.35rem 1rem rgba(16, 39, 51, 0.08);
+}
+
+.analysisPanel,
+.analysisList,
+.responseList,
+.analysisTagList {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.analysisSummary,
+.hypothesisPanel,
+.analysisBlock,
+.verificationBlock {
+  padding: 1rem;
+  border: 1px solid var(--report-line);
+  border-radius: 0.9rem;
+  background: white;
+}
+
+.analysisSummary {
+  border-left: 4px solid var(--report-cyan);
+}
+
+.analysisTabPanel:focus-visible {
+  outline: 3px solid rgba(38, 185, 200, 0.32);
+  outline-offset: 0.25rem;
+}
+
+.conflictBlock {
+  border-left: 4px solid var(--report-amber);
+  background: #fffaf0;
+}
+
+.hypothesisGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.analysisList,
+.responseList,
+.analysisTagList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analysisList li,
+.responseList li {
+  padding: 0.75rem;
+  border-left: 3px solid var(--report-line);
+  background: #f8fbfa;
+  overflow-wrap: anywhere;
+}
+
+.responseList li {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.analysisTagList {
+  grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));
+  margin-top: 0.8rem;
+}
+
+.analysisTagList li {
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: var(--report-cyan-soft);
+  font-size: 0.72rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
 .evidenceGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(15rem, 0.55fr);
@@ -622,6 +730,10 @@
     grid-template-columns: 1fr;
   }
 
+  .hypothesisGrid {
+    grid-template-columns: 1fr;
+  }
+
   .issueGrid {
     grid-template-columns: 1fr;
   }
@@ -640,6 +752,16 @@
   .sectionHeader,
   .packetHeader {
     flex-direction: column;
+  }
+
+  .analysisTabs {
+    display: flex;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .analysisTab {
+    flex: 0 0 auto;
   }
 
   .structureRelation {
