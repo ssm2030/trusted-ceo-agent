@@ -21,7 +21,7 @@ export function ProductShell({
             T
           </span>
           <div>
-            <p className="brand-kicker">TRUSTED DECISION OPERATIONS</p>
+            <p className="brand-kicker">신뢰 기반 의사결정 운영</p>
             <p className="brand-title">Trusted CEO Agent</p>
           </div>
         </div>

@@ -26,7 +26,7 @@ export function CurrentWorkPanel({
     <section className="current-work-panel">
       <div className="work-heading">
         <div>
-          <p className="eyebrow">CURRENT WORK</p>
+          <p className="eyebrow">현재 작업</p>
           <h2>지금 해야 할 작업</h2>
         </div>
         <span className="phase-chip">단계 {snapshot.ui_phase} / 7</span>

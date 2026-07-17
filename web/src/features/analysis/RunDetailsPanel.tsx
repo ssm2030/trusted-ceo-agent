@@ -1,4 +1,8 @@
 import type { ProviderSnapshot } from "@/features/analysis/analysis-provider";
+import {
+  getPendingActionLabel,
+  getWorkflowStatusLabel,
+} from "@/features/analysis/analysis-model";
 
 type RunDetailsPanelProps = {
   snapshot: ProviderSnapshot;
@@ -8,7 +12,7 @@ export function RunDetailsPanel({ snapshot }: RunDetailsPanelProps) {
   return (
     <section className="run-details-panel">
       <div className="panel-heading">
-        <p className="eyebrow">EVENT STREAM</p>
+        <p className="eyebrow">이벤트 흐름</p>
         <h2>최근 이벤트</h2>
       </div>
       <div className="event-card">
@@ -25,16 +29,16 @@ export function RunDetailsPanel({ snapshot }: RunDetailsPanelProps) {
           <dd>{snapshot.revision}</dd>
         </div>
         <div>
-          <dt>workflow 상태</dt>
-          <dd>{snapshot.workflow_status}</dd>
+          <dt>작업 상태</dt>
+          <dd>{getWorkflowStatusLabel(snapshot)}</dd>
         </div>
         <div>
           <dt>다음 작업</dt>
-          <dd>{snapshot.pending_action}</dd>
+          <dd>{getPendingActionLabel(snapshot.pending_action)}</dd>
         </div>
       </dl>
       <div className="requested-data">
-        <p className="eyebrow">REQUESTED DATA</p>
+        <p className="eyebrow">요청 자료</p>
         <h3>요청 자료와 이유</h3>
         <ul>
           <li>

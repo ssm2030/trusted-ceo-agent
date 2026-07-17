@@ -6,7 +6,7 @@ export default function AnalysisPage() {
     <ProductShell activePath="/analysis">
       <div className="page-intro">
         <div>
-          <p className="eyebrow">ANALYSIS COMMAND CENTER</p>
+          <p className="eyebrow">분석 지휘 화면</p>
           <h1>분석 작업</h1>
         </div>
         <p>

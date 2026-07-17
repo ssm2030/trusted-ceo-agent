@@ -1,0 +1,102 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+
+import { makeClientReportPayload } from "@/features/report/__tests__/report-fixture";
+import { ReportWorkspace } from "@/features/report/ReportWorkspace";
+
+vi.mock("@/features/report/charts/EChartCanvas", () => ({
+  EChartCanvas: () => <div data-testid="echart-svg-canvas" />,
+}));
+
+describe("ReportWorkspace scope contract", () => {
+  it("keeps evidence and source start refs in separate scope kinds", async () => {
+    const user = userEvent.setup();
+    const onScopeChange = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          preview_ref: "preview_main",
+          source_ref: "source_main",
+          access_policy: "permitted",
+          truncated: false,
+          masking_status: "none",
+          column_labels: ["항목", "값"],
+          rows: [["관찰값", "100"]],
+          locator_summary: "원장 자료 1행",
+        }),
+      }),
+    );
+
+    render(
+      <ReportWorkspace
+        onScopeChange={onScopeChange}
+        payload={makeClientReportPayload()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "2026년 5월 근거 보기" }),
+    );
+    await waitFor(() =>
+      expect(onScopeChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activeRef: "evidence_main",
+          scopeInstanceId: "evidence_main",
+          scopeKind: "evidence",
+        }),
+      ),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "출처 미리보기" }),
+    );
+    await waitFor(() =>
+      expect(onScopeChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activeRef: "source_main",
+          scopeInstanceId: "source_main",
+          scopeKind: "source",
+        }),
+      ),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the supplied packet and revision as distinct scope instances", async () => {
+    const user = userEvent.setup();
+    const onScopeChange = vi.fn();
+    render(
+      <ReportWorkspace
+        onScopeChange={onScopeChange}
+        payload={makeClientReportPayload()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "전문가 검토 패킷 1" }),
+    );
+    await waitFor(() =>
+      expect(onScopeChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activeRef: "packet_legal_main",
+          scopeInstanceId: "packet_legal_main",
+          scopeKind: "expert_packet",
+        }),
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: "변경 이력" }));
+    await waitFor(() =>
+      expect(onScopeChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          scopeInstanceId: "issue_main",
+          scopeKind: "revision_diff",
+        }),
+      ),
+    );
+  });
+});

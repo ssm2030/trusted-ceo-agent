@@ -40,7 +40,7 @@ export function DataUploadCard({
   return (
     <section className="data-upload-card">
       <div className="panel-heading">
-        <p className="eyebrow">INPUT REGISTER</p>
+        <p className="eyebrow">입력 자료</p>
         <h2>업로드 자료</h2>
       </div>
       <label className="file-drop" htmlFor="analysis-file-input">

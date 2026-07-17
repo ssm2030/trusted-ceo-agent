@@ -1,4 +1,7 @@
-import type { ProviderSnapshot } from "@/features/analysis/analysis-provider";
+import type {
+  PendingAction,
+  ProviderSnapshot,
+} from "@/features/analysis/analysis-provider";
 
 export const ANALYSIS_PHASES = [
   "목표와 자료 준비",
@@ -46,6 +49,21 @@ export const WORKFLOW_STATUS_LABELS: Readonly<Record<string, string>> =
 
 export function getWorkflowStatusLabel(snapshot: ProviderSnapshot): string {
   return WORKFLOW_STATUS_LABELS[snapshot.workflow_status] ?? "상태 확인 중";
+}
+
+export const PENDING_ACTION_LABELS: Readonly<Record<PendingAction, string>> =
+  Object.freeze({
+    human_response: "사람 확인 답변",
+    terminal_approval: "터미널 승인",
+    provider_work: "다음 장면 준비",
+    retry: "다시 시도",
+    resume: "다시 시작",
+    request_changes: "변경 요청",
+    terminal: "종료",
+  });
+
+export function getPendingActionLabel(action: PendingAction): string {
+  return PENDING_ACTION_LABELS[action];
 }
 
 export function formatFileSize(size: number): string {

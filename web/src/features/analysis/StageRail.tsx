@@ -8,7 +8,7 @@ export function StageRail({ activePhase }: StageRailProps) {
   return (
     <aside className="stage-rail" aria-label="분석 단계">
       <div className="panel-heading">
-        <p className="eyebrow">WORKFLOW</p>
+        <p className="eyebrow">작업 흐름</p>
         <h2>전체 단계</h2>
       </div>
       <ol>
