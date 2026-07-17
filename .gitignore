@@ -14,3 +14,42 @@ web/test-results/
 web/var/
 web/.tmp/
 web/*.tsbuildinfo
+
+# Agent-local metadata and scratch.
+/.claude/
+/.codex/
+/.superpowers/
+/.tmp-uv-cache/
+/tmp/
+/tmp[0-9a-z_]*/
+
+# Generated local deliverables.
+/output/
+/outputs/
+/log-hooks.zip
+
+# Cross-tool caches and local secrets.
+**/node_modules/
+**/.cache/
+**/.mypy_cache/
+**/.ruff_cache/
+*.log
+*.pid
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+
+# Generated synthetic evaluation artifacts and isolated answers.
+evaluation/synthetic/canonical/
+evaluation/synthetic/raw-variants/
+evaluation/synthetic/repeatability/
+evaluation/synthetic/reports/
+evaluation/synthetic/runs/
+evaluation/synthetic/validation/
+evaluation/synthetic/truth/
