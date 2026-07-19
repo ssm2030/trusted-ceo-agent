@@ -361,6 +361,40 @@ class RunStore:
             atomic_write(receipt_path, canonical)
             return receipt
 
+    def read_idempotency_receipt(
+        self,
+        run_id: str,
+        *,
+        idempotency_key: str,
+        request_body: Mapping[str, Any],
+    ) -> IdempotencyReceipt | None:
+        """Return a matching completed request without repeating its mutation."""
+        if _IDEMPOTENCY_KEY.fullmatch(idempotency_key) is None:
+            raise ServiceStoreError("IDEMPOTENCY_CONFLICT", "invalid idempotency key")
+        request_hash = _hash_document(request_body)
+        key_hash = hashlib.sha256(idempotency_key.encode("ascii")).hexdigest()
+        run_root = self.run_root(run_id)
+        receipt_path = ensure_within(
+            run_root,
+            run_root / "service" / "idempotency" / f"{key_hash}.json",
+        )
+        lock = _lock_for(run_root)
+        with lock:
+            if not receipt_path.exists():
+                return None
+            try:
+                payload = receipt_path.read_bytes()
+                _canonical_json(payload, label="idempotency receipt")
+                receipt = IdempotencyReceipt.model_validate_json(payload)
+            except (TypeError, ValueError) as error:
+                raise IntegrityError("idempotency receipt is invalid") from error
+            if not hmac.compare_digest(receipt.request_hash, request_hash):
+                raise ServiceStoreError(
+                    "IDEMPOTENCY_CONFLICT",
+                    "idempotency key was reused for a different request",
+                )
+            return receipt
+
     def recover_interrupted(self) -> list[str]:
         recovered: list[str] = []
         for path in sorted(self.runs_root.glob("run_*/service-manifest.json")):
