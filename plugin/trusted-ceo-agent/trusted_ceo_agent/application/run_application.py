@@ -18,6 +18,7 @@ from trusted_ceo_agent.application.models import (
     DocumentInput,
     ExportWebReportRequest,
     HumanResponseRequest,
+    MutationRequest,
     PrepareResultQuestionRequest,
     RevisionRequest,
     RunRequest,
@@ -319,6 +320,11 @@ class TrustedCeoApplication:
         store = ArtifactStore(self.artifact_root)
         store.open_run(run_id)
         return store
+
+    def mutate(self, request: MutationRequest) -> ApplicationResult:
+        from trusted_ceo_agent.application.mutations import MutationExecutor
+
+        return MutationExecutor(self.artifact_root).execute(request)
 
     def create_run(self, request: CreateRunRequest) -> ApplicationResult:
         mission_input = request.mission

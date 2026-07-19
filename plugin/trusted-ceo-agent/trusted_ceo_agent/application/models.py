@@ -93,3 +93,12 @@ class PrepareResultQuestionRequest(RevisionRequest):
 class ValidateResultAnswerRequest(RevisionRequest):
     job: DocumentInput
     draft: DocumentInput
+
+
+@dataclass(frozen=True, slots=True)
+class MutationRequest:
+    artifact_root: Path
+    run_id: str
+    expected_revision: int
+    command: str
+    parameters: Mapping[str, Any]

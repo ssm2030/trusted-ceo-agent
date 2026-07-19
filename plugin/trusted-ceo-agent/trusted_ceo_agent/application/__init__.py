@@ -4,6 +4,7 @@ from trusted_ceo_agent.application.models import (
     CreateRunRequest,
     ExportWebReportRequest,
     HumanResponseRequest,
+    MutationRequest,
     PrepareResultQuestionRequest,
     RevisionRequest,
     RunRequest,
@@ -12,6 +13,7 @@ from trusted_ceo_agent.application.models import (
     ValidateResultAnswerRequest,
 )
 from trusted_ceo_agent.application.run_application import TrustedCeoApplication
+from trusted_ceo_agent.application.mutations import MutationExecutor
 
 __all__ = [
     "ApplicationResult",
@@ -19,6 +21,8 @@ __all__ = [
     "CreateRunRequest",
     "ExportWebReportRequest",
     "HumanResponseRequest",
+    "MutationRequest",
+    "MutationExecutor",
     "PrepareResultQuestionRequest",
     "RevisionRequest",
     "RunRequest",
