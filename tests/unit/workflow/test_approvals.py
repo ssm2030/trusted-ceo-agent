@@ -2,7 +2,7 @@ import io
 import json
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -73,6 +73,133 @@ class ApprovalTests(unittest.TestCase):
                 request["approval_request_id"], expected_revision=revision,
                 input_stream=TtyBuffer("data-1\ndata_owner\nnonce-secret\nAPPROVE\n"), output_stream=TtyBuffer(),
             )
+
+    def test_web_approval_records_browser_provenance_without_tty(self) -> None:
+        request, nonce, revision = self.service.request(
+            expected_revision=0,
+            gate="final",
+            base_artifact_ref="artifact_001@r0000",
+            base_artifact_hash="a" * 64,
+            patch_operations=[],
+            invalidated_approval_ids=[],
+            result_preview_hash="b" * 64,
+        )
+
+        approval, approved_revision = self.service.approve_web(
+            request["approval_request_id"],
+            expected_revision=revision,
+            actor_id="ceo-web-1",
+            actor_role="ceo",
+            nonce=nonce,
+            rationale="브라우저에서 근거를 검토하고 승인했습니다.",
+            browser_session_fingerprint="c" * 64,
+            response_hash="d" * 64,
+        )
+
+        self.assertEqual(revision + 1, approved_revision)
+        self.assertEqual("web_hitl", approval["input_method"])
+        self.assertEqual("c" * 64, approval["browser_session_fingerprint"])
+        self.assertEqual("d" * 64, approval["response_hash"])
+        self.assertNotIn("tty_session_fingerprint", approval)
+        self.assertApprovalSchema(approval)
+        with self.assertRaises(RevisionConflict):
+            self.service.approve_web(
+                request["approval_request_id"],
+                expected_revision=revision,
+                actor_id="ceo-web-1",
+                actor_role="ceo",
+                nonce=nonce,
+                rationale="재사용 시도",
+                browser_session_fingerprint="c" * 64,
+                response_hash="d" * 64,
+            )
+
+    def test_web_approval_rejects_wrong_role_and_expired_request(self) -> None:
+        request, nonce, revision = self.service.request(
+            expected_revision=0,
+            gate="final",
+            base_artifact_ref="artifact_001",
+            base_artifact_hash="a" * 64,
+            patch_operations=[],
+            invalidated_approval_ids=[],
+            result_preview_hash="b" * 64,
+        )
+        with self.assertRaisesRegex(ContractError, "role"):
+            self.service.approve_web(
+                request["approval_request_id"],
+                expected_revision=revision,
+                actor_id="data-web-1",
+                actor_role="data_owner",
+                nonce=nonce,
+                rationale="잘못된 역할",
+                browser_session_fingerprint="c" * 64,
+                response_hash="d" * 64,
+            )
+
+        self.now += timedelta(minutes=11)
+        with self.assertRaisesRegex(ContractError, "expired"):
+            self.service.approve_web(
+                request["approval_request_id"],
+                expected_revision=revision,
+                actor_id="ceo-web-1",
+                actor_role="ceo",
+                nonce=nonce,
+                rationale="만료된 승인",
+                browser_session_fingerprint="c" * 64,
+                response_hash="d" * 64,
+            )
+
+    def test_web_approval_rejects_invalid_browser_provenance(self) -> None:
+        request, nonce, revision = self.service.request(
+            expected_revision=0,
+            gate="final",
+            base_artifact_ref="artifact_001",
+            base_artifact_hash="a" * 64,
+            patch_operations=[],
+            invalidated_approval_ids=[],
+            result_preview_hash="b" * 64,
+        )
+        for fingerprint, response_hash in (("short", "d" * 64), ("c" * 64, "invalid")):
+            with self.subTest(fingerprint=fingerprint, response_hash=response_hash):
+                with self.assertRaisesRegex(ContractError, "provenance"):
+                    self.service.approve_web(
+                        request["approval_request_id"],
+                        expected_revision=revision,
+                        actor_id="ceo-web-1",
+                        actor_role="ceo",
+                        nonce=nonce,
+                        rationale="브라우저 승인",
+                        browser_session_fingerprint=fingerprint,
+                        response_hash=response_hash,
+                    )
+
+    def test_web_request_changes_is_recorded_but_never_authorizes(self) -> None:
+        request, nonce, revision = self.service.request(
+            expected_revision=0,
+            gate="diagnostic",
+            base_artifact_ref="artifact_001@r0000",
+            base_artifact_hash="a" * 64,
+            patch_operations=[],
+            invalidated_approval_ids=[],
+            result_preview_hash="b" * 64,
+        )
+
+        record, decided_revision = self.service.decide_web(
+            request["approval_request_id"],
+            decision="request_changes",
+            expected_revision=revision,
+            actor_id="ceo-web-1",
+            actor_role="ceo",
+            nonce=nonce,
+            rationale="고객 모집단을 먼저 재검증하세요.",
+            browser_session_fingerprint="c" * 64,
+            response_hash="d" * 64,
+        )
+
+        self.assertEqual("request_changes", record["decision"])
+        self.assertEqual("web_hitl", record["input_method"])
+        self.assertEqual((), current_approvals(self.manager.files(decided_revision)))
+        self.assertApprovalSchema(record)
 
     def test_request_changes_consumes_nonce_but_never_creates_authorization(self) -> None:
         request, _, revision = self.service.request(

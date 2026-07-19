@@ -31,6 +31,7 @@ _NONAPPROVAL_CONFIRMATIONS = {
 }
 _APPROVAL_RECORD_PREFIX = "approvals/records/"
 _REVISION_SUFFIX = re.compile(r"@r[0-9]{4,}$")
+_HEX_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _utc(value: datetime) -> datetime:
@@ -271,6 +272,135 @@ class ApprovalService:
             value["base_revision"] = int(base_revision)
         return path, value
 
+    def _pending_request(
+        self,
+        request_id: str,
+        expected_revision: int,
+    ) -> tuple[str, dict[str, Any], datetime]:
+        path, request = self._load_request(request_id, expected_revision)
+        if request.get("status") != "pending":
+            raise ContractError("Approval Request nonce was already consumed")
+        if request.get("base_revision") != expected_revision - 1:
+            raise RevisionConflict("approval request base revision is stale")
+        now = _utc(self.clock())
+        if now > _parse_timestamp(str(request.get("expires_at"))):
+            raise ContractError("Approval Request nonce expired")
+        return path, request, now
+
+    @staticmethod
+    def _validate_actor_nonce(
+        request: Mapping[str, Any],
+        *,
+        actor_id: str,
+        actor_role: str,
+        nonce: str,
+    ) -> None:
+        if not actor_id:
+            raise ContractError("actor ID is required")
+        if actor_role not in request.get("allowed_roles", []):
+            raise ContractError(f"actor role is not allowed for {request.get('gate')}")
+        supplied_hash = hashlib.sha256(nonce.encode("utf-8")).hexdigest()
+        if not hmac.compare_digest(supplied_hash, str(request.get("nonce_hash"))):
+            raise ContractError("approval nonce is invalid")
+
+    @staticmethod
+    def _validate_web_provenance(
+        browser_session_fingerprint: str,
+        response_hash: str,
+    ) -> None:
+        if (
+            _HEX_DIGEST.fullmatch(browser_session_fingerprint) is None
+            or _HEX_DIGEST.fullmatch(response_hash) is None
+        ):
+            raise ContractError("web approval provenance is invalid")
+
+    def _commit_decision(
+        self,
+        *,
+        path: str,
+        request: Mapping[str, Any],
+        request_id: str,
+        expected_revision: int,
+        decision: str,
+        actor_id: str,
+        actor_role: str,
+        rationale: str,
+        now: datetime,
+        input_method: str,
+        provenance: Mapping[str, str],
+        additional_updates: Mapping[str, bytes | None] | None,
+    ) -> tuple[dict[str, Any], int]:
+        authorizing = decision in _AUTHORIZING_DECISIONS
+        result_revision = expected_revision + 1
+        if authorizing:
+            authorized_component_ids, target_refs = _diagnostic_scope(
+                request.get("patch_operations", [])
+            )
+            result_artifact_ref = _result_artifact_ref(
+                str(request["base_artifact_ref"]),
+                result_revision,
+            )
+        else:
+            authorized_component_ids, target_refs = [], []
+            result_artifact_ref = str(request["base_artifact_ref"])
+
+        record: dict[str, Any] = {
+            "approval_request_id": request_id,
+            "gate": request["gate"],
+            "base_artifact_ref": request["base_artifact_ref"],
+            "result_artifact_ref": result_artifact_ref,
+            "decision": decision,
+            "confirmed": True,
+            "actor_id": actor_id,
+            "actor_role": actor_role,
+            "target_refs": target_refs if request["gate"] == "diagnostic" else [],
+            "authorized_component_ids": (
+                authorized_component_ids if request["gate"] == "diagnostic" else []
+            ),
+            "patch_operations": request.get("patch_operations", []),
+            "rationale": rationale,
+            "created_at": _timestamp(now),
+            "input_method": input_method,
+            "nonce_hash": request["nonce_hash"],
+            "supersedes_approval_id": None,
+            "status": "current",
+            **dict(provenance),
+        }
+        record["approval_id"] = _digest("approval_", record)
+        record["approval_hash"] = _approval_hash(record)
+
+        consumed = dict(request)
+        consumed["status"] = "used"
+        consumed["used_at"] = _timestamp(now)
+        consumed["approval_id"] = record["approval_id"]
+        record_path = f"{_APPROVAL_RECORD_PREFIX}{record['approval_id']}.json"
+
+        invalidation_updates = (
+            approval_invalidation_updates(
+                self.revisions.files(expected_revision),
+                request.get("invalidated_approval_ids", []),
+                invalidated_by_revision=result_revision,
+            )
+            if authorizing
+            else {}
+        )
+        protected = {path, record_path} | {
+            f"{_APPROVAL_RECORD_PREFIX}{approval_id}.json"
+            for approval_id in request.get("invalidated_approval_ids", [])
+        }
+        updates = dict(additional_updates or {})
+        if protected & set(updates):
+            raise ContractError("additional updates cannot replace approval security records")
+        updates.update(invalidation_updates)
+        updates.update(
+            {
+                path: canonical_bytes(consumed),
+                record_path: canonical_bytes(record),
+            }
+        )
+        revision = self.revisions.commit(expected_revision, updates)
+        return record, revision
+
     def approve_interactive(
         self,
         request_id: str,
@@ -282,14 +412,7 @@ class ApprovalService:
     ) -> tuple[dict[str, Any], int]:
         if not input_stream.isatty() or not output_stream.isatty():
             raise ContractError("approval requires stdin and stdout TTY")
-        path, request = self._load_request(request_id, expected_revision)
-        if request.get("status") != "pending":
-            raise ContractError("Approval Request nonce was already consumed")
-        if request.get("base_revision") != expected_revision - 1:
-            raise RevisionConflict("approval request base revision is stale")
-        now = _utc(self.clock())
-        if now > _parse_timestamp(str(request.get("expires_at"))):
-            raise ContractError("Approval Request nonce expired")
+        path, request, now = self._pending_request(request_id, expected_revision)
 
         output_stream.write(f"GATE: {request['gate']}\n")
         output_stream.write(f"BASE HASH: {request['base_artifact_hash']}\n")
@@ -309,65 +432,75 @@ class ApprovalService:
         output_stream.flush()
         confirmation = input_stream.readline().rstrip("\r\n")
 
-        if not actor_id:
-            raise ContractError("actor ID is required")
-        if actor_role not in request.get("allowed_roles", []):
-            raise ContractError(f"actor role is not allowed for {request.get('gate')}")
-        supplied_hash = hashlib.sha256(nonce.encode("utf-8")).hexdigest()
-        if not hmac.compare_digest(supplied_hash, str(request.get("nonce_hash"))):
-            raise ContractError("approval nonce is invalid")
+        self._validate_actor_nonce(
+            request,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            nonce=nonce,
+        )
         if confirmation != "APPROVE":
             raise ContractError("exact APPROVE confirmation is required")
-
-        result_revision = expected_revision + 1
-        authorized_component_ids, target_refs = _diagnostic_scope(request.get("patch_operations", []))
-        approval: dict[str, Any] = {
-            "approval_request_id": request_id,
-            "gate": request["gate"],
-            "base_artifact_ref": request["base_artifact_ref"],
-            "result_artifact_ref": _result_artifact_ref(request["base_artifact_ref"], result_revision),
-            "decision": "approve_with_edits" if request.get("patch_operations") else "approve",
-            "confirmed": True,
-            "actor_id": actor_id,
-            "actor_role": actor_role,
-            "target_refs": target_refs if request["gate"] == "diagnostic" else [],
-            "authorized_component_ids": authorized_component_ids if request["gate"] == "diagnostic" else [],
-            "patch_operations": request.get("patch_operations", []),
-            "rationale": "interactive approval",
-            "created_at": _timestamp(now),
-            "input_method": "interactive_tty",
-            "nonce_hash": request["nonce_hash"],
-            "tty_session_fingerprint": hashlib.sha256(
-                f"{type(input_stream).__name__}:{type(output_stream).__name__}".encode("utf-8")
-            ).hexdigest(),
-            "supersedes_approval_id": None,
-            "status": "current",
-        }
-        approval["approval_id"] = _digest("approval_", approval)
-        approval["approval_hash"] = _approval_hash(approval)
-        consumed = dict(request)
-        consumed["status"] = "used"
-        consumed["used_at"] = _timestamp(now)
-        consumed["approval_id"] = approval["approval_id"]
-        updates = dict(additional_updates or {})
-        invalidation_updates = approval_invalidation_updates(
-            self.revisions.files(expected_revision),
-            request.get("invalidated_approval_ids", []),
-            invalidated_by_revision=result_revision,
+        return self._commit_decision(
+            path=path,
+            request=request,
+            request_id=request_id,
+            expected_revision=expected_revision,
+            decision="approve_with_edits" if request.get("patch_operations") else "approve",
+            actor_id=actor_id,
+            actor_role=actor_role,
+            rationale="interactive approval",
+            now=now,
+            input_method="interactive_tty",
+            provenance={
+                "tty_session_fingerprint": hashlib.sha256(
+                    f"{type(input_stream).__name__}:{type(output_stream).__name__}".encode(
+                        "utf-8"
+                    )
+                ).hexdigest()
+            },
+            additional_updates=additional_updates,
         )
-        protected = {
-            path,
-            f"approvals/records/{approval['approval_id']}.json",
-        } | set(invalidation_updates)
-        if protected & set(updates):
-            raise ContractError("additional updates cannot replace approval security records")
-        updates.update(invalidation_updates)
-        updates.update({
-            path: canonical_bytes(consumed),
-            f"approvals/records/{approval['approval_id']}.json": canonical_bytes(approval),
-        })
-        revision = self.revisions.commit(expected_revision, updates)
-        return approval, revision
+
+    def approve_web(
+        self,
+        request_id: str,
+        *,
+        expected_revision: int,
+        actor_id: str,
+        actor_role: str,
+        nonce: str,
+        rationale: str,
+        browser_session_fingerprint: str,
+        response_hash: str,
+        additional_updates: Mapping[str, bytes | None] | None = None,
+    ) -> tuple[dict[str, Any], int]:
+        self._validate_web_provenance(browser_session_fingerprint, response_hash)
+        if not rationale.strip():
+            raise ContractError("web approval rationale is required")
+        path, request, now = self._pending_request(request_id, expected_revision)
+        self._validate_actor_nonce(
+            request,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            nonce=nonce,
+        )
+        return self._commit_decision(
+            path=path,
+            request=request,
+            request_id=request_id,
+            expected_revision=expected_revision,
+            decision="approve_with_edits" if request.get("patch_operations") else "approve",
+            actor_id=actor_id,
+            actor_role=actor_role,
+            rationale=rationale,
+            now=now,
+            input_method="web_hitl",
+            provenance={
+                "browser_session_fingerprint": browser_session_fingerprint,
+                "response_hash": response_hash,
+            },
+            additional_updates=additional_updates,
+        )
 
     def decide_interactive(
         self,
@@ -386,14 +519,7 @@ class ApprovalService:
             raise ContractError(f"unsupported interactive decision: {decision}")
         if not input_stream.isatty() or not output_stream.isatty():
             raise ContractError("approval decision requires stdin and stdout TTY")
-        path, request = self._load_request(request_id, expected_revision)
-        if request.get("status") != "pending":
-            raise ContractError("Approval Request nonce was already consumed")
-        if request.get("base_revision") != expected_revision - 1:
-            raise RevisionConflict("approval request base revision is stale")
-        now = _utc(self.clock())
-        if now > _parse_timestamp(str(request.get("expires_at"))):
-            raise ContractError("Approval Request nonce expired")
+        path, request, now = self._pending_request(request_id, expected_revision)
 
         output_stream.write(f"GATE: {request['gate']}\n")
         output_stream.write(f"BASE HASH: {request['base_artifact_hash']}\n")
@@ -417,58 +543,78 @@ class ApprovalService:
         output_stream.flush()
         confirmation = input_stream.readline().rstrip("\r\n")
 
-        if not actor_id:
-            raise ContractError("actor ID is required")
-        if actor_role not in request.get("allowed_roles", []):
-            raise ContractError(f"actor role is not allowed for {request.get('gate')}")
-        supplied_hash = hashlib.sha256(nonce.encode("utf-8")).hexdigest()
-        if not hmac.compare_digest(supplied_hash, str(request.get("nonce_hash"))):
-            raise ContractError("approval nonce is invalid")
+        self._validate_actor_nonce(
+            request,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            nonce=nonce,
+        )
         if not rationale.strip():
             raise ContractError("decision rationale is required")
         if confirmation != confirmation_text:
             raise ContractError(f"exact {confirmation_text} confirmation is required")
 
-        decision_record: dict[str, Any] = {
-            "approval_request_id": request_id,
-            "gate": request["gate"],
-            "base_artifact_ref": request["base_artifact_ref"],
-            "result_artifact_ref": request["base_artifact_ref"],
-            "decision": decision,
-            "confirmed": True,
-            "actor_id": actor_id,
-            "actor_role": actor_role,
-            "target_refs": [],
-            "authorized_component_ids": [],
-            "patch_operations": request.get("patch_operations", []),
-            "rationale": rationale,
-            "created_at": _timestamp(now),
-            "input_method": "interactive_tty",
-            "nonce_hash": request["nonce_hash"],
-            "tty_session_fingerprint": hashlib.sha256(
-                f"{type(input_stream).__name__}:{type(output_stream).__name__}".encode("utf-8")
-            ).hexdigest(),
-            "supersedes_approval_id": None,
-            "status": "current",
-        }
-        decision_record["approval_id"] = _digest("approval_", decision_record)
-        decision_record["approval_hash"] = _approval_hash(decision_record)
-        consumed = dict(request)
-        consumed["status"] = "used"
-        consumed["used_at"] = _timestamp(now)
-        consumed["approval_id"] = decision_record["approval_id"]
+        return self._commit_decision(
+            path=path,
+            request=request,
+            request_id=request_id,
+            expected_revision=expected_revision,
+            decision=decision,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            rationale=rationale,
+            now=now,
+            input_method="interactive_tty",
+            provenance={
+                "tty_session_fingerprint": hashlib.sha256(
+                    f"{type(input_stream).__name__}:{type(output_stream).__name__}".encode(
+                        "utf-8"
+                    )
+                ).hexdigest()
+            },
+            additional_updates=additional_updates,
+        )
 
-        record_path = f"{_APPROVAL_RECORD_PREFIX}{decision_record['approval_id']}.json"
-        updates = dict(additional_updates or {})
-        protected = {path, record_path} | {
-            f"{_APPROVAL_RECORD_PREFIX}{approval_id}.json"
-            for approval_id in request.get("invalidated_approval_ids", [])
-        }
-        if protected & set(updates):
-            raise ContractError("additional updates cannot replace approval security records")
-        updates.update({
-            path: canonical_bytes(consumed),
-            record_path: canonical_bytes(decision_record),
-        })
-        revision = self.revisions.commit(expected_revision, updates)
-        return decision_record, revision
+    def decide_web(
+        self,
+        request_id: str,
+        *,
+        decision: str,
+        expected_revision: int,
+        actor_id: str,
+        actor_role: str,
+        nonce: str,
+        rationale: str,
+        browser_session_fingerprint: str,
+        response_hash: str,
+        additional_updates: Mapping[str, bytes | None] | None = None,
+    ) -> tuple[dict[str, Any], int]:
+        if decision not in _NONAPPROVAL_CONFIRMATIONS:
+            raise ContractError(f"unsupported web decision: {decision}")
+        self._validate_web_provenance(browser_session_fingerprint, response_hash)
+        if not rationale.strip():
+            raise ContractError("decision rationale is required")
+        path, request, now = self._pending_request(request_id, expected_revision)
+        self._validate_actor_nonce(
+            request,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            nonce=nonce,
+        )
+        return self._commit_decision(
+            path=path,
+            request=request,
+            request_id=request_id,
+            expected_revision=expected_revision,
+            decision=decision,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            rationale=rationale,
+            now=now,
+            input_method="web_hitl",
+            provenance={
+                "browser_session_fingerprint": browser_session_fingerprint,
+                "response_hash": response_hash,
+            },
+            additional_updates=additional_updates,
+        )

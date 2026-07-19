@@ -76,7 +76,7 @@ def _approval() -> dict:
         "created_at": "2026-07-17T01:02:03Z",
         "input_method": "interactive_tty",
         "nonce_hash": "b" * 64,
-        "tty_session_fingerprint": "tty-test",
+        "tty_session_fingerprint": "b" * 64,
         "supersedes_approval_id": None,
         "status": "current",
     }
