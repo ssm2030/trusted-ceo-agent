@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import getpass
 import hashlib
+import hmac
 import json
-import mimetypes
 import os
 import re
 import secrets
@@ -54,6 +54,11 @@ GATES = ("context", "data", "scope_narrowing", "diagnostic", "final")
 _OPAQUE_TOKEN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _INITIAL_STATES = {"context_confirmation_required", "context_ready"}
 _MODEL_ARTIFACT_PREFIXES = ("tasks/", "reasoning/", "components/", "grading/", "final/")
+_MEDIA_TYPES = {
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
 
 
 def _run_id() -> str:
@@ -235,7 +240,10 @@ def _source_document(
         "evidence_usage": "primary",
         "observation_roles": [],
         "display_name": path.name,
-        "media_type": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+        "media_type": _MEDIA_TYPES.get(
+            path.suffix.lower(),
+            "application/octet-stream",
+        ),
         "sha256": digest,
         "size_bytes": len(payload),
         "received_at": received_at,
@@ -421,8 +429,28 @@ class TrustedCeoApplication:
         for upload in request.sources:
             if _OPAQUE_TOKEN.fullmatch(upload.opaque_token) is None:
                 raise ContractError("source opaque token is invalid")
+            if (upload.expected_sha256 is None) != (upload.expected_size is None):
+                raise ContractError("source expected hash and size must be supplied together")
+            if upload.expected_sha256 is not None and not re.fullmatch(
+                r"[0-9a-f]{64}",
+                upload.expected_sha256,
+            ):
+                raise ContractError("source expected SHA-256 is invalid")
+            if upload.expected_size is not None and (
+                isinstance(upload.expected_size, bool)
+                or not isinstance(upload.expected_size, int)
+                or upload.expected_size < 0
+            ):
+                raise ContractError("source expected size is invalid")
             resolved = _validate_input_path(upload.path, self.artifact_root)
             resolved, payload = stable_read(resolved)
+            if upload.expected_size is not None and len(payload) != upload.expected_size:
+                raise ContractError("source changed after upload policy validation")
+            if upload.expected_sha256 is not None and not hmac.compare_digest(
+                hashlib.sha256(payload).hexdigest(),
+                upload.expected_sha256,
+            ):
+                raise ContractError("source changed after upload policy validation")
             _, token, document = _source_document(resolved, payload, received_at=received_at)
             blob_path = f"sources/blobs/{document['sha256']}"
             existing_blob = files.get(blob_path)

@@ -36,6 +36,8 @@ class ApplicationResult:
 class SourceUpload:
     path: Path
     opaque_token: str
+    expected_sha256: str | None = None
+    expected_size: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
