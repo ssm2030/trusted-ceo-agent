@@ -11,11 +11,13 @@ from typing import Any, Protocol
 
 from trusted_ceo_agent.application.models import (
     ApplicationResult,
+    AttachSourcesRequest,
     CreateRunRequest,
     ExportWebReportRequest,
     MutationRequest,
     RevisionRequest,
     RunRequest,
+    SourceUpload,
 )
 from trusted_ceo_agent.application.run_application import TrustedCeoApplication
 from trusted_ceo_agent.canonical import canonical_bytes, strict_loads
@@ -30,7 +32,10 @@ from trusted_ceo_agent.service.contracts import (
     HitlSection,
     MutationBase,
     RunSnapshot,
+    ServiceErrorBody,
 )
+from trusted_ceo_agent.service.file_policy import IncomingUpload, UploadPolicy
+from trusted_ceo_agent.service.openai_gateway import AIServiceError
 from trusted_ceo_agent.service.run_store import (
     RunStore,
     ServiceManifest,
@@ -104,13 +109,43 @@ class AnalysisOrchestrator:
         self.run_store = run_store
         self.gateway = gateway
         self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.upload_policy = UploadPolicy(run_store.service_root)
         self.report_root = (
             report_root.resolve()
             if report_root is not None
             else (Path.cwd() / ".trusted-ceo-agent-reports").resolve()
         )
 
-    def create_run(self, request: CreateRunRequest) -> RunSnapshot:
+    def create_run(
+        self,
+        request: CreateRunRequest,
+        *,
+        idempotency_key: str | None = None,
+        request_body: Mapping[str, Any] | None = None,
+    ) -> RunSnapshot:
+        receipt_body: dict[str, Any] | None = None
+        if idempotency_key is not None:
+            if request_body is None:
+                raise ValueError("idempotent creation requires a request body")
+            receipt_body = dict(request_body)
+            run_id = request.run_id or (
+                "run_20000101T000000Z_"
+                + hashlib.sha256(idempotency_key.encode("ascii")).hexdigest()[:16]
+            )
+            request = CreateRunRequest(
+                mission=request.mission,
+                inputs=request.inputs,
+                run_owner_actor_id=request.run_owner_actor_id,
+                run_id=run_id,
+            )
+            if self.run_store.run_root(run_id).is_dir():
+                replay = self.run_store.read_idempotency_receipt(
+                    run_id,
+                    idempotency_key=idempotency_key,
+                    request_body=receipt_body,
+                )
+                if replay is not None:
+                    return RunSnapshot.model_validate(replay.response)
         result = self.application.create_run(request)
         if result.run_id is None or result.revision is None:
             raise IntegrityError("created run did not return an identity")
@@ -125,7 +160,92 @@ class AnalysisOrchestrator:
             }),
             expected_revision=result.revision,
         )
-        return self.snapshot(result.run_id)
+        snapshot = self.snapshot(result.run_id)
+        if idempotency_key is not None and receipt_body is not None:
+            self.run_store.store_idempotency_receipt(
+                result.run_id,
+                idempotency_key=idempotency_key,
+                request_body=receipt_body,
+                status_code=200,
+                response=snapshot.model_dump(mode="json"),
+            )
+        return snapshot
+
+    def attach_files(
+        self,
+        run_id: str,
+        request: MutationBase,
+        uploads: tuple[IncomingUpload, ...],
+    ) -> RunSnapshot:
+        expected_files = self._files(run_id, request.expected_revision)
+        registry = _json_value(
+            expected_files.get("sources/registry.json"),
+            label="source registry",
+            default=[],
+        )
+        if not isinstance(registry, list):
+            raise IntegrityError("source registry is invalid")
+        existing_total = sum(
+            int(item.get("size_bytes", 0))
+            for item in registry
+            if isinstance(item, Mapping)
+        )
+        staged = self.upload_policy.stage_batch(
+            uploads,
+            existing_file_count=len(registry),
+            existing_total_bytes=existing_total,
+        )
+        receipt_body = {
+            **request.model_dump(mode="json"),
+            "files": [
+                {
+                    "filename": item.filename,
+                    "content_type": item.content_type,
+                    "size": item.size,
+                    "sha256": item.sha256,
+                }
+                for item in staged
+            ],
+        }
+        try:
+            replay = self.run_store.read_idempotency_receipt(
+                run_id,
+                idempotency_key=request.idempotency_key,
+                request_body=receipt_body,
+            )
+            if replay is not None:
+                return RunSnapshot.model_validate(replay.response)
+            manifest = self.run_store.assert_revision(
+                run_id,
+                expected_revision=request.expected_revision,
+            )
+            result = self.application.attach_sources(AttachSourcesRequest(
+                run_id=run_id,
+                expected_revision=request.expected_revision,
+                sources=tuple(
+                    SourceUpload(
+                        path=item.private_path,
+                        opaque_token=item.opaque_token,
+                        expected_sha256=item.sha256,
+                        expected_size=item.size,
+                    )
+                    for item in staged
+                ),
+            ))
+            manifest = self._checkpoint(manifest, result)
+            snapshot = self._snapshot(manifest, result)
+            self.run_store.store_idempotency_receipt(
+                run_id,
+                idempotency_key=request.idempotency_key,
+                request_body=receipt_body,
+                status_code=200,
+                response=snapshot.model_dump(mode="json"),
+            )
+            return snapshot
+        finally:
+            for item in staged:
+                if item.private_path.exists():
+                    self.upload_policy.discard(item)
 
     def snapshot(self, run_id: str) -> RunSnapshot:
         manifest = self._manifest(run_id)
@@ -172,6 +292,11 @@ class AnalysisOrchestrator:
             run_id,
             expected_revision=request.expected_revision,
         )
+        if manifest.status == "retryable_failure":
+            raise ServiceStoreError(
+                manifest.error_code or "AI_TRANSIENT_FAILURE",
+                "retry the failed step before continuing",
+            )
         if not _ACTIVE_JOB_LOCK.acquire(blocking=False):
             raise ServiceStoreError(
                 "AI_TRANSIENT_FAILURE",
@@ -184,6 +309,20 @@ class AnalysisOrchestrator:
                 result_snapshot = self._snapshot(manifest, state)
             else:
                 result_snapshot = getattr(self, handler_name)(manifest, state)
+        except AIServiceError as error:
+            current_manifest = self.run_store.read_manifest(run_id)
+            failed = current_manifest.model_copy(update={
+                "status": "retryable_failure",
+                "error_code": error.code,
+                "attempt": min(100, current_manifest.attempt + 1),
+                "pending_approval_request_id": None,
+                "pending_approval_nonce": None,
+            })
+            self.run_store.save_manifest(
+                failed,
+                expected_revision=current_manifest.engine_revision,
+            )
+            raise
         finally:
             _ACTIVE_JOB_LOCK.release()
         self.run_store.store_idempotency_receipt(
@@ -194,6 +333,75 @@ class AnalysisOrchestrator:
             response=result_snapshot.model_dump(mode="json"),
         )
         return result_snapshot
+
+    def control_run(
+        self,
+        run_id: str,
+        action: str,
+        request: MutationBase,
+    ) -> RunSnapshot:
+        if action not in {"retry", "resume", "stop", "cancel"}:
+            raise ValueError("unsupported run action")
+        body = {**request.model_dump(mode="json"), "action": action}
+        replay = self.run_store.read_idempotency_receipt(
+            run_id,
+            idempotency_key=request.idempotency_key,
+            request_body=body,
+        )
+        if replay is not None:
+            return RunSnapshot.model_validate(replay.response)
+        manifest = self.run_store.assert_revision(
+            run_id,
+            expected_revision=request.expected_revision,
+        )
+        current = self.application.status(RunRequest(run_id=run_id))
+        if action == "retry":
+            if manifest.status != "retryable_failure":
+                raise ContractError("run does not have a retryable failure")
+            manifest = self.run_store.save_manifest(
+                manifest.model_copy(update={
+                    "status": "running",
+                    "error_code": None,
+                }),
+                expected_revision=manifest.engine_revision,
+            )
+            snapshot = self._snapshot(manifest, current)
+        else:
+            result = self._mutate(
+                run_id,
+                manifest.engine_revision,
+                action,
+                {},
+            )
+            status = {
+                "stop": "stopped",
+                "cancel": "cancelled",
+                "resume": "running",
+            }[action]
+            manifest = self._checkpoint(manifest, result, status=status)
+            snapshot = self._snapshot(manifest, result)
+        self.run_store.store_idempotency_receipt(
+            run_id,
+            idempotency_key=request.idempotency_key,
+            request_body=body,
+            status_code=200,
+            response=snapshot.model_dump(mode="json"),
+        )
+        return snapshot
+
+    def delete_run(
+        self,
+        run_id: str,
+        request: MutationBase,
+        *,
+        confirmed: bool,
+    ) -> None:
+        self.run_store.delete_run(
+            run_id,
+            expected_revision=request.expected_revision,
+            confirmed=confirmed,
+            idempotency_key=request.idempotency_key,
+        )
 
     def submit_hitl(
         self,
@@ -1279,6 +1487,8 @@ class AnalysisOrchestrator:
         if result.revision is None or result.state is None:
             raise IntegrityError("workflow status is incomplete")
         human = manifest.status == "awaiting_human"
+        retryable = manifest.status == "retryable_failure"
+        blocked = result.state == "blocked"
         terminal = manifest.status in {"stopped", "cancelled", "finalized"}
         phases = {
             "context_confirmation_required": 1,
@@ -1289,6 +1499,8 @@ class AnalysisOrchestrator:
             "evidence_ready": 4,
             "lens_jobs_ready": 4,
             "scope_narrowing_required": 4,
+            "blocked": 4,
+            "stopped_by_human": 7,
             "stopped": 7,
             "cancelled": 7,
             "finalized": 7,
@@ -1302,11 +1514,15 @@ class AnalysisOrchestrator:
             "evidence_ready": 50,
             "lens_jobs_ready": 58,
             "scope_narrowing_required": 52,
+            "blocked": 60,
+            "stopped_by_human": 100,
             "stopped": 100,
             "cancelled": 100,
             "finalized": 100,
         }
         latest = {
+            "blocked": "The analysis is blocked until its prerequisite is resolved.",
+            "stopped_by_human": "The analysis was stopped by the user.",
             "context_confirmation_required": "분석 목표 확인을 기다리고 있습니다.",
             "context_ready": "분석 목표가 확인되었습니다.",
             "schema_mapping_job_ready": "데이터 스키마를 해석하고 있습니다.",
@@ -1329,6 +1545,10 @@ class AnalysisOrchestrator:
                 if human
                 else "terminal"
                 if terminal
+                else "retry"
+                if retryable
+                else "resume"
+                if blocked
                 else "provider_work"
             ),
             allowed_actions=(
@@ -1336,10 +1556,27 @@ class AnalysisOrchestrator:
                 if human
                 else []
                 if terminal
+                else ["retry"]
+                if retryable
+                else ["resume"]
+                if blocked
                 else ["continue"]
             ),
             latest_event=latest.get(result.state, "분석 상태가 갱신되었습니다."),
             progress=progress.get(result.state, 60),
             result_ref=manifest.result_ref,
             hitl_card=self._hitl_card(manifest, result) if human else None,
+            error=(
+                ServiceErrorBody(
+                    code=manifest.error_code or "AI_TRANSIENT_FAILURE",
+                    message=(
+                        "OpenAI API key is required"
+                        if manifest.error_code == "AI_AUTH_FAILURE"
+                        else "The AI step can be retried"
+                    ),
+                    retryable=True,
+                )
+                if retryable
+                else None
+            ),
         )
