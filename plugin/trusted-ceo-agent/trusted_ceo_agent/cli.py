@@ -1,26 +1,32 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import hashlib
 import importlib.util
 import json
-import mimetypes
 import os
-import secrets
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from trusted_ceo_agent.accounting.dispatcher import dispatch_accounting_suite
+from trusted_ceo_agent.application.models import (
+    CreateRunRequest,
+    ExportWebReportRequest,
+    HumanResponseRequest,
+    PrepareResultQuestionRequest,
+    RevisionRequest,
+    RunRequest,
+    SubmitHumanResponseRequest,
+    ValidateResultAnswerRequest,
+)
+from trusted_ceo_agent.application.run_application import TrustedCeoApplication
 from trusted_ceo_agent.analysis.runtime import (
     ProfessionalAnalysisRuntime,
     TaskExecutionFailure,
 )
 from trusted_ceo_agent.canonical import canonical_bytes, strict_loads
 from trusted_ceo_agent.contracts.cli_response import response
-from trusted_ceo_agent.contracts.ids import make_id
 from trusted_ceo_agent.contracts.schema_store import SchemaStore
 from trusted_ceo_agent.errors import ContractError, IntegrityError, RevisionConflict
 from trusted_ceo_agent.evidence.core import EvidenceCoreValidator
@@ -35,12 +41,6 @@ from trusted_ceo_agent.mission import (
 from trusted_ceo_agent.outputs.validation import revalidate_package
 from trusted_ceo_agent.outputs.render import render_package
 from trusted_ceo_agent.packs.runtime_index import RuntimePackIndex
-from trusted_ceo_agent.questions import (
-    QuestionIndex,
-    ScopeRequired,
-    build_result_question_job,
-    validate_and_render_answer,
-)
 from trusted_ceo_agent.questions.scope import SCOPE_KINDS
 from trusted_ceo_agent.runtime_scan import build_scan_artifacts
 from trusted_ceo_agent.runtime_components import (
@@ -61,23 +61,10 @@ from trusted_ceo_agent.reasoning.stage_drafts import (
     normalize_writer_draft,
 )
 from trusted_ceo_agent.trust.artifact_store import ArtifactStore
-from trusted_ceo_agent.trust.revision_validation import validate_revision
 from trusted_ceo_agent.web_report.eligibility import decide_viewer_eligibility
-from trusted_ceo_agent.web_report.contracts import load_bundle_bytes
-from trusted_ceo_agent.web_report.converter import convert_final_revision
-from trusted_ceo_agent.web_report.output import publish_web_report_output
 from trusted_ceo_agent.workflow.approvals import ApprovalService, current_approvals
-from trusted_ceo_agent.workflow.human_actions import (
-    pending_action_for_state,
-    verify_action_card,
-)
-from trusted_ceo_agent.workflow.human_response_policy import (
-    verify_human_response_policy,
-)
 from trusted_ceo_agent.workflow.overlays import apply_overlay, invalidated_gates
-from trusted_ceo_agent.workflow.responses import HumanResponseService
 from trusted_ceo_agent.workflow.revisions import RevisionManager
-from trusted_ceo_agent.workflow.snapshot_validation import validate_snapshot_files
 from trusted_ceo_agent.workflow.completion import verify_completion_assessment
 from trusted_ceo_agent.workflow.state_machine import TERMINAL, transition
 
@@ -209,37 +196,8 @@ def _emit(value: Mapping[str, Any]) -> None:
     sys.stdout.flush()
 
 
-def _run_id() -> str:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"run_{timestamp}_{secrets.token_hex(8)}"
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
-
-def _validate_start_paths(artifact_root: Path, mission: Path, inputs: Sequence[Path]) -> Path:
-    workspace = Path.cwd().resolve()
-    root = artifact_root.resolve()
-    if not _is_relative_to(root, workspace):
-        raise ContractError("artifact root must be inside the current workspace")
-    if _is_relative_to(root, PLUGIN_ROOT) or _is_relative_to(PLUGIN_ROOT, root):
-        raise ContractError("artifact root cannot overlap plugin root")
-    if any(part.lower() == "logs" for part in root.parts):
-        raise ContractError("artifact root cannot be logs")
-    for supplied in (mission, *inputs):
-        resolved = supplied.resolve(strict=True)
-        if resolved.is_dir():
-            raise ContractError(f"input must be a file: {supplied}")
-        if any(part.lower() == "logs" for part in resolved.parts):
-            raise ContractError("logs cannot be an input")
-        if _is_relative_to(resolved, root):
-            raise ContractError("input cannot be inside artifact root")
-    return root
+def _application_payload(result: Any) -> tuple[int, dict[str, Any]]:
+    return result.code, {"contract_version": "1.0.0", **result.to_cli_payload()}
 
 
 def _bootstrap_preflight() -> dict[str, Any]:
@@ -359,297 +317,58 @@ def _store_for(args: argparse.Namespace) -> ArtifactStore:
     return store
 
 
-def _trusted_local_principal() -> dict[str, Any]:
-    subject = getpass.getuser().strip()
-    if not subject:
-        raise ContractError("local transport principal is unavailable")
-    return {"subject": subject, "roles": ["run_owner"]}
-
-
-def _human_response_manager(store: ArtifactStore) -> RevisionManager:
-    return RevisionManager(store, validator=validate_snapshot_files)
-
-
-def _human_response_policy(
-    mission: Mapping[str, Any],
-    *,
-    owner_actor_id: str | None,
-) -> dict[str, Any]:
-    principal = _trusted_local_principal()
-    confirmation = mission.get("confirmation")
-    confirmed_actor = (
-        confirmation.get("actor_id")
-        if isinstance(confirmation, Mapping)
-        else None
-    )
-    actor_id = owner_actor_id or (
-        str(confirmed_actor) if isinstance(confirmed_actor, str) and confirmed_actor else None
-    ) or str(principal["subject"])
-    body: dict[str, Any] = {
-        "schema_version": "1.0.0",
-        "policy_id": "human-response-local-owner",
-        "policy_version": "1.0.0",
-        "transport_principal": principal["subject"],
-        "authorized_actors": [{
-            "actor_id": actor_id,
-            "roles": ["run_owner"],
-            "allowed_gates": list(GATES),
-        }],
-        "restricted_source_allowlist": [],
-        "privacy_policy": {
-            "direct_identifier_reasoning": "forbidden",
-            "minimum_group_size": 5,
-        },
-    }
-    policy = {**body, "policy_hash": hashlib.sha256(canonical_bytes(body)).hexdigest()}
-    verify_human_response_policy(policy)
-    return policy
-
-
 def _start(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    root = _validate_start_paths(args.artifact_root, args.mission_contract, args.input)
-    _, mission_payload = _stable_read(args.mission_contract.resolve(strict=True))
-    mission = strict_loads(mission_payload)
-    if not isinstance(mission, dict):
-        raise ContractError("Mission Contract must be an object")
-    mission_confirmed = is_confirmed_mission(mission)
-    if mission_confirmed:
-        validate_confirmed_mission(mission)
-    run_id = _run_id()
-    store = ArtifactStore(root)
-    store.create_run(run_id)
-    state_name = "context_ready" if mission_confirmed else "context_confirmation_required"
-    files: dict[str, bytes] = {
-        "mission/mission-contract.json": canonical_bytes(mission),
-        "workflow/human-response-policy.json": canonical_bytes(_human_response_policy(
-            mission,
-            owner_actor_id=args.run_owner_actor_id,
-        )),
-    }
-    sources_by_id: dict[str, dict[str, Any]] = {}
-    resolver: dict[str, str] = {}
-    received_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    for input_path in args.input:
-        resolved, payload = _stable_read(input_path.resolve(strict=True))
-        digest = hashlib.sha256(payload).hexdigest()
-        token = make_id("path", {"name": resolved.name, "sha256": digest})
-        files[f"sources/blobs/{digest}"] = payload
-        resolver[token] = str(resolved)
-        source_id = f"source_{digest[:24]}"
-        existing = sources_by_id.get(source_id)
-        if existing is not None:
-            if resolved.name != existing["display_name"] and resolved.name not in existing["aliases"]:
-                existing["aliases"].append(resolved.name)
-                existing["aliases"].sort()
-            continue
-        sources_by_id[source_id] = {
-            "source_id": source_id,
-            "source_type": "uploaded_file",
-            "access_policy": "permitted",
-            "evidence_usage": "primary",
-            "observation_roles": [],
-            "display_name": resolved.name,
-            "media_type": mimetypes.guess_type(resolved.name)[0] or "application/octet-stream",
-            "sha256": digest,
-            "size_bytes": len(payload),
-            "received_at": received_at,
-            "snapshot_ref": f"sources/blobs/{digest}",
-            "original_path_token": token,
-            "aliases": [],
-            "metadata": {"extension": resolved.suffix.lower()},
-        }
-    sources = [sources_by_id[key] for key in sorted(sources_by_id)]
-    files["sources/registry.json"] = canonical_bytes(sorted(sources, key=lambda item: item["source_id"]))
-    files["sources/resolver.json"] = canonical_bytes(resolver)
-    state = {
-        "run_id": run_id,
-        "revision": 1,
-        "state": state_name,
-        "resume_state": None,
-        "blocker": None,
-        "approvals": [],
-    }
-    files["workflow/state.json"] = canonical_bytes(state)
-    store.publish(0, files)
-    return 0, response(
-        command="start", ok=True, code=0, message="run created",
-        run_id=run_id, revision=1, state=state_name,
-        data={"source_count": len(sources)},
-    )
+    result = TrustedCeoApplication(args.artifact_root).create_run(CreateRunRequest(
+        mission=args.mission_contract,
+        inputs=tuple(args.input),
+        run_owner_actor_id=args.run_owner_actor_id,
+        run_id=None,
+    ))
+    return _application_payload(result)
 
 
 def _status(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    store = _store_for(args)
-    pointer = store.state()
-    revision = int(pointer["revision"])
-    files = _snapshot_payloads(store, revision)
-    state = _workflow_state(files)
-    return 0, response(
-        command="status", ok=True, code=0, message="status read",
-        run_id=args.run_id, revision=revision, state=state["state"], data=state,
-    )
-
-
-def _pending_action_document(
-    store: ArtifactStore,
-    *,
-    run_id: str,
-    revision: int,
-) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    files = _snapshot_payloads(store, revision)
-    state = _workflow_state(files)
-    stored = files.get("workflow/pending-action.json")
-    if stored is not None:
-        card = json.loads(stored.decode("utf-8"))
-        if not isinstance(card, dict):
-            raise IntegrityError("stored Human Action Card is invalid")
-    else:
-        resolution_payload = files.get("workflow/human-action-resolution.json")
-        resolved_here = False
-        if resolution_payload is not None:
-            resolution = json.loads(resolution_payload.decode("utf-8"))
-            if not isinstance(resolution, Mapping):
-                raise IntegrityError("stored Human Action resolution is invalid")
-            value = dict(resolution)
-            SchemaStore().validate("human-action-resolution.schema.json", value)
-            claimed = value.pop("resolution_hash")
-            actual = hashlib.sha256(canonical_bytes(value)).hexdigest()
-            if claimed != actual:
-                raise IntegrityError("stored Human Action resolution hash is invalid")
-            resolved_here = (
-                resolution.get("result_revision") == revision
-                and resolution.get("workflow_state") == state.get("state")
-            )
-        card = None if resolved_here else pending_action_for_state(
-            run_id=run_id,
-            revision=revision,
-            workflow_state=str(state["state"]),
-            evidence_refs=[],
-            expires_at=None,
-        )
-    if card is not None:
-        verify_action_card(card)
-        if (
-            card.get("run_id") != run_id
-            or card.get("base_revision") != revision
-            or card.get("workflow_state") != state.get("state")
-        ):
-            raise IntegrityError("stored Human Action Card does not match current workflow")
-    return card, state
-
-
-def _action_from_args(
-    store: ArtifactStore,
-    args: argparse.Namespace,
-) -> dict[str, Any]:
-    card, _ = _pending_action_document(
-        store,
-        run_id=args.run_id,
-        revision=args.expected_revision,
-    )
-    if card is None:
-        raise ContractError("no Human Action Card is pending at the expected revision")
-    if card["action_id"] != args.action_id:
-        raise RevisionConflict("Human Action Card ID is stale")
-    if card["content_hash"] != args.action_content_hash:
-        raise RevisionConflict("Human Action Card content hash is stale")
-    return card
-
-
-def _human_response_input(path: Path) -> dict[str, Any]:
-    resolved = path.resolve(strict=True)
-    if any(part.lower() == "logs" for part in resolved.parts):
-        raise ContractError("logs cannot be a Human Response input")
-    _, payload = _stable_read(resolved)
-    value = strict_loads(payload)
-    if not isinstance(value, Mapping):
-        raise ContractError("Human Response input must be an object")
-    return dict(value)
+    result = TrustedCeoApplication(args.artifact_root).status(RunRequest(args.run_id))
+    return _application_payload(result)
 
 
 def _pending_action(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    store = _store_for(args)
-    revision = int(store.state()["revision"])
-    card, state = _pending_action_document(
-        store,
-        run_id=args.run_id,
-        revision=revision,
-    )
-    code = 2 if card is not None else 0
-    return code, response(
-        command=args.command,
-        ok=True,
-        code=code,
-        message="human action required" if card is not None else "no human action pending",
-        run_id=args.run_id,
-        revision=revision,
-        state=state["state"],
-        data={"action": card},
-    )
+    result = TrustedCeoApplication(args.artifact_root).pending_action(RunRequest(args.run_id))
+    return _application_payload(result)
 
 
 def _preview_human_response(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    store = _store_for(args)
-    current = int(store.state()["revision"])
-    if current != args.expected_revision:
-        raise RevisionConflict(f"expected revision {args.expected_revision}, current is {current}")
-    card = _action_from_args(store, args)
-    receipt = HumanResponseService(
-        _human_response_manager(store),
-        trusted_principal=_trusted_local_principal(),
-    ).preview(
-        expected_revision=args.expected_revision,
-        action=card,
-        response=_human_response_input(args.response),
+    result = TrustedCeoApplication(args.artifact_root).preview_human_response(
+        HumanResponseRequest(
+            run_id=args.run_id,
+            expected_revision=args.expected_revision,
+            action_id=args.action_id,
+            action_content_hash=args.action_content_hash,
+            response=args.response,
+        )
     )
-    return 0, response(
-        command=args.command,
-        ok=True,
-        code=0,
-        message="human response previewed",
-        run_id=args.run_id,
-        revision=current,
-        state=receipt["workflow_state"],
-        data={"receipt": receipt},
-    )
+    return _application_payload(result)
 
 
 def _submit_human_response(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    store = _store_for(args)
-    card = _action_from_args(store, args)
-    receipt, revision = HumanResponseService(
-        _human_response_manager(store),
-        trusted_principal=_trusted_local_principal(),
-    ).submit(
-        expected_revision=args.expected_revision,
-        action=card,
-        response=_human_response_input(args.response),
-        idempotency_key=args.idempotency_key,
+    result = TrustedCeoApplication(args.artifact_root).submit_human_response(
+        SubmitHumanResponseRequest(
+            run_id=args.run_id,
+            expected_revision=args.expected_revision,
+            action_id=args.action_id,
+            action_content_hash=args.action_content_hash,
+            response=args.response,
+            idempotency_key=args.idempotency_key,
+        )
     )
-    code = 2 if receipt["terminal_approval_required"] else 0
-    return code, response(
-        command=args.command,
-        ok=True,
-        code=code,
-        message=(
-            "terminal approval required"
-            if receipt["terminal_approval_required"]
-            else "human response committed"
-        ),
-        run_id=args.run_id,
-        revision=revision,
-        state=receipt["workflow_state"],
-        data={"receipt": receipt},
-    )
+    return _application_payload(result)
 
 
 def _validate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    validation = validate_revision(_store_for(args), args.revision)
-    return 0, response(
-        command="validate", ok=True, code=0, message="revision valid",
-        run_id=args.run_id, revision=args.revision,
-        data={"validated": True, "checks": list(validation.checks)},
+    result = TrustedCeoApplication(args.artifact_root).validate(
+        RevisionRequest(run_id=args.run_id, revision=args.revision)
     )
+    return _application_payload(result)
 
 
 def _render(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
@@ -674,47 +393,15 @@ def _render(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
 
 
 def _export_web_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    store = _store_for(args)
-    _, manifest_payload = _stable_read(
-        args.input_manifest.resolve(strict=True)
+    result = TrustedCeoApplication(args.artifact_root).export_web_report(
+        ExportWebReportRequest(
+            run_id=args.run_id,
+            revision=args.revision,
+            output=args.output,
+            input_manifest=args.input_manifest,
+        )
     )
-    try:
-        strict_loads(manifest_payload)
-        manifest = json.loads(manifest_payload.decode("utf-8"))
-    except (UnicodeError, ValueError) as error:
-        raise ContractError("web report input manifest is invalid JSON") from error
-    if not isinstance(manifest, Mapping):
-        raise ContractError("web report input manifest must be an object")
-    SchemaStore().validate("web-report-input-manifest.schema.json", manifest)
-    if (
-        manifest["run_id"] != args.run_id
-        or manifest["revision"] != args.revision
-    ):
-        raise IntegrityError("web report input manifest run or revision mismatch")
-    expected_hash = manifest["files"][0]["sha256"]
-    payload = convert_final_revision(
-        store,
-        run_id=args.run_id,
-        revision=args.revision,
-        expected_final_result_hash=expected_hash,
-    )
-    bundle = load_bundle_bytes(payload)
-    run_dir = store.open_run(args.run_id)
-    publish_web_report_output(
-        args.output.resolve(strict=False), payload,
-        workspace=Path.cwd(), run_dir=run_dir, plugin_root=PLUGIN_ROOT,
-    )
-    receipt = bundle["viewer_eligibility_receipt"]
-    return 0, response(
-        command="export-web-report", ok=True, code=0,
-        message="web report exported", run_id=args.run_id,
-        revision=args.revision,
-        data={
-            "bundle_hash": bundle["bundle_hash"],
-            "viewer_mode": receipt["claimed_viewer_mode"],
-            "checks": list(receipt["completed_checks"]),
-        },
-    )
+    return _application_payload(result)
 
 
 def _validate_web_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
@@ -733,50 +420,29 @@ def _validate_web_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]
 
 
 def _prepare_result_question(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    files = _snapshot_payloads(_store_for(args), args.revision)
-    index = QuestionIndex.from_snapshot(files)
-    _, question_payload = _stable_read(args.question_file.resolve(strict=True))
-    question = question_payload.decode("utf-8")
-    try:
-        job = build_result_question_job(
-            index=index,
-            question=question,
+    result = TrustedCeoApplication(args.artifact_root).prepare_result_question(
+        PrepareResultQuestionRequest(
+            run_id=args.run_id,
+            revision=args.revision,
+            question=args.question_file,
             scope_kind=args.scope_kind,
             scope_instance_id=args.scope_instance_id,
             privacy_classification=args.privacy_classification,
         )
-    except ScopeRequired as error:
-        return 2, response(
-            command="prepare-result-question", ok=True, code=2,
-            message="scope required", run_id=args.run_id,
-            revision=args.revision, state="finalized",
-            data={
-                "error_code": error.code,
-                "suggestions": [dict(item) for item in error.suggestions],
-            },
-        )
-    return 0, response(
-        command="prepare-result-question", ok=True, code=0,
-        message="result question job prepared", run_id=args.run_id,
-        revision=args.revision, state="finalized", data={"job": job},
     )
+    return _application_payload(result)
 
 
 def _validate_result_answer(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    files = _snapshot_payloads(_store_for(args), args.revision)
-    index = QuestionIndex.from_snapshot(files)
-    _, job_payload = _stable_read(args.job.resolve(strict=True))
-    _, draft_payload = _stable_read(args.draft.resolve(strict=True))
-    job = strict_loads(job_payload)
-    draft = strict_loads(draft_payload)
-    if not isinstance(job, Mapping) or not isinstance(draft, Mapping):
-        raise ContractError("result question Job and answer draft must be objects")
-    answer = validate_and_render_answer(job, draft, index)
-    return 0, response(
-        command="validate-result-answer", ok=True, code=0,
-        message="result answer validated", run_id=args.run_id,
-        revision=args.revision, state="finalized", data={"answer": answer},
+    result = TrustedCeoApplication(args.artifact_root).validate_result_answer(
+        ValidateResultAnswerRequest(
+            run_id=args.run_id,
+            revision=args.revision,
+            job=args.job,
+            draft=args.draft,
+        )
     )
+    return _application_payload(result)
 
 
 def _pack_reasoning_context(files: Mapping[str, bytes]) -> dict[str, Any]:
