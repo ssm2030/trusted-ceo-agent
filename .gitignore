@@ -14,3 +14,7 @@ web/test-results/
 web/var/
 web/.tmp/
 web/*.tsbuildinfo
+.env
+.env.local
+web/.env.local
+web/var/ai-service/
