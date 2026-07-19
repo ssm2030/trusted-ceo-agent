@@ -273,7 +273,11 @@ def _reasoning_jobs(
         "pack_manifest_hash": pack_hash,
         "prompt_template_hash": hashlib.sha256(f"trusted-ceo-{stage}-v1".encode("utf-8")).hexdigest(),
         "model_profile": "balanced_structured" if stage in {"schema_mapping", "lens"} else "strong_structured",
-        "output_schema_ref": f"{stage.replace('_', '-')}-draft.schema.json",
+        "output_schema_ref": (
+            "lens-card-draft.schema.json"
+            if stage == "lens"
+            else f"{stage.replace('_', '-')}-draft.schema.json"
+        ),
         "capability_ids": [item["capability_id"] for item in context["capabilities"]],
         "allowed_fact_ids": [item["fact_id"] for item in context["facts"]],
         "allowed_signal_ids": [item["signal_id"] for item in context["signals"]],
@@ -1267,9 +1271,15 @@ def _execute(args: SimpleNamespace) -> tuple[int, ApplicationResult]:
             if state["state"] != "scope_narrowing_required":
                 raise ContractError(f"scope approval is not allowed from {state['state']}")
         elif args.gate == "diagnostic":
-            state = _advance(state, "request_diagnostic_approval", {"issues_valid": True})
+            if state["state"] == "integrated_draft":
+                state = _advance(state, "request_diagnostic_approval", {"issues_valid": True})
+            elif state["state"] != "diagnostic_approval_required":
+                raise ContractError(f"diagnostic approval is not allowed from {state['state']}")
         elif args.gate == "final":
-            state = _advance(state, "request_final_approval", {"output_valid": True})
+            if state["state"] == "writer_ready":
+                state = _advance(state, "request_final_approval", {"output_valid": True})
+            elif state["state"] != "final_approval_required":
+                raise ContractError(f"final approval is not allowed from {state['state']}")
         next_state = dict(state)
         next_state["revision"] = current + 1
         additional = {

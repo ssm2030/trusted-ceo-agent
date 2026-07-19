@@ -66,6 +66,22 @@ class ValidationSummaryTests(unittest.TestCase):
                 }
             )
 
+    def test_structured_source_json_pointer_is_not_treated_as_a_file_path(self) -> None:
+        validation.validate_no_absolute_paths({
+            "source_refs": [{
+                "locator": {"pointer": "/0/gross_margin"},
+            }],
+            "preview": {"json_pointer": "/0/gross_margin"},
+        })
+
+    def test_unstructured_pointer_field_cannot_hide_an_absolute_path(self) -> None:
+        with self.assertRaises(validation.FinalValidationError):
+            validation.validate_no_absolute_paths({"pointer": r"C:\Users\secret.txt"})
+        with self.assertRaises(validation.FinalValidationError):
+            validation.validate_no_absolute_paths({
+                "source_ref": {"locator": {"pointer": r"C:\Users\secret.txt"}},
+            })
+
     def test_validate_final_result_performs_all_contextual_checks(self) -> None:
         validator = getattr(validation, "validate_final_result", None)
         self.assertIsNotNone(validator)

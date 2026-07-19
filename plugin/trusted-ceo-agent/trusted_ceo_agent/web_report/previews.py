@@ -228,7 +228,7 @@ def _display_locator(source_ref: Mapping[str, Any]) -> str:
         indices = ",".join(str(item) for item in locator["record_indices"])
         return f"레코드 {indices}"
     if locator_type == "json_pointer":
-        return str(locator["pointer"])
+        return f"json-pointer:{locator['pointer']}"
     if locator_type == "xlsx_cells":
         return f"{locator['sheet']}!{locator['range']}"
     raise IntegrityError(f"unsupported Source locator type: {locator_type}")

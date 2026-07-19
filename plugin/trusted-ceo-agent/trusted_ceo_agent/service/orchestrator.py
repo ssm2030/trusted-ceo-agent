@@ -6,12 +6,15 @@ import re
 import threading
 from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Protocol
 
 from trusted_ceo_agent.application.models import (
     ApplicationResult,
     CreateRunRequest,
+    ExportWebReportRequest,
     MutationRequest,
+    RevisionRequest,
     RunRequest,
 )
 from trusted_ceo_agent.application.run_application import TrustedCeoApplication
@@ -35,6 +38,7 @@ from trusted_ceo_agent.service.run_store import (
 )
 from trusted_ceo_agent.trust.artifact_store import ArtifactStore
 from trusted_ceo_agent.workflow.overlays import apply_overlay
+from trusted_ceo_agent.web_report.contracts import load_bundle_bytes
 
 
 STATE_HANDLERS = {
@@ -44,6 +48,15 @@ STATE_HANDLERS = {
     "mapping_proposal_ready": "_await_data",
     "data_confirmation_required": "_await_data",
     "evidence_ready": "_prepare_lens",
+    "lens_jobs_ready": "_run_lens",
+    "lens_ready": "_run_integrated",
+    "integrated_draft": "_await_diagnostic",
+    "diagnostic_approval_required": "_await_diagnostic",
+    "finalization_jobs_ready": "_run_writer",
+    "writer_ready": "_await_final",
+    "final_approval_required": "_await_final",
+    "delivery_approved": "_finalize_and_export",
+    "finalized": "_export_finalized",
 }
 
 _FINGERPRINT = re.compile(r"^[0-9a-f]{64}$")
@@ -83,6 +96,7 @@ class AnalysisOrchestrator:
         gateway: ReasoningGateway,
         *,
         clock: Callable[[], datetime] | None = None,
+        report_root: Path | None = None,
     ) -> None:
         if application.artifact_root.resolve() != run_store.runs_root.resolve():
             raise ValueError("application and service store must share the runs root")
@@ -90,6 +104,11 @@ class AnalysisOrchestrator:
         self.run_store = run_store
         self.gateway = gateway
         self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.report_root = (
+            report_root.resolve()
+            if report_root is not None
+            else (Path.cwd() / ".trusted-ceo-agent-reports").resolve()
+        )
 
     def create_run(self, request: CreateRunRequest) -> RunSnapshot:
         result = self.application.create_run(request)
@@ -117,6 +136,27 @@ class AnalysisOrchestrator:
                 "service manifest does not match the workflow revision",
             )
         return self._snapshot(manifest, result)
+
+    def report(self, run_id: str) -> dict[str, Any]:
+        manifest = self.run_store.read_manifest(run_id)
+        if manifest.status != "finalized" or manifest.bundle_hash is None:
+            raise ContractError("run does not have a finalized report")
+        path = self._report_path(run_id, manifest.engine_revision)
+        if not path.is_file():
+            raise IntegrityError("finalized report bundle is missing")
+        bundle = load_bundle_bytes(path.read_bytes())
+        run = bundle.get("run", {})
+        if (
+            not isinstance(run, Mapping)
+            or run.get("run_id") != run_id
+            or run.get("revision") != manifest.engine_revision
+            or bundle.get("bundle_hash") != manifest.bundle_hash
+        ):
+            raise IntegrityError("report bundle does not match the service manifest")
+        return {
+            "bundle": bundle,
+            "eligibility": bundle["viewer_eligibility_receipt"],
+        }
 
     def continue_run(self, run_id: str, request: MutationBase) -> RunSnapshot:
         self._manifest(run_id)
@@ -215,10 +255,11 @@ class AnalysisOrchestrator:
                 pending_nonce=str(replacement.data["nonce"]),
             )
 
+        actor_role = "business_owner" if gate in {"context", "data"} else "ceo"
         common = {
             "request_id": manifest.pending_approval_request_id,
             "actor_id": "local-browser-user",
-            "actor_role": "business_owner",
+            "actor_role": actor_role,
             "nonce": manifest.pending_approval_nonce,
             "rationale": rationale,
             "browser_session_fingerprint": browser_session_fingerprint,
@@ -244,7 +285,11 @@ class AnalysisOrchestrator:
                         if request.decision == "reanalyze"
                         else "reject"
                     ),
-                    "change_scope": "data" if request.decision == "reanalyze" else None,
+                    "change_scope": (
+                        {"data": "data", "diagnostic": "reasoning", "final": "wording"}.get(gate)
+                        if request.decision == "reanalyze"
+                        else None
+                    ),
                 },
             )
             status = "running" if request.decision == "reanalyze" else "stopped"
@@ -416,6 +461,191 @@ class AnalysisOrchestrator:
         manifest = self._checkpoint(manifest, result, job_ids=ids)
         return self._snapshot(manifest, result)
 
+    def _run_lens(
+        self,
+        manifest: ServiceManifest,
+        state: ApplicationResult,
+    ) -> RunSnapshot:
+        return self._run_model_stage(manifest, state, stage="lens")
+
+    def _run_integrated(
+        self,
+        manifest: ServiceManifest,
+        state: ApplicationResult,
+    ) -> RunSnapshot:
+        return self._run_model_stage(manifest, state, stage="integrated")
+
+    def _run_model_stage(
+        self,
+        manifest: ServiceManifest,
+        state: ApplicationResult,
+        *,
+        stage: str,
+    ) -> RunSnapshot:
+        files = self._files(manifest.run_id, manifest.engine_revision)
+        jobs = self._jobs(files, stage)
+        if not jobs:
+            result = self._mutate(
+                manifest.run_id,
+                manifest.engine_revision,
+                "prepare-jobs",
+                {"stage": stage},
+            )
+            ids = tuple(str(value) for value in result.data.get("job_ids", []))
+            manifest = self._checkpoint(manifest, result, job_ids=ids)
+            return self._snapshot(manifest, result)
+        pending = [
+            job
+            for job in jobs
+            if not self._accepted(files, str(job["job_id"]))
+        ]
+        if pending:
+            result = state
+            for job in pending:
+                result = self._mutate(
+                    manifest.run_id,
+                    manifest.engine_revision,
+                    "ingest-result",
+                    {
+                        "job_id": str(job["job_id"]),
+                        "draft_document": self.gateway.execute(job),
+                    },
+                )
+                manifest = self._checkpoint(manifest, result)
+            return self._snapshot(manifest, result)
+        result = self._mutate(
+            manifest.run_id,
+            manifest.engine_revision,
+            "reduce-stage",
+            {"stage": stage},
+        )
+        manifest = self._checkpoint(manifest, result)
+        return self._snapshot(manifest, result)
+
+    def _await_diagnostic(
+        self,
+        manifest: ServiceManifest,
+        state: ApplicationResult,
+    ) -> RunSnapshot:
+        if manifest.status == "awaiting_human" and not self._pending_expired(manifest):
+            return self._snapshot(manifest, state)
+        if manifest.status == "awaiting_human":
+            return self._renew_hitl(manifest, gate="diagnostic")
+        return self._request_hitl(
+            manifest,
+            gate="diagnostic",
+            operations=self._default_diagnostic_operations(
+                manifest.run_id,
+                manifest.engine_revision,
+            ),
+        )
+
+    def _run_writer(
+        self,
+        manifest: ServiceManifest,
+        state: ApplicationResult,
+    ) -> RunSnapshot:
+        files = self._files(manifest.run_id, manifest.engine_revision)
+        if "final/structured-output.json" not in files:
+            result = self._mutate(
+                manifest.run_id,
+                manifest.engine_revision,
+                "prepare-finalization",
+                {},
+            )
+            manifest = self._checkpoint(manifest, result)
+            return self._snapshot(manifest, result)
+        return self._run_model_stage(manifest, state, stage="writer")
+
+    def _await_final(
+        self,
+        manifest: ServiceManifest,
+        state: ApplicationResult,
+    ) -> RunSnapshot:
+        if manifest.status == "awaiting_human" and not self._pending_expired(manifest):
+            return self._snapshot(manifest, state)
+        if manifest.status == "awaiting_human":
+            return self._renew_hitl(manifest, gate="final")
+        return self._request_hitl(
+            manifest,
+            gate="final",
+            operations=self._default_final_operations(),
+        )
+
+    def _finalize_and_export(
+        self,
+        manifest: ServiceManifest,
+        _state: ApplicationResult,
+    ) -> RunSnapshot:
+        result = self._mutate(
+            manifest.run_id,
+            manifest.engine_revision,
+            "finalize",
+            {},
+        )
+        manifest = self._checkpoint(manifest, result, status="running")
+        return self._export_finalized(manifest, result)
+
+    def _report_path(self, run_id: str, revision: int) -> Path:
+        return self.report_root / f"{run_id}-r{revision:04d}.json"
+
+    def _export_finalized(
+        self,
+        manifest: ServiceManifest,
+        state: ApplicationResult,
+    ) -> RunSnapshot:
+        if state.state != "finalized" or state.revision is None:
+            raise IntegrityError("report export requires a finalized workflow")
+        if manifest.status == "finalized":
+            return self._snapshot(manifest, state)
+        self.application.validate(RevisionRequest(
+            run_id=manifest.run_id,
+            revision=state.revision,
+        ))
+        files = self._files(manifest.run_id, state.revision)
+        result_bytes = files.get("final/result.json")
+        if result_bytes is None:
+            raise IntegrityError("final result is missing")
+        input_manifest = {
+            "schema_version": "1.0.0",
+            "run_id": manifest.run_id,
+            "revision": state.revision,
+            "files": [{
+                "path": "final/result.json",
+                "sha256": hashlib.sha256(result_bytes).hexdigest(),
+            }],
+        }
+        self.report_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        output = self._report_path(manifest.run_id, state.revision)
+        if not output.exists():
+            self.application.export_web_report(ExportWebReportRequest(
+                run_id=manifest.run_id,
+                revision=state.revision,
+                output=output,
+                input_manifest=input_manifest,
+            ))
+        bundle = load_bundle_bytes(output.read_bytes())
+        run = bundle.get("run", {})
+        if (
+            not isinstance(run, Mapping)
+            or run.get("run_id") != manifest.run_id
+            or run.get("revision") != state.revision
+        ):
+            raise IntegrityError("exported report identity is invalid")
+        bundle_hash = bundle.get("bundle_hash")
+        if not isinstance(bundle_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", bundle_hash):
+            raise IntegrityError("exported report hash is invalid")
+        manifest = self.run_store.save_manifest(
+            manifest.model_copy(update={
+                "status": "finalized",
+                "stage": "finalized",
+                "result_ref": f"result_{bundle_hash[:24]}",
+                "bundle_hash": bundle_hash,
+            }),
+            expected_revision=manifest.engine_revision,
+        )
+        return self._snapshot(manifest, state)
+
     def _request_hitl(
         self,
         manifest: ServiceManifest,
@@ -544,6 +774,69 @@ class AnalysisOrchestrator:
         apply_overlay({}, "data", operations)
         return operations
 
+    def _default_diagnostic_operations(
+        self,
+        run_id: str,
+        revision: int,
+    ) -> list[dict[str, Any]]:
+        files = self._files(run_id, revision)
+        integrated = _json_value(
+            files.get("reasoning/integrated-assessment.json"),
+            label="integrated assessment",
+            default={},
+        )
+        payload = integrated.get("payload", integrated)
+        issues = payload.get("integrated_issues", [])
+        operations: list[dict[str, Any]] = []
+        for issue in issues:
+            local_key = str(issue["local_key"])
+            issue_payload = issue.get("payload", {})
+            operations.extend([
+                {
+                    "op": "add",
+                    "path": f"/issue_dispositions/{_pointer_segment(local_key)}",
+                    "value": "accepted",
+                },
+                {
+                    "op": "add",
+                    "path": f"/decision_dispositions/{_pointer_segment(local_key)}",
+                    "value": (
+                        "needed"
+                        if issue_payload.get("decision_need_proposal") is not None
+                        else "not_needed"
+                    ),
+                },
+                {
+                    "op": "add",
+                    "path": f"/verification_authorizations/{_pointer_segment(local_key)}",
+                    "value": False,
+                },
+            ])
+        operations.extend([
+            {
+                "op": "add",
+                "path": "/deep_dive_scope/component_ids",
+                "value": [],
+            },
+            {
+                "op": "add",
+                "path": "/deep_dive_scope/issue_ids",
+                "value": [],
+            },
+        ])
+        apply_overlay({}, "diagnostic", operations)
+        return operations
+
+    @staticmethod
+    def _default_final_operations() -> list[dict[str, Any]]:
+        operations = [{
+            "op": "add",
+            "path": "/delivery_scope/package",
+            "value": "ceo_brief",
+        }]
+        apply_overlay({}, "final", operations)
+        return operations
+
     def _edited_operations(
         self,
         run_id: str,
@@ -574,6 +867,84 @@ class AnalysisOrchestrator:
                 confirmed_at="1970-01-01T00:00:00Z",
             )
             return operations
+        if gate == "diagnostic":
+            unknown = set(edits) - {
+                "issue_dispositions",
+                "decision_dispositions",
+                "verification_authorizations",
+                "deep_dive_scope",
+            }
+            if unknown:
+                raise ValueError(f"forbidden diagnostic edit fields: {sorted(unknown)}")
+            files = self._files(run_id, revision)
+            integrated = _json_value(
+                files.get("reasoning/integrated-assessment.json"),
+                label="integrated assessment",
+                default={},
+            )
+            payload = integrated.get("payload", integrated)
+            issue_ids = {
+                str(item["local_key"])
+                for item in payload.get("integrated_issues", [])
+            }
+            defaults = self._default_diagnostic_operations(run_id, revision)
+            by_path = {str(item["path"]): item for item in defaults}
+            specifications = {
+                "issue_dispositions": {"accepted", "rejected", "disputed"},
+                "decision_dispositions": {"needed", "not_needed", "disputed"},
+            }
+            for field, allowed in specifications.items():
+                values = edits.get(field, {})
+                if not isinstance(values, Mapping):
+                    raise ValueError(f"{field} edit must be an object")
+                for issue_id, value in values.items():
+                    if issue_id not in issue_ids or value not in allowed:
+                        raise ValueError(f"invalid {field} edit: {issue_id}")
+                    path = f"/{field}/{_pointer_segment(issue_id)}"
+                    by_path[path] = {"op": "add", "path": path, "value": value}
+            authorizations = edits.get("verification_authorizations", {})
+            if not isinstance(authorizations, Mapping):
+                raise ValueError("verification_authorizations edit must be an object")
+            for issue_id, value in authorizations.items():
+                if issue_id not in issue_ids or not isinstance(value, bool):
+                    raise ValueError(f"invalid verification authorization: {issue_id}")
+                path = f"/verification_authorizations/{_pointer_segment(issue_id)}"
+                by_path[path] = {"op": "add", "path": path, "value": value}
+            scope = edits.get("deep_dive_scope", {})
+            if not isinstance(scope, Mapping) or set(scope) - {"component_ids", "issue_ids"}:
+                raise ValueError("deep_dive_scope edit is invalid")
+            for field, values in scope.items():
+                if (
+                    not isinstance(values, list)
+                    or any(not isinstance(value, str) or not value for value in values)
+                    or len(values) != len(set(values))
+                ):
+                    raise ValueError(f"deep_dive_scope {field} must be a string set")
+                if field == "issue_ids" and not set(values).issubset(issue_ids):
+                    raise ValueError("deep_dive_scope contains an unknown issue")
+                path = f"/deep_dive_scope/{field}"
+                by_path[path] = {"op": "add", "path": path, "value": sorted(values)}
+            result = [by_path[path] for path in sorted(by_path)]
+            apply_overlay({}, "diagnostic", result)
+            return result
+        if gate == "final":
+            if set(edits) != {"delivery_scope"}:
+                raise ValueError("final edits support only delivery_scope")
+            scope = edits["delivery_scope"]
+            if not isinstance(scope, Mapping) or not scope:
+                raise ValueError("delivery_scope edit must be a non-empty object")
+            by_path = {
+                str(item["path"]): item
+                for item in self._default_final_operations()
+            }
+            for field, value in scope.items():
+                if not isinstance(field, str) or not field or not isinstance(value, str) or not value:
+                    raise ValueError("delivery_scope values must be non-empty strings")
+                path = f"/delivery_scope/{_pointer_segment(field)}"
+                by_path[path] = {"op": "add", "path": path, "value": value}
+            result = [by_path[path] for path in sorted(by_path)]
+            apply_overlay({}, "final", result)
+            return result
         if gate != "data":
             raise ValueError(f"edits are not supported for {gate}")
         unknown = set(edits) - {"columns", "sources"}
@@ -638,6 +1009,10 @@ class AnalysisOrchestrator:
             return "context"
         if manifest.stage == "data_hitl":
             return "data"
+        if manifest.stage == "diagnostic_hitl":
+            return "diagnostic"
+        if manifest.stage == "final_hitl":
+            return "final"
         raise ContractError("pending approval gate is unsupported")
 
     def _hitl_card(
@@ -712,6 +1087,112 @@ class AnalysisOrchestrator:
                 target_refs=target_refs,
                 allowed_decisions=["approve", "approve_with_edits", "stop"],
                 editable_fields=sorted(CONTEXT_EDITABLE_FIELDS),
+                sections=sections,
+            )
+        if gate == "diagnostic":
+            integrated = _json_value(
+                files.get("reasoning/integrated-assessment.json"),
+                label="integrated assessment",
+                default={},
+            )
+            payload = integrated.get("payload", integrated)
+            issues = payload.get("integrated_issues", [])
+            issue_refs = [str(issue["local_key"]) for issue in issues]
+            issue_items = [
+                (
+                    f"{issue['local_key']}: "
+                    f"{issue.get('payload', {}).get('problem_family_ref', '검증된 이슈')}"
+                )
+                for issue in issues
+            ] or ["통합 분석에서 승인할 이슈가 없습니다."]
+            verification_items = [
+                (
+                    f"{issue['local_key']}: "
+                    + ", ".join(
+                        issue.get("payload", {}).get("verification_requirement_refs", [])
+                    )
+                )
+                for issue in issues
+                if issue.get("payload", {}).get("verification_requirement_refs")
+            ] or ["추가 심층 검증 범위는 기본적으로 비어 있습니다."]
+            sections.extend([
+                HitlSection(
+                    kind="diagnostic",
+                    title="문제와 원인 진단",
+                    items=issue_items,
+                    target_refs=issue_refs,
+                ),
+                HitlSection(
+                    kind="priorities",
+                    title="의사결정 우선순위",
+                    items=["승인된 이슈를 최종 보고서 작성 대상으로 사용합니다."],
+                    target_refs=issue_refs,
+                ),
+                HitlSection(
+                    kind="verification",
+                    title="검증 계획",
+                    items=verification_items,
+                    target_refs=issue_refs,
+                ),
+            ])
+            target_refs.extend(issue_refs)
+            editable = [
+                token
+                for issue_ref in issue_refs
+                for token in (
+                    f"issue_dispositions.{issue_ref}",
+                    f"decision_dispositions.{issue_ref}",
+                    f"verification_authorizations.{issue_ref}",
+                )
+            ] + ["deep_dive_scope.component_ids", "deep_dive_scope.issue_ids"]
+            return HitlCard(
+                hitl_kind="diagnostic_final",
+                request_id=manifest.pending_approval_request_id,
+                base_revision=state.revision,
+                title="진단 결과와 검증 범위를 확인해 주세요",
+                summary="검증된 카드와 통합 validator를 통과한 진단만 표시합니다.",
+                target_refs=target_refs,
+                allowed_decisions=["approve", "approve_with_edits", "reanalyze", "stop"],
+                editable_fields=editable,
+                sections=sections,
+            )
+        if gate == "final":
+            writer = _json_value(
+                files.get("reasoning/writer-result.json"),
+                label="writer result",
+                default={},
+            )
+            payload = writer.get("payload", writer)
+            templates = payload.get("claim_templates", [])
+            claim_refs = [str(item["claim_id"]) for item in templates]
+            claim_items = [
+                f"{item['claim_id']}: {item.get('template', '')}"
+                for item in templates
+            ] or ["승인된 구조화 결과를 결정론적 기본 문구로 전달합니다."]
+            sections.extend([
+                HitlSection(
+                    kind="final_wording",
+                    title="최종 문구",
+                    items=claim_items,
+                    target_refs=claim_refs,
+                ),
+                HitlSection(
+                    kind="verification",
+                    title="전달 범위",
+                    items=["CEO 브리프 패키지를 최종 전달 대상으로 승인합니다."],
+                    target_refs=claim_refs,
+                ),
+            ])
+            target_refs.extend(claim_refs)
+            return HitlCard(
+                hitl_kind="diagnostic_final",
+                request_id=manifest.pending_approval_request_id,
+                base_revision=state.revision,
+                title="최종 문구와 전달 범위를 확인해 주세요",
+                summary="등급과 근거는 수정하지 않고 승인 가능한 문구와 전달 범위만 표시합니다.",
+                target_refs=target_refs,
+                allowed_decisions=["approve", "approve_with_edits", "reanalyze", "stop"],
+                editable_fields=["delivery_scope.package"],
                 sections=sections,
             )
         proposal = _json_value(
