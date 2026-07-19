@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -240,6 +241,47 @@ class OrchestratorContextTests(unittest.TestCase):
 
             self.assertEqual(state_before, state_path.read_bytes())
             self.assertEqual(manifest_before, manifest_path.read_bytes())
+
+    def test_expired_web_approval_is_reissued_with_a_new_private_nonce(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            root = Path(directory)
+            application, run_store, gateway, orchestrator = self._runtime(root)
+            run_id = "run_expired_hitl_01234567"
+            application.create_run(CreateRunRequest(
+                mission=mission_body(),
+                run_owner_actor_id="local-browser-user",
+                run_id=run_id,
+            ))
+            first = orchestrator.continue_run(
+                run_id,
+                MutationBase(expected_revision=1, idempotency_key="continue_expired_0001"),
+            )
+            old_manifest = run_store.read_manifest(run_id)
+
+            future = datetime.now(timezone.utc) + timedelta(hours=1)
+            restarted = AnalysisOrchestrator(
+                application,
+                run_store,
+                gateway,
+                clock=lambda: future,
+            )
+            renewed = restarted.continue_run(
+                run_id,
+                MutationBase(expected_revision=2, idempotency_key="continue_expired_0002"),
+            )
+            new_manifest = run_store.read_manifest(run_id)
+
+            self.assertEqual(3, renewed.revision)
+            self.assertEqual("human_response", renewed.pending_action)
+            self.assertNotEqual(first.hitl_card.request_id, renewed.hitl_card.request_id)
+            self.assertNotEqual(
+                old_manifest.pending_approval_nonce,
+                new_manifest.pending_approval_nonce,
+            )
+            self.assertNotIn(
+                new_manifest.pending_approval_nonce or "",
+                renewed.model_dump_json(),
+            )
 
 
 if __name__ == "__main__":

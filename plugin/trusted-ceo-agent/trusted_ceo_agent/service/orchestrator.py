@@ -4,7 +4,8 @@ import hashlib
 import json
 import re
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from trusted_ceo_agent.application.models import (
@@ -80,12 +81,15 @@ class AnalysisOrchestrator:
         application: TrustedCeoApplication,
         run_store: RunStore,
         gateway: ReasoningGateway,
+        *,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if application.artifact_root.resolve() != run_store.runs_root.resolve():
             raise ValueError("application and service store must share the runs root")
         self.application = application
         self.run_store = run_store
         self.gateway = gateway
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
 
     def create_run(self, request: CreateRunRequest) -> RunSnapshot:
         result = self.application.create_run(request)
@@ -321,8 +325,10 @@ class AnalysisOrchestrator:
         manifest: ServiceManifest,
         state: ApplicationResult,
     ) -> RunSnapshot:
-        if manifest.status == "awaiting_human":
+        if manifest.status == "awaiting_human" and not self._pending_expired(manifest):
             return self._snapshot(manifest, state)
+        if manifest.status == "awaiting_human":
+            return self._renew_hitl(manifest, gate="context")
         return self._request_hitl(manifest, gate="context", operations=[])
 
     def _scan(
@@ -385,8 +391,10 @@ class AnalysisOrchestrator:
         manifest: ServiceManifest,
         state: ApplicationResult,
     ) -> RunSnapshot:
-        if manifest.status == "awaiting_human":
+        if manifest.status == "awaiting_human" and not self._pending_expired(manifest):
             return self._snapshot(manifest, state)
+        if manifest.status == "awaiting_human":
+            return self._renew_hitl(manifest, gate="data")
         operations = self._default_data_operations(
             manifest.run_id,
             manifest.engine_revision,
@@ -433,6 +441,41 @@ class AnalysisOrchestrator:
             pending_nonce=str(result.data["nonce"]),
         )
         return self._snapshot(manifest, result)
+
+    def _pending_request(self, manifest: ServiceManifest) -> dict[str, Any]:
+        request_id = manifest.pending_approval_request_id
+        if request_id is None:
+            raise IntegrityError("pending approval request ID is missing")
+        files = self._files(manifest.run_id, manifest.engine_revision)
+        payload = files.get(f"approvals/requests/{request_id}.json")
+        if payload is None:
+            raise IntegrityError("pending approval request record is missing")
+        value = strict_loads(payload)
+        if not isinstance(value, dict) or value.get("approval_request_id") != request_id:
+            raise IntegrityError("pending approval request record is invalid")
+        return value
+
+    def _pending_expired(self, manifest: ServiceManifest) -> bool:
+        request = self._pending_request(manifest)
+        try:
+            expires_at = datetime.fromisoformat(
+                str(request["expires_at"]).replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            now = self.clock()
+            if now.tzinfo is None:
+                raise ValueError("orchestrator clock must be timezone-aware")
+        except (KeyError, TypeError, ValueError) as error:
+            raise IntegrityError("approval expiry is invalid") from error
+        return now.astimezone(timezone.utc) >= expires_at
+
+    def _renew_hitl(self, manifest: ServiceManifest, *, gate: str) -> RunSnapshot:
+        request = self._pending_request(manifest)
+        if request.get("gate") != gate:
+            raise IntegrityError("pending approval gate does not match workflow")
+        operations = request.get("patch_operations", [])
+        if not isinstance(operations, list):
+            raise IntegrityError("pending approval operations are invalid")
+        return self._request_hitl(manifest, gate=gate, operations=operations)
 
     def _files(self, run_id: str, revision: int) -> dict[str, bytes]:
         store = ArtifactStore(self.application.artifact_root)
