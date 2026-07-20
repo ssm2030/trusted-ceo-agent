@@ -2,9 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.support_accounting_multitable import valid_accounting_multitable_document
+from trusted_ceo_agent.canonical import canonical_bytes
 from trusted_ceo_agent.evidence.core import EvidenceCoreValidator, assemble_evidence_core
 from trusted_ceo_agent.evidence.facts import build_observed_fact
 from trusted_ceo_agent.intake.adapters.csv import CsvAdapter
+from trusted_ceo_agent.intake.pipeline import IntakePipeline
 from trusted_ceo_agent.intake.snapshot import Snapshotter
 
 
@@ -12,6 +15,39 @@ SHA = "a" * 64
 
 
 class IntakeToEvidenceIntegrationTests(unittest.TestCase):
+    def test_accounting_source_reference_keeps_table_pointer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_root = root / "input"
+            artifact_root = root / "artifacts"
+            input_root.mkdir()
+            path = input_root / "accounting.json"
+            path.write_bytes(canonical_bytes(valid_accounting_multitable_document()))
+            result = IntakePipeline(
+                Snapshotter(input_root, artifact_root)
+            ).ingest(path, observation_roles=("ledger",))
+            self.assertIsNotNone(result.dataset)
+            assert result.dataset is not None
+            record = next(
+                item for item in result.dataset.records
+                if item.values.get("journal_lines.line_id") == "L1"
+            )
+
+            reference = result.dataset.source_reference(
+                record,
+                ["journal_lines.debit"],
+                "observe",
+                f"lineage/sets/{SHA}.json",
+                observation_role="ledger",
+            )
+
+            self.assertEqual(["journal_lines.debit"], reference["selected_fields"])
+            self.assertEqual("json_pointer", reference["locator_type"])
+            self.assertEqual(
+                {"pointer": "/tables/journal_lines/0"},
+                reference["locator"],
+            )
+
     def test_observed_fact_traces_to_snapshotted_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

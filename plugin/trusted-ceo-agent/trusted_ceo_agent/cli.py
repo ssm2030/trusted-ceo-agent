@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -8,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from trusted_ceo_agent.accounting.input_adapter import build_accounting_request
 from trusted_ceo_agent.application.models import (
     CreateRunRequest,
     ExportWebReportRequest,
@@ -22,6 +24,7 @@ from trusted_ceo_agent.application.models import (
 from trusted_ceo_agent.application.run_application import TrustedCeoApplication
 from trusted_ceo_agent.canonical import canonical_bytes, strict_loads
 from trusted_ceo_agent.contracts.cli_response import response
+from trusted_ceo_agent.contracts.ids import make_id
 from trusted_ceo_agent.contracts.schema_store import SchemaStore
 from trusted_ceo_agent.errors import ContractError, IntegrityError, RevisionConflict
 from trusted_ceo_agent.evidence.core import EvidenceCoreValidator
@@ -34,9 +37,11 @@ from trusted_ceo_agent.mission import (
 from trusted_ceo_agent.outputs.validation import revalidate_package
 from trusted_ceo_agent.outputs.render import render_package
 from trusted_ceo_agent.questions.scope import SCOPE_KINDS
+from trusted_ceo_agent.runtime_components import normalize_authorized_scope
 from trusted_ceo_agent.runtime_scan import build_scan_artifacts
 from trusted_ceo_agent.trust.artifact_store import ArtifactStore
 from trusted_ceo_agent.web_report.eligibility import decide_viewer_eligibility
+from trusted_ceo_agent.web_report.output import publish_web_report_output
 from trusted_ceo_agent.workflow.approvals import ApprovalService, current_approvals
 from trusted_ceo_agent.workflow.overlays import apply_overlay
 from trusted_ceo_agent.workflow.revisions import RevisionManager
@@ -109,6 +114,13 @@ def build_parser() -> argparse.ArgumentParser:
     components.add_argument("--scope-ref", required=True)
     components.add_argument("--accounting-input", type=Path)
     components.add_argument("--professional-input", type=Path)
+
+    prepare_accounting = commands.add_parser("prepare-accounting-input")
+    _add_run(prepare_accounting)
+    prepare_accounting.add_argument("--revision", type=int, required=True)
+    prepare_accounting.add_argument("--source-id", required=True)
+    prepare_accounting.add_argument("--scope-ref", required=True)
+    prepare_accounting.add_argument("--output", type=Path, required=True)
 
     status = commands.add_parser("status")
     _add_run(status)
@@ -350,6 +362,106 @@ def _render(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         run_id=args.run_id, revision=args.revision, data={"files": sorted(rendered)},
     )
 
+
+def _prepare_accounting_input(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+    store = _store_for(args)
+    current = int(store.state()["revision"])
+    if args.revision != current:
+        raise RevisionConflict(
+            f"expected revision {args.revision}, current is {current}"
+        )
+    store.verify_revision(current)
+    files = _snapshot_payloads(store, current)
+    state = _workflow_state(files)
+    if state["state"] != "deep_dive_authorized":
+        raise ContractError(
+            "prepare-accounting-input requires deep_dive_authorized state"
+        )
+
+    overlay = strict_loads(files.get("workflow/hitl-overlay.json", b"{}"))
+    scope = overlay.get("deep_dive_scope") if isinstance(overlay, Mapping) else None
+    if not isinstance(scope, Mapping):
+        raise ContractError("approved deep-dive scope is missing")
+    normalized_scope = normalize_authorized_scope(scope)
+    expected_scope_ref = make_id("scope", normalized_scope)
+    if args.scope_ref != expected_scope_ref:
+        raise ContractError("scope ref does not match the approved diagnostic scope")
+    if "accounting" not in normalized_scope["required_inputs"]:
+        raise ContractError("approved scope does not require accounting input")
+
+    registry_payload = files.get("sources/registry.json")
+    if registry_payload is None:
+        raise ContractError("Source Registry is missing")
+    strict_loads(registry_payload)
+    registry = json.loads(registry_payload.decode("utf-8"))
+    if not isinstance(registry, list):
+        raise ContractError("Source Registry must be an array")
+    matching_sources = [
+        item
+        for item in registry
+        if isinstance(item, Mapping) and item.get("source_id") == args.source_id
+    ]
+    if len(matching_sources) != 1:
+        raise ContractError("Source Registry must contain exactly one matching source")
+    source = dict(matching_sources[0])
+    SchemaStore().validate("source.schema.json", source)
+    if source["access_policy"] != "permitted":
+        raise ContractError("accounting source must be permitted")
+    if source["evidence_usage"] != "primary":
+        raise ContractError("accounting source must be primary evidence")
+
+    registered_digest = str(source["sha256"])
+    if source["source_id"] != f"source_{registered_digest[:24]}":
+        raise IntegrityError("Source ID does not bind to the registered snapshot hash")
+    expected_snapshot_ref = f"sources/blobs/{registered_digest}"
+    if source["snapshot_ref"] != expected_snapshot_ref:
+        raise IntegrityError("Source snapshot ref does not bind to the registered hash")
+    blob = files.get(expected_snapshot_ref)
+    if blob is None:
+        raise IntegrityError("registered Source snapshot is missing")
+    if int(source["size_bytes"]) != len(blob):
+        raise IntegrityError("Source snapshot size mismatch")
+    digest = hashlib.sha256(blob).hexdigest()
+    if digest != registered_digest:
+        raise IntegrityError("Source snapshot hash mismatch")
+
+    document = strict_loads(blob)
+    if not isinstance(document, Mapping):
+        raise ContractError("accounting source snapshot must be an object")
+    request = build_accounting_request(
+        document,
+        run_id=args.run_id,
+        revision=current + 1,
+        scope_ref=args.scope_ref,
+        source_id=args.source_id,
+        snapshot_sha256=digest,
+    )
+    payload = canonical_bytes(request)
+    destination = ensure_within(Path.cwd(), args.output)
+    run_dir = store.open_run(args.run_id)
+    publish_web_report_output(
+        destination,
+        payload,
+        workspace=Path.cwd(),
+        run_dir=run_dir,
+        plugin_root=PLUGIN_ROOT,
+    )
+    return 0, response(
+        command=args.command,
+        ok=True,
+        code=0,
+        message="accounting input prepared",
+        run_id=args.run_id,
+        revision=current,
+        state=state["state"],
+        data={
+            "source_id": args.source_id,
+            "source_sha256": digest,
+            "scope_ref": args.scope_ref,
+            "target_revision": current + 1,
+            "request_hash": hashlib.sha256(payload).hexdigest(),
+        },
+    )
 
 def _export_web_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     result = TrustedCeoApplication(args.artifact_root).export_web_report(
@@ -636,6 +748,8 @@ def _dispatch(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         return _preview_human_response(args)
     if args.command == "submit-human-response":
         return _submit_human_response(args)
+    if args.command == "prepare-accounting-input":
+        return _prepare_accounting_input(args)
     if args.command == "validate":
         return _validate(args)
     if args.command == "export-web-report":

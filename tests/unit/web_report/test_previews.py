@@ -8,7 +8,10 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
+from tests.support_accounting_multitable import valid_accounting_multitable_document
+from trusted_ceo_agent.canonical import canonical_bytes
 from trusted_ceo_agent.errors import IntegrityError
+from trusted_ceo_agent.intake.adapters.accounting_json import AccountingMultitableJsonAdapter
 from trusted_ceo_agent.intake.adapters.csv import CsvAdapter
 from trusted_ceo_agent.intake.adapters.json import JsonAdapter
 from trusted_ceo_agent.intake.adapters.xlsx import XlsxAdapter
@@ -79,6 +82,78 @@ def place_blob(snapshot: Path, source_path: Path, source: dict) -> Path:
 
 
 class SourcePreviewTests(unittest.TestCase):
+    def test_accounting_json_root_reparses_with_exact_pointer(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            root = Path(directory)
+            path = root / "accounting.json"
+            path.write_bytes(canonical_bytes(valid_accounting_multitable_document()))
+            source = source_for(
+                path,
+                access_policy="permitted",
+                display_name="Accounting JSON",
+            )
+            dataset = AccountingMultitableJsonAdapter().parse(path, SOURCE_ID)
+            record = next(
+                item for item in dataset.records
+                if item.values.get("journal_lines.line_id") == "L1"
+            )
+            source_ref = dataset.source_reference(
+                record,
+                ["journal_lines.debit"],
+                "observe",
+                f"lineage/sets/{SHA}.json",
+                observation_role="ledger",
+            )
+            snapshot = root / "snapshot"
+            snapshot.mkdir()
+            place_blob(snapshot, path, source)
+
+            views = build_source_views(
+                snapshot,
+                closure_for(source=source, source_ref=source_ref),
+            )
+
+            self.assertEqual(
+                "/tables/journal_lines/0",
+                views.previews[0]["locator"]["json_pointer"],
+            )
+            self.assertEqual(
+                ["journal_lines.debit"],
+                views.previews[0]["column_labels"],
+            )
+            self.assertEqual([["100.00"]], views.previews[0]["rows"])
+
+    def test_explicit_json_records_pointer_remains_supported(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            root = Path(directory)
+            path = root / "nested.json"
+            path.write_bytes(canonical_bytes({"payload": [{"id": "1"}]}))
+            source = source_for(
+                path,
+                access_policy="permitted",
+                display_name="Nested JSON",
+            )
+            source["metadata"] = {"records_pointer": "/payload"}
+            dataset = JsonAdapter(records_pointer="/payload").parse(path, SOURCE_ID)
+            source_ref = dataset.source_reference(
+                dataset.records[0],
+                ["id"],
+                "observe",
+                f"lineage/sets/{SHA}.json",
+                observation_role="ledger",
+            )
+            snapshot = root / "snapshot"
+            snapshot.mkdir()
+            place_blob(snapshot, path, source)
+
+            preview = build_source_views(
+                snapshot,
+                closure_for(source=source, source_ref=source_ref),
+            ).previews[0]
+
+            self.assertEqual("/payload/0", preview["locator"]["json_pointer"])
+            self.assertEqual([["1"]], preview["rows"])
+
     def test_permitted_csv_contains_only_selected_record_and_fields(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             root = Path(directory)
