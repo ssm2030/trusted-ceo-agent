@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 
 import type { ProviderSnapshot } from "@/features/analysis/analysis-provider";
-import type { ReplayFileMetadata } from "@/features/analysis/analysis-model";
-import { getWorkflowStatusLabel } from "@/features/analysis/analysis-model";
+import {
+  getWorkflowStatusLabel,
+  type AnalysisUpload,
+} from "@/features/analysis/analysis-model";
 import { CurrentWorkPanel } from "@/features/analysis/CurrentWorkPanel";
 import { DataUploadCard } from "@/features/analysis/DataUploadCard";
 import { ReplayAnalysisProvider } from "@/features/analysis/replay-provider";
@@ -25,7 +27,6 @@ export function ReplayCommandCenter() {
   const [snapshot, setSnapshot] = useState<ProviderSnapshot>(() =>
     provider.peekSnapshot(),
   );
-  const [selectedFiles, setSelectedFiles] = useState<ReplayFileMetadata[]>([]);
   const [humanDraft, setHumanDraft] = useState("");
   const [hydrated, setHydrated] = useState(false);
 
@@ -35,7 +36,6 @@ export function ReplayCommandCenter() {
       if (restored) {
         provider.restoreSnapshot(restored.snapshot);
         setSnapshot(restored.snapshot);
-        setSelectedFiles(restored.selectedFiles);
         setHumanDraft(restored.humanDraft);
       }
       setHydrated(true);
@@ -46,25 +46,16 @@ export function ReplayCommandCenter() {
     if (!hydrated) {
       return;
     }
-    saveReplaySession({ snapshot, selectedFiles, humanDraft });
-  }, [humanDraft, hydrated, selectedFiles, snapshot]);
+    saveReplaySession({ snapshot, selectedFiles: [], humanDraft });
+  }, [humanDraft, hydrated, snapshot]);
 
-  async function handleFilesSelected(files: File[]) {
+  async function handleUploadsSelected(uploads: AnalysisUpload[]) {
     const next = await provider.attachData(
       snapshot.run_id,
       snapshot.revision,
-      files.map((file) => ({
-        file,
-        logicalPath: file.name.normalize('NFC'),
-        collectionLabel: '\uac1c\ubcc4 \ud30c\uc77c',
-      })),
+      uploads,
     );
     setSnapshot(next);
-    if (!next.error) {
-      setSelectedFiles(
-        files.map(({ name, size, type }) => ({ name, size, type })),
-      );
-    }
   }
 
   async function handleStartOrContinue() {
@@ -118,8 +109,9 @@ export function ReplayCommandCenter() {
         />
         <aside className="analysis-side-column">
           <DataUploadCard
-            files={selectedFiles}
-            onFilesSelected={handleFilesSelected}
+            disabled={!snapshot.allowed_actions.includes('attach_data')}
+            files={snapshot.uploaded_files}
+            onUploadsSelected={handleUploadsSelected}
           />
           <RunDetailsPanel snapshot={snapshot} />
         </aside>
