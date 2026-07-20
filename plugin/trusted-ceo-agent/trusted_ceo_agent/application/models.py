@@ -38,6 +38,7 @@ class SourceUpload:
     opaque_token: str
     expected_sha256: str | None = None
     expected_size: int | None = None
+    logical_path: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

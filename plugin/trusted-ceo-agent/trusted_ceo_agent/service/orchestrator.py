@@ -6,6 +6,7 @@ import re
 import threading
 from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -34,6 +35,7 @@ from trusted_ceo_agent.service.contracts import (
     MutationBase,
     RunSnapshot,
     ServiceErrorBody,
+    UploadedFileSummary,
 )
 from trusted_ceo_agent.service.file_policy import IncomingUpload, UploadPolicy
 from trusted_ceo_agent.service.openai_gateway import AIServiceError
@@ -75,6 +77,46 @@ _DATA_FIELDS = (
     "dimension_code",
 )
 _ACTIVE_JOB_LOCK = threading.Lock()
+
+
+def _registry_upload_usage(
+    registry: list[Any],
+) -> tuple[dict[str, str], dict[str, int]]:
+    source_id_by_path: dict[str, str] = {}
+    size_by_sha256: dict[str, int] = {}
+    for item in registry:
+        if not isinstance(item, Mapping):
+            raise IntegrityError('source registry entry is invalid')
+        source_id = item.get('source_id')
+        digest = item.get('sha256')
+        size = item.get('size_bytes')
+        display_name = item.get('display_name')
+        aliases = item.get('aliases', [])
+        if (
+            not isinstance(source_id, str)
+            or not isinstance(digest, str)
+            or re.fullmatch(r'[0-9a-f]{64}', digest) is None
+            or isinstance(size, bool)
+            or not isinstance(size, (int, Decimal))
+            or size != int(size)
+            or size < 0
+            or not isinstance(display_name, str)
+            or not isinstance(aliases, list)
+        ):
+            raise IntegrityError('source registry upload metadata is invalid')
+        normalized_size = int(size)
+        known_size = size_by_sha256.get(digest)
+        if known_size is not None and known_size != normalized_size:
+            raise IntegrityError('source registry digest size is ambiguous')
+        size_by_sha256[digest] = normalized_size
+        for logical_path in [display_name, *aliases]:
+            if not isinstance(logical_path, str):
+                raise IntegrityError('source registry logical path is invalid')
+            claimed = source_id_by_path.get(logical_path)
+            if claimed is not None and claimed != source_id:
+                raise IntegrityError('source registry logical path is ambiguous')
+            source_id_by_path[logical_path] = source_id
+    return source_id_by_path, size_by_sha256
 
 
 class ReasoningGateway(Protocol):
@@ -192,29 +234,40 @@ class AnalysisOrchestrator:
         )
         if not isinstance(registry, list):
             raise IntegrityError("source registry is invalid")
-        existing_total = sum(
-            int(item.get("size_bytes", 0))
-            for item in registry
-            if isinstance(item, Mapping)
-        )
+        source_id_by_path, size_by_sha256 = _registry_upload_usage(registry)
         staged = self.upload_policy.stage_batch(
             uploads,
-            existing_file_count=len(registry),
-            existing_total_bytes=existing_total,
+            existing_file_count=0,
+            existing_total_bytes=0,
         )
-        receipt_body = {
-            **request.model_dump(mode="json"),
-            "files": [
-                {
-                    "filename": item.filename,
-                    "content_type": item.content_type,
-                    "size": item.size,
-                    "sha256": item.sha256,
-                }
-                for item in staged
-            ],
-        }
         try:
+            resulting_paths = {
+                *source_id_by_path,
+                *(item.logical_path for item in staged),
+            }
+            if len(resulting_paths) > self.upload_policy.limits.max_files:
+                raise ContractError('upload file count exceeds the run limit')
+            resulting_sizes = dict(size_by_sha256)
+            for item in staged:
+                known_size = resulting_sizes.get(item.sha256)
+                if known_size is not None and known_size != item.size:
+                    raise IntegrityError('upload digest size is ambiguous')
+                resulting_sizes[item.sha256] = item.size
+            if sum(resulting_sizes.values()) > self.upload_policy.limits.max_total_bytes:
+                raise ContractError('upload batch exceeds 250 MiB')
+            receipt_body = {
+                **request.model_dump(mode="json"),
+                "files": [
+                    {
+                        "filename": item.filename,
+                        'logical_path': item.logical_path,
+                        "content_type": item.content_type,
+                        "size": item.size,
+                        "sha256": item.sha256,
+                    }
+                    for item in staged
+                ],
+            }
             replay = self.run_store.read_idempotency_receipt(
                 run_id,
                 idempotency_key=request.idempotency_key,
@@ -235,6 +288,7 @@ class AnalysisOrchestrator:
                         opaque_token=item.opaque_token,
                         expected_sha256=item.sha256,
                         expected_size=item.size,
+                        logical_path=item.logical_path,
                     )
                     for item in staged
                 ),
@@ -1527,6 +1581,42 @@ class AnalysisOrchestrator:
             sections=sections,
         )
 
+    def _uploaded_file_summaries(
+        self,
+        run_id: str,
+        revision: int,
+    ) -> list[UploadedFileSummary]:
+        files = self._files(run_id, revision)
+        registry = _json_value(
+            files.get('sources/registry.json'),
+            label='source registry',
+            default=[],
+        )
+        if not isinstance(registry, list):
+            raise IntegrityError('source registry is invalid')
+        _registry_upload_usage(registry)
+        summaries: list[UploadedFileSummary] = []
+        for item in registry:
+            source_id = str(item['source_id'])
+            media_type = str(item['media_type'])
+            size_bytes = int(item['size_bytes'])
+            logical_paths = [item['display_name'], *item.get('aliases', [])]
+            for logical_path in logical_paths:
+                collection_label = (
+                    logical_path.split('/', 1)[0]
+                    if '/' in logical_path
+                    else '\uac1c\ubcc4 \ud30c\uc77c'
+                )
+                summaries.append(UploadedFileSummary(
+                    source_id=source_id,
+                    logical_path=logical_path,
+                    display_name=logical_path.rsplit('/', 1)[-1],
+                    media_type=media_type,
+                    size_bytes=size_bytes,
+                    collection_label=collection_label,
+                ))
+        return sorted(summaries, key=lambda item: item.logical_path)
+
     def _snapshot(
         self,
         manifest: ServiceManifest,
@@ -1539,6 +1629,11 @@ class AnalysisOrchestrator:
         blocked = result.state == "blocked"
         stopped = manifest.status == "stopped"
         terminal = manifest.status in {"cancelled", "finalized"}
+        attach_allowed = (
+            manifest.status == 'running'
+            and not human
+            and result.state in {'context_confirmation_required', 'context_ready'}
+        )
         phases = {
             "context_confirmation_required": 1,
             "context_ready": 2,
@@ -1584,6 +1679,19 @@ class AnalysisOrchestrator:
             "cancelled": "분석이 취소되었습니다.",
             "finalized": "검증된 보고서가 준비되었습니다.",
         }
+        allowed_actions = (
+            ["submit_hitl"]
+            if human
+            else []
+            if terminal
+            else ["retry"]
+            if retryable
+            else ["resume"]
+            if stopped or blocked
+            else ["continue"]
+        )
+        if attach_allowed:
+            allowed_actions.append('attach_data')
         return RunSnapshot(
             run_id=manifest.run_id,
             revision=result.revision,
@@ -1604,17 +1712,7 @@ class AnalysisOrchestrator:
                 if stopped or blocked
                 else "provider_work"
             ),
-            allowed_actions=(
-                ["submit_hitl"]
-                if human
-                else []
-                if terminal
-                else ["retry"]
-                if retryable
-                else ["resume"]
-                if stopped or blocked
-                else ["continue"]
-            ),
+            allowed_actions=allowed_actions,
             latest_event=latest.get(result.state, "분석 상태가 갱신되었습니다."),
             progress=progress.get(result.state, 60),
             result_ref=manifest.result_ref,
@@ -1631,5 +1729,9 @@ class AnalysisOrchestrator:
                 )
                 if retryable
                 else None
+            ),
+            uploaded_files=self._uploaded_file_summaries(
+                manifest.run_id,
+                result.revision,
             ),
         )

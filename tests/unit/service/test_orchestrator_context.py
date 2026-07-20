@@ -12,6 +12,7 @@ from trusted_ceo_agent.application.run_application import TrustedCeoApplication
 from trusted_ceo_agent.canonical import strict_loads
 from trusted_ceo_agent.errors import ContractError
 from trusted_ceo_agent.service.contracts import HitlDecisionRequest, MutationBase
+from trusted_ceo_agent.service.file_policy import IncomingUpload
 from trusted_ceo_agent.service.orchestrator import AnalysisOrchestrator
 from trusted_ceo_agent.service.run_store import RunStore
 from trusted_ceo_agent.trust.artifact_store import ArtifactStore
@@ -62,6 +63,102 @@ class OrchestratorContextTests(unittest.TestCase):
         gateway = FakeGateway()
         orchestrator = AnalysisOrchestrator(application, run_store, gateway)
         return application, run_store, gateway, orchestrator
+
+    def test_repeated_upload_batches_return_sanitized_canonical_summaries(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            root = Path(directory)
+            _, _, _, orchestrator = self._runtime(root)
+            run_id = 'run_upload_summary_0123456789'
+            created = orchestrator.create_run(CreateRunRequest(
+                mission=confirmed_mission(),
+                run_id=run_id,
+            ))
+
+            first = orchestrator.attach_files(
+                run_id,
+                MutationBase(
+                    expected_revision=created.revision,
+                    idempotency_key='upload_summary_0001',
+                ),
+                (IncomingUpload.from_bytes(
+                    'a.md',
+                    'text/markdown',
+                    b'# Plan\nRevenue assumptions\n',
+                    logical_path='folder-a/a.md',
+                ),),
+            )
+            second = orchestrator.attach_files(
+                run_id,
+                MutationBase(
+                    expected_revision=first.revision,
+                    idempotency_key='upload_summary_0002',
+                ),
+                (IncomingUpload.from_bytes(
+                    'b.csv',
+                    'text/csv',
+                    b'name,value\nb,2\n',
+                    logical_path='folder-b/b.csv',
+                ),),
+            )
+
+            self.assertEqual(
+                ['folder-a/a.md', 'folder-b/b.csv'],
+                [item.logical_path for item in second.uploaded_files],
+            )
+            self.assertEqual(['a.md', 'b.csv'], [item.display_name for item in second.uploaded_files])
+            self.assertEqual(
+                ['folder-a', 'folder-b'],
+                [item.collection_label for item in second.uploaded_files],
+            )
+            self.assertIn('attach_data', second.allowed_actions)
+            public_body = second.model_dump_json()
+            for forbidden in ('private_path', 'snapshot_ref', 'original_path_token', 'sha256'):
+                self.assertNotIn(forbidden, public_body)
+            self.assertNotIn(str(root), public_body)
+
+    def test_upload_limit_counts_alias_logical_paths_not_unique_blobs(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            root = Path(directory)
+            _, _, _, orchestrator = self._runtime(root)
+            run_id = 'run_upload_path_limit_01234567'
+            created = orchestrator.create_run(CreateRunRequest(
+                mission=confirmed_mission(),
+                run_id=run_id,
+            ))
+            uploads = tuple(
+                IncomingUpload.from_bytes(
+                    f'f{index:02d}.md',
+                    'text/markdown',
+                    b'# Shared\n',
+                    logical_path=f'folder/f{index:02d}.md',
+                )
+                for index in range(64)
+            )
+            full = orchestrator.attach_files(
+                run_id,
+                MutationBase(
+                    expected_revision=created.revision,
+                    idempotency_key='upload_path_limit_0001',
+                ),
+                uploads,
+            )
+
+            self.assertEqual(64, len(full.uploaded_files))
+            with self.assertRaisesRegex(ContractError, 'count|limit'):
+                orchestrator.attach_files(
+                    run_id,
+                    MutationBase(
+                        expected_revision=full.revision,
+                        idempotency_key='upload_path_limit_0002',
+                    ),
+                    (IncomingUpload.from_bytes(
+                        'overflow.md',
+                        'text/markdown',
+                        b'# Shared\n',
+                        logical_path='folder/overflow.md',
+                    ),),
+                )
+            self.assertEqual(full.revision, orchestrator.snapshot(run_id).revision)
 
     def test_context_card_keeps_nonce_private_and_web_approval_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:

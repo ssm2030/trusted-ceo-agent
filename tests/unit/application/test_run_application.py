@@ -147,6 +147,67 @@ class TrustedCeoApplicationTests(unittest.TestCase):
                 ))
             self.assertEqual(before, (root / (created.run_id or "") / "state.json").read_bytes())
 
+    def test_attach_sources_accumulates_aliases_and_rejects_path_replacement(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            workspace = Path(directory)
+            root = workspace / 'artifacts'
+            first = workspace / 'a.md'
+            alias = workspace / 'copy.md'
+            changed = workspace / 'changed.md'
+            first.write_bytes(b'# Plan\nStable content\n')
+            alias.write_bytes(first.read_bytes())
+            changed.write_bytes(b'# Plan\nChanged content\n')
+            application = TrustedCeoApplication(root)
+            run_id = 'run_logical_alias_0123456789'
+            application.create_run(CreateRunRequest(
+                mission=DRAFT_MISSION,
+                run_id=run_id,
+            ))
+
+            first_result = application.attach_sources(AttachSourcesRequest(
+                run_id=run_id,
+                expected_revision=1,
+                sources=(SourceUpload(
+                    path=first,
+                    opaque_token='upload-a',
+                    logical_path='folder-a/a.md',
+                ),),
+            ))
+            alias_result = application.attach_sources(AttachSourcesRequest(
+                run_id=run_id,
+                expected_revision=first_result.revision or 0,
+                sources=(SourceUpload(
+                    path=alias,
+                    opaque_token='upload-copy',
+                    logical_path='folder-b/copy.md',
+                ),),
+            ))
+
+            store = ArtifactStore(root)
+            store.open_run(run_id)
+            before_files = _snapshot_files(store, alias_result.revision or 0)
+            registry_before = before_files['sources/registry.json']
+            registry = json.loads(registry_before)
+            self.assertEqual(1, len(registry))
+            self.assertEqual('folder-a/a.md', registry[0]['display_name'])
+            self.assertEqual(['folder-b/copy.md'], registry[0]['aliases'])
+            self.assertEqual('text/markdown', registry[0]['media_type'])
+
+            with self.assertRaisesRegex(ContractError, 'logical path'):
+                application.attach_sources(AttachSourcesRequest(
+                    run_id=run_id,
+                    expected_revision=alias_result.revision or 0,
+                    sources=(SourceUpload(
+                        path=changed,
+                        opaque_token='upload-changed',
+                        logical_path='folder-a/a.md',
+                    ),),
+                ))
+
+            self.assertEqual(alias_result.revision, store.state()['revision'])
+            after_files = _snapshot_files(store, alias_result.revision or 0)
+            self.assertEqual(registry_before, after_files['sources/registry.json'])
+
     def test_attach_sources_rejects_empty_and_model_started_runs(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             workspace = Path(directory)
