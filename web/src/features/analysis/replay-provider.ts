@@ -4,6 +4,7 @@ import type {
   PendingAction,
   ProviderSnapshot,
 } from "@/features/analysis/analysis-provider";
+import type { AnalysisUpload } from '@/features/analysis/analysis-model';
 import {
   createInitialReplaySnapshot,
   REPLAY_PHASE_EVENTS,
@@ -15,14 +16,15 @@ type FileValidation =
   | { accepted: true }
   | { accepted: false; message: string };
 
-const ALLOWED_ANALYSIS_EXTENSIONS = new Set(["csv", "json", "xlsx"]);
+const ALLOWED_ANALYSIS_EXTENSIONS = new Set(["csv", "json", "xlsx", 'md']);
 const FILE_POLICY_MESSAGE =
-  "분석 자료는 CSV, JSON, XLSX 파일만 선택할 수 있습니다.";
+  "분석 자료는 CSV, JSON, XLSX, MD 파일만 선택할 수 있습니다.";
 
 function copySnapshot(snapshot: ProviderSnapshot): ProviderSnapshot {
   return {
     ...snapshot,
     allowed_actions: [...snapshot.allowed_actions],
+    uploaded_files: snapshot.uploaded_files.map((item) => ({ ...item })),
     error: snapshot.error ? { ...snapshot.error } : null,
   };
 }
@@ -34,6 +36,27 @@ export function validateReplayFile(file: FileLike): FileValidation {
   }
 
   return { accepted: true };
+}
+
+const URI_OR_DRIVE = /^[A-Za-z][A-Za-z0-9+.-]*:/u;
+const CONTROL = /[\u0000-\u001F\u007F]/u;
+
+function validUploadPath(upload: AnalysisUpload): boolean {
+  const path = upload.logicalPath;
+  const parts = path.split('/');
+  return path.length > 0 && path.length <= 512 && path.normalize('NFC') === path &&
+    !path.startsWith('/') && !path.includes('\\') && !URI_OR_DRIVE.test(path) &&
+    parts.every((part) => part.length > 0 && part !== '.' && part !== '..' && !CONTROL.test(part)) &&
+    parts.at(-1) === upload.file.name.normalize('NFC');
+}
+
+function replaySourceId(file: File): string {
+  const value = `${file.size}:${file.type}`;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(hash ^ value.charCodeAt(index), 0x01000193);
+  }
+  return `source_${(hash >>> 0).toString(16).padStart(8, '0').repeat(3)}`;
 }
 
 export class ReplayAnalysisProvider implements AnalysisProvider {
@@ -66,29 +89,69 @@ export class ReplayAnalysisProvider implements AnalysisProvider {
   async attachData(
     runId: string,
     expectedRevision: number,
-    files: File[],
+    uploads: AnalysisUpload[],
   ): Promise<ProviderSnapshot> {
     const boundaryError = this.checkMutation(runId, expectedRevision);
     if (boundaryError) {
       return boundaryError;
     }
 
-    const invalid = files
-      .map((file) => validateReplayFile(file))
+    const invalid = uploads
+      .map((upload) => validateReplayFile(upload.file))
       .find((result) => !result.accepted);
     if (invalid && !invalid.accepted) {
       return this.withError("CONTRACT_FAILURE", invalid.message);
     }
 
-    if (files.length === 0) {
+    if (uploads.length === 0 || uploads.length > 64) {
       return this.withError(
         "CONTRACT_FAILURE",
         "분석 자료를 하나 이상 선택해 주세요.",
       );
     }
 
+    const nextFiles = this.current.uploaded_files.map((item) => ({ ...item }));
+    const byPath = new Map(nextFiles.map((item) => [item.logical_path, item]));
+    for (const upload of uploads) {
+      if (!validUploadPath(upload)) {
+        return this.withError(
+          'CONTRACT_FAILURE',
+          '안전하지 않은 업로드 경로가 포함되어 있습니다.',
+        );
+      }
+      const mediaType = upload.file.type || 'application/octet-stream';
+      const existing = byPath.get(upload.logicalPath);
+      if (existing !== undefined) {
+        if (existing.size_bytes !== upload.file.size || existing.media_type !== mediaType ||
+            existing.display_name !== upload.file.name.normalize('NFC')) {
+          return this.withError(
+            'CONTRACT_FAILURE',
+            '같은 업로드 경로에 다른 파일을 덮어쓸 수 없습니다.',
+          );
+        }
+        continue;
+      }
+      const summary = {
+        source_id: replaySourceId(upload.file),
+        logical_path: upload.logicalPath,
+        display_name: upload.file.name.normalize('NFC'),
+        media_type: mediaType,
+        size_bytes: upload.file.size,
+        collection_label: upload.logicalPath.includes('/')
+          ? upload.logicalPath.split('/', 1)[0]
+          : '\uac1c\ubcc4 \ud30c\uc77c',
+      };
+      byPath.set(upload.logicalPath, summary);
+      nextFiles.push(summary);
+    }
+    if (nextFiles.length > 64) {
+      return this.withError('CONTRACT_FAILURE', '업로드 파일은 실행당 64개까지 허용됩니다.');
+    }
+
     return this.update({
       revision: this.current.revision + 1,
+      uploaded_files: nextFiles.sort((left, right) =>
+        left.logical_path.localeCompare(right.logical_path, 'en-US')),
       latest_event:
         "선택한 자료의 파일명·형식·크기만 저장된 시연 흐름에 연결했습니다.",
       error: null,

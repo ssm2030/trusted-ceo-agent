@@ -18,6 +18,7 @@ function snapshot(revision = 1) {
     result_ref: null,
     hitl_card: null,
     error: null,
+    uploaded_files: [],
   };
 }
 
@@ -102,4 +103,60 @@ describe("RemoteAnalysisProvider", () => {
       "/api/analysis/runs/run_20260719T000000Z_0123456789abcdef/actions/stop",
     );
     expect(urls.some((url) => url.endsWith("/human-responses"))).toBe(false);
-  });});
+  });
+
+  it('posts files with aligned logical paths and preserves canonical summaries', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const uploadedFiles = [
+      {
+        source_id: 'source_aaaaaaaaaaaaaaaaaaaaaaaa',
+        logical_path: 'folder-a/a.md',
+        display_name: 'a.md',
+        media_type: 'text/markdown',
+        size_bytes: 3,
+        collection_label: 'folder-a',
+      },
+      {
+        source_id: 'source_bbbbbbbbbbbbbbbbbbbbbbbb',
+        logical_path: 'folder-b/b.csv',
+        display_name: 'b.csv',
+        media_type: 'text/csv',
+        size_bytes: 8,
+        collection_label: 'folder-b',
+      },
+    ];
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url === '/api/report/session') {
+        return Response.json({ csrfToken: 'csrf_test_only' });
+      }
+      return Response.json({ ...snapshot(2), uploaded_files: uploadedFiles });
+    });
+    const provider = new RemoteAnalysisProvider({ fetchImpl });
+    const uploads = [
+      {
+        file: new File(['# A'], 'a.md', { type: 'text/markdown' }),
+        logicalPath: 'folder-a/a.md',
+        collectionLabel: 'folder-a',
+      },
+      {
+        file: new File(['x,y\n1,2\n'], 'b.csv', { type: 'text/csv' }),
+        logicalPath: 'folder-b/b.csv',
+        collectionLabel: 'folder-b',
+      },
+    ];
+
+    const result = await provider.attachData(
+      'run_20260719T000000Z_0123456789abcdef',
+      1,
+      uploads,
+    );
+
+    const mutation = calls.find((call) => call.url.endsWith('/files'));
+    const form = mutation?.init?.body as FormData;
+    expect((form.getAll('files') as File[]).map((file) => file.name)).toEqual(['a.md', 'b.csv']);
+    expect(form.getAll('logical_paths')).toEqual(['folder-a/a.md', 'folder-b/b.csv']);
+    expect(result.uploaded_files).toEqual(uploadedFiles);
+  });
+});

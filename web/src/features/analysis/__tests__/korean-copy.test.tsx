@@ -21,6 +21,7 @@ const snapshot: ProviderSnapshot = {
   progress: 4,
   result_ref: null,
   error: null,
+  uploaded_files: [],
 };
 
 describe("분석 화면 한국어 문구", () => {

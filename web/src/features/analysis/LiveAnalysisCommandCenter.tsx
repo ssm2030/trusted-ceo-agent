@@ -137,7 +137,11 @@ export function LiveAnalysisCommandCenter({
     const next = await perform(() => provider.attachData(
       snapshot.run_id,
       snapshot.revision,
-      files,
+      files.map((file) => ({
+        file,
+        logicalPath: file.name.normalize('NFC'),
+        collectionLabel: '\uac1c\ubcc4 \ud30c\uc77c',
+      })),
     ));
     if (next !== null && next.error === null) {
       setSelectedFiles(files.map(({ name, size, type }) => ({

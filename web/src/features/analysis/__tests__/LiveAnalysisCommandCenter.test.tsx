@@ -38,6 +38,7 @@ function snapshot(
       sections: [],
     },
     error: null,
+    uploaded_files: [],
     ...overrides,
   };
 }

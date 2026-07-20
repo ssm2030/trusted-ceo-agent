@@ -53,7 +53,11 @@ export function ReplayCommandCenter() {
     const next = await provider.attachData(
       snapshot.run_id,
       snapshot.revision,
-      files,
+      files.map((file) => ({
+        file,
+        logicalPath: file.name.normalize('NFC'),
+        collectionLabel: '\uac1c\ubcc4 \ud30c\uc77c',
+      })),
     );
     setSnapshot(next);
     if (!next.error) {

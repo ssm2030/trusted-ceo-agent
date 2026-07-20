@@ -47,6 +47,7 @@ describe("AnalysisBackendClient", () => {
         result_ref: null,
         hitl_card: null,
         error: null,
+        uploaded_files: [],
       }, { headers: { "Cache-Control": "no-store" } });
     });
     const client = new AnalysisBackendClient(createAnalysisBackendConfig({

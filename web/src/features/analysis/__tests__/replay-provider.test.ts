@@ -45,4 +45,33 @@ describe("ReplayAnalysisProvider", () => {
     expect(waiting.allowed_actions).not.toContain("approve");
     expect(waiting.pending_approval_request_id).toBeTruthy();
   });
+
+  it('accepts Markdown and accumulates repeated upload batches by logical path', async () => {
+    const provider = new ReplayAnalysisProvider();
+    const created = await provider.createRun();
+    const first = await provider.attachData(created.run_id, created.revision, [{
+      file: new File(['# A'], 'a.md', { type: 'text/markdown' }),
+      logicalPath: 'folder-a/a.md',
+      collectionLabel: 'folder-a',
+    }]);
+    const second = await provider.attachData(created.run_id, first.revision, [{
+      file: new File(['x,y\n1,2\n'], 'b.csv', { type: 'text/csv' }),
+      logicalPath: 'folder-b/b.csv',
+      collectionLabel: 'folder-b',
+    }]);
+
+    expect(second.uploaded_files.map((item) => item.logical_path)).toEqual([
+      'folder-a/a.md',
+      'folder-b/b.csv',
+    ]);
+
+    const conflict = await provider.attachData(created.run_id, second.revision, [{
+      file: new File(['# Changed'], 'a.md', { type: 'text/markdown' }),
+      logicalPath: 'folder-a/a.md',
+      collectionLabel: 'folder-a',
+    }]);
+    expect(conflict.error?.code).toBe('CONTRACT_FAILURE');
+    expect(conflict.revision).toBe(second.revision);
+    expect(conflict.uploaded_files).toEqual(second.uploaded_files);
+  });
 });
