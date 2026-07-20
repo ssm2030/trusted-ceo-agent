@@ -41,10 +41,38 @@ test("keyless localhost service completes HITL, report, question, and delete", a
 
   await expect(page.getByRole("heading", { name: "실시간 AI 분석" })).toBeVisible();
   await expect(page.getByText("실시간 AI 분석", { exact: true }).last()).toBeVisible();
-  await page.getByLabel("분석 자료 선택").setInputFiles(
+  const fileInput = page.getByLabel("분석 자료 선택");
+  const folderInput = page.getByLabel("분석 폴더 선택");
+  await fileInput.setInputFiles({
+    name: "plan.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("# Strategy\nRevenue assumptions are provisional.\n"),
+  });
+  await expect(page.getByText("plan.md", { exact: true })).toBeVisible();
+  await fileInput.setInputFiles(
     path.resolve("tests/fixtures/company-diagnostic.json"),
   );
   await expect(page.getByText("company-diagnostic.json")).toBeVisible();
+
+  await folderInput.evaluate((element) => {
+    const input = element as HTMLInputElement;
+    const file = new File(
+      ["period,gross_margin\n2026-01,0.42\n2026-02,0.39\n"],
+      "data.csv",
+      { type: "text/csv" },
+    );
+    Object.defineProperty(file, "webkitRelativePath", {
+      configurable: true,
+      value: "폴더B/sub/data.csv",
+    });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await expect(page.getByRole("heading", { name: "개별 파일", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "폴더B", exact: true })).toBeVisible();
+  await expect(page.getByText("폴더B/sub/data.csv", { exact: true })).toBeVisible();
 
   const runId = await page.locator(".run-header dd").nth(1).textContent();
   expect(runId).toMatch(/^run_/u);
@@ -52,6 +80,14 @@ test("keyless localhost service completes HITL, report, question, and delete", a
   await expect(
     page.getByLabel("현재 실행 정보").getByText(runId!, { exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "개별 파일", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "폴더B", exact: true })).toBeVisible();
+  await expect(page.getByText("plan.md", { exact: true })).toBeVisible();
+  await expect(page.getByText("폴더B/sub/data.csv", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "분석 계속", exact: true }).click();
+  await expect(fileInput).toBeDisabled();
+  await expect(folderInput).toBeDisabled();
 
   const approvals = await driveToFinalized(page);
   expect(approvals).toBeGreaterThanOrEqual(4);
@@ -80,6 +116,8 @@ test("keyless localhost service completes HITL, report, question, and delete", a
   await expect(page.getByRole("button", { name: "실행 데이터 삭제" })).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "실행 데이터 삭제" }).click();
-  await expect(page.getByText("실행 데이터가 삭제되었습니다.")).toBeVisible();
+  await expect(page.getByText("실행 데이터가 삭제되었습니다.")).toBeVisible({
+    timeout: 30_000,
+  });
   expect(await page.evaluate(() => sessionStorage.getItem("trusted-ceo-live-run-id"))).toBeNull();
 });

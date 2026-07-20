@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable, Mapping, Sequence
+from decimal import Decimal
 from typing import Any
 
 from trusted_ceo_agent.canonical import canonical_bytes
@@ -60,6 +61,11 @@ def _document_context(fields: Mapping[str, Any]) -> tuple[list[str], list[dict[s
     if isinstance(raw_contexts, (str, bytes)) or not isinstance(raw_contexts, Sequence):
         raise ContractError('document_evidence_context must be an array')
     contexts = [dict(item) if isinstance(item, Mapping) else {} for item in raw_contexts]
+    for item in contexts:
+        for field in ('chunk_index', 'line_start', 'line_end'):
+            value = item.get(field)
+            if isinstance(value, Decimal) and value == value.to_integral_value():
+                item[field] = int(value)
     context_ids = [str(item.get('document_evidence_id', '')) for item in contexts]
     if (
         context_ids != sorted(context_ids)

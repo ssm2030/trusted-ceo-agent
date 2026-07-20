@@ -314,8 +314,8 @@ class ServiceAppTests(unittest.TestCase):
             ).json()
             run_id = created['run_id']
             files = [
-                ('files', ('a.csv', b'name,value\na,1\n', 'text/csv')),
-                ('files', ('b.json', b'{}', 'application/json')),
+                ('files', ('plan.md', b'# Plan\n', 'text/markdown')),
+                ('files', ('data.csv', b'name,value\na,1\n', 'text/csv')),
             ]
             with patch.object(
                 orchestrator,
@@ -328,7 +328,7 @@ class ServiceAppTests(unittest.TestCase):
                     data={
                         'expected_revision': '1',
                         'idempotency_key': 'upload_logical_paths_0001',
-                        'logical_paths': ['folder-a/a.csv', 'folder-b/b.json'],
+                        'logical_paths': ['strategy/plan.md', 'folder-b/data.csv'],
                     },
                     files=files,
                 )
@@ -336,7 +336,7 @@ class ServiceAppTests(unittest.TestCase):
             self.assertEqual(200, response.status_code, response.text)
             uploads = attach.call_args.args[2]
             self.assertEqual(
-                ['folder-a/a.csv', 'folder-b/b.json'],
+                ['strategy/plan.md', 'folder-b/data.csv'],
                 [item.logical_path for item in uploads],
             )
 
@@ -346,7 +346,7 @@ class ServiceAppTests(unittest.TestCase):
                 data={
                     'expected_revision': '1',
                     'idempotency_key': 'upload_logical_paths_0002',
-                    'logical_paths': ['folder-a/a.csv'],
+                    'logical_paths': ['strategy/plan.md'],
                 },
                 files=files,
             )
