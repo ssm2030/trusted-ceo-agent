@@ -82,6 +82,7 @@ export class ScopeRequiredError extends Error {
 }
 
 type CoordinatorAnswerInput = Readonly<{
+  clientRequestId: string;
   context: QuestionRunContext;
   question: string;
   scope: QuestionScope;
@@ -408,6 +409,7 @@ export class QuestionCoordinator {
       while (true) {
         try {
           const answer = await this.dependencies.answer({
+            clientRequestId: entry.input.clientRequestId,
             context: entry.input.context,
             question: entry.input.question,
             scope: entry.input.scope,

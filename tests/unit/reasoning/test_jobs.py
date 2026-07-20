@@ -41,6 +41,26 @@ class ReasoningJobTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             build_reasoning_job(**{key: value for key, value in common.items() if key != "lens_id"})
 
+    def test_integrated_job_requires_a_sorted_card_allowlist(self) -> None:
+        common = {
+            "stage": "integrated",
+            "artifact_ref": "artifact_001",
+            "mission_contract_hash": "a" * 64,
+            "pack_manifest_hash": "b" * 64,
+            "prompt_template_hash": "c" * 64,
+            "model_profile": "strong_structured",
+            "output_schema_ref": "integrated-draft.schema.json",
+            "join_manifest_ref": "join_001",
+        }
+        job = build_reasoning_job(
+            **common,
+            allowed_card_refs=["card_b", "card_a"],
+        )
+
+        self.assertEqual(["card_a", "card_b"], job["allowed_card_refs"])
+        with self.assertRaises(ContractError):
+            build_reasoning_job(**common)
+
     def test_stage_specific_fields_are_rejected(self) -> None:
         with self.assertRaises(ContractError):
             build_reasoning_job(
@@ -52,6 +72,7 @@ class ReasoningJobTests(unittest.TestCase):
                 model_profile="strong_structured",
                 output_schema_ref="integrated-draft.schema.json",
                 join_manifest_ref="join_001",
+                allowed_card_refs=["card_001"],
                 lens_id="forbidden",
             )
 

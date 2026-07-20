@@ -19,6 +19,7 @@ from trusted_ceo_agent.application.models import (
     RunRequest,
     SourceUpload,
 )
+from trusted_ceo_agent.application.mutations import validate_reasoning_draft
 from trusted_ceo_agent.application.run_application import TrustedCeoApplication
 from trusted_ceo_agent.canonical import canonical_bytes, strict_loads
 from trusted_ceo_agent.errors import ContractError, IntegrityError
@@ -44,6 +45,7 @@ from trusted_ceo_agent.service.run_store import (
 from trusted_ceo_agent.trust.artifact_store import ArtifactStore
 from trusted_ceo_agent.workflow.overlays import apply_overlay
 from trusted_ceo_agent.web_report.contracts import load_bundle_bytes
+from trusted_ceo_agent.web_report.eligibility import decide_viewer_eligibility
 
 
 STATE_HANDLERS = {
@@ -76,7 +78,12 @@ _ACTIVE_JOB_LOCK = threading.Lock()
 
 
 class ReasoningGateway(Protocol):
-    def execute(self, job: Mapping[str, Any]) -> dict[str, Any]:
+    def execute(
+        self,
+        job: Mapping[str, Any],
+        *,
+        validator: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
         pass
 
 
@@ -264,7 +271,8 @@ class AnalysisOrchestrator:
         path = self._report_path(run_id, manifest.engine_revision)
         if not path.is_file():
             raise IntegrityError("finalized report bundle is missing")
-        bundle = load_bundle_bytes(path.read_bytes())
+        payload = path.read_bytes()
+        bundle = load_bundle_bytes(payload)
         run = bundle.get("run", {})
         if (
             not isinstance(run, Mapping)
@@ -273,9 +281,17 @@ class AnalysisOrchestrator:
             or bundle.get("bundle_hash") != manifest.bundle_hash
         ):
             raise IntegrityError("report bundle does not match the service manifest")
+        artifact_store = ArtifactStore(self.application.artifact_root)
+        artifact_store.open_run(run_id)
+        eligibility = decide_viewer_eligibility(
+            artifact_store,
+            expected_run_id=run_id,
+            expected_revision=manifest.engine_revision,
+            bundle_payload=payload,
+        )
         return {
             "bundle": bundle,
-            "eligibility": bundle["viewer_eligibility_receipt"],
+            "eligibility": eligibility,
         }
 
     def continue_run(self, run_id: str, request: MutationBase) -> RunSnapshot:
@@ -366,6 +382,27 @@ class AnalysisOrchestrator:
                 expected_revision=manifest.engine_revision,
             )
             snapshot = self._snapshot(manifest, current)
+        elif action == "stop":
+            manifest = self.run_store.save_manifest(
+                manifest.model_copy(update={
+                    "status": "stopped",
+                    "stage": current.state,
+                    "pending_approval_request_id": None,
+                    "pending_approval_nonce": None,
+                }),
+                expected_revision=manifest.engine_revision,
+            )
+            snapshot = self._snapshot(manifest, current)
+        elif action == "resume" and manifest.status == "stopped":
+            manifest = self.run_store.save_manifest(
+                manifest.model_copy(update={
+                    "status": "running",
+                    "pending_approval_request_id": None,
+                    "pending_approval_nonce": None,
+                }),
+                expected_revision=manifest.engine_revision,
+            )
+            snapshot = self._snapshot(manifest, current)
         else:
             result = self._mutate(
                 run_id,
@@ -373,11 +410,7 @@ class AnalysisOrchestrator:
                 action,
                 {},
             )
-            status = {
-                "stop": "stopped",
-                "cancel": "cancelled",
-                "resume": "running",
-            }[action]
+            status = "cancelled" if action == "cancel" else "running"
             manifest = self._checkpoint(manifest, result, status=status)
             snapshot = self._snapshot(manifest, result)
         self.run_store.store_idempotency_receipt(
@@ -593,6 +626,16 @@ class AnalysisOrchestrator:
         manifest = self._checkpoint(manifest, result)
         return self._snapshot(manifest, result)
 
+    def _execute_reasoning_job(
+        self,
+        job: Mapping[str, Any],
+        files: Mapping[str, bytes],
+    ) -> dict[str, Any]:
+        return self.gateway.execute(
+            job,
+            validator=lambda draft: validate_reasoning_draft(job, draft, files),
+        )
+
     def _run_schema_mapping(
         self,
         manifest: ServiceManifest,
@@ -616,16 +659,21 @@ class AnalysisOrchestrator:
             if not self._accepted(files, str(job["job_id"]))
         ]
         if pending:
+            proposal = strict_loads(
+                files.get("intake/canonical-mapping-proposal.json", b"{}")
+            )
+            if not isinstance(proposal, Mapping):
+                raise IntegrityError("canonical mapping proposal is invalid")
             result = state
             for job in pending:
-                draft = self.gateway.execute(job)
                 result = self._mutate(
                     manifest.run_id,
                     manifest.engine_revision,
                     "ingest-result",
                     {
                         "job_id": str(job["job_id"]),
-                        "draft_document": draft,
+                        "draft_document": proposal,
+                        "draft_source": "deterministic_canonical",
                     },
                 )
                 manifest = self._checkpoint(manifest, result)
@@ -716,7 +764,7 @@ class AnalysisOrchestrator:
                     "ingest-result",
                     {
                         "job_id": str(job["job_id"]),
-                        "draft_document": self.gateway.execute(job),
+                        "draft_document": self._execute_reasoning_job(job, files),
                     },
                 )
                 manifest = self._checkpoint(manifest, result)
@@ -1489,7 +1537,8 @@ class AnalysisOrchestrator:
         human = manifest.status == "awaiting_human"
         retryable = manifest.status == "retryable_failure"
         blocked = result.state == "blocked"
-        terminal = manifest.status in {"stopped", "cancelled", "finalized"}
+        stopped = manifest.status == "stopped"
+        terminal = manifest.status in {"cancelled", "finalized"}
         phases = {
             "context_confirmation_required": 1,
             "context_ready": 2,
@@ -1538,7 +1587,11 @@ class AnalysisOrchestrator:
         return RunSnapshot(
             run_id=manifest.run_id,
             revision=result.revision,
-            workflow_status=result.state,
+            workflow_status=(
+                "stopped_by_human"
+                if stopped
+                else result.state
+            ),
             ui_phase=phases.get(result.state, 4),
             pending_action=(
                 "human_response"
@@ -1548,7 +1601,7 @@ class AnalysisOrchestrator:
                 else "retry"
                 if retryable
                 else "resume"
-                if blocked
+                if stopped or blocked
                 else "provider_work"
             ),
             allowed_actions=(
@@ -1559,7 +1612,7 @@ class AnalysisOrchestrator:
                 else ["retry"]
                 if retryable
                 else ["resume"]
-                if blocked
+                if stopped or blocked
                 else ["continue"]
             ),
             latest_event=latest.get(result.state, "분석 상태가 갱신되었습니다."),

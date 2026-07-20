@@ -7,6 +7,7 @@ import type {
   AnalysisBackend,
   BackendHitlDecision,
   BackendMutation,
+  BackendReport,
   BackendRunSnapshot,
 } from "@/lib/server/analysis/types";
 import { isRecord } from "@/lib/server/analysis/types";
@@ -33,6 +34,7 @@ const SAFE_HEADERS = {
 export type AnalysisRouteDependencies = Readonly<{
   backend: AnalysisBackend;
   security: LocalSecurityConfig;
+  activateReport: (report: BackendReport) => Promise<unknown>;
 }>;
 
 class AnalysisRequestError extends Error {
@@ -223,7 +225,9 @@ export async function handleAnalysisReport(
 ): Promise<Response> {
   try {
     assertLocalSession(request.headers, dependencies.security);
-    return jsonResponse(await dependencies.backend.getReport(runId));
+    const report = await dependencies.backend.getReport(runId);
+    await dependencies.activateReport(report);
+    return jsonResponse(report);
   } catch (error) { return safeError(error); }
 }
 

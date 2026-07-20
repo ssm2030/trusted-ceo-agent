@@ -43,7 +43,7 @@ export function ExpertPackets({
 
       {packets.length === 0 ? (
         <p className={styles.empty}>
-          현재 문제에 플러그인이 제공한 전문가 패킷이 없습니다.
+          현재 문제에 검증 엔진이 게시한 전문가 패킷이 없습니다.
         </p>
       ) : (
         <div className={styles.packetList}>

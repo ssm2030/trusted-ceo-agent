@@ -130,6 +130,35 @@ export class RemoteAnalysisProvider implements AnalysisProvider {
     return this.parseResponse(response);
   }
 
+  async getHealth(): Promise<{
+    status: "ok";
+    aiReady: boolean;
+    model: "gpt-5.6";
+  }> {
+    await this.ensureSession();
+    const response = await this.fetchImpl("/api/analysis/health", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    let value: unknown;
+    try { value = await response.json(); } catch { value = null; }
+    if (
+      !response.ok ||
+      !isRecord(value) ||
+      value.status !== "ok" ||
+      typeof value.ai_ready !== "boolean" ||
+      value.model !== "gpt-5.6"
+    ) {
+      const failure = errorBody(value);
+      throw new RemoteProviderError(failure.code, failure.message, response.status);
+    }
+    return {
+      status: "ok",
+      aiReady: value.ai_ready,
+      model: "gpt-5.6",
+    };
+  }
   async createRun(): Promise<ProviderSnapshot> {
     const body = JSON.stringify({
       expected_revision: 0,
@@ -153,6 +182,9 @@ export class RemoteAnalysisProvider implements AnalysisProvider {
     edits: Readonly<Record<string, unknown>> = {},
     rationale: string | null = null,
   ): Promise<ProviderSnapshot> {
+    if (decision === "stop") {
+      return this.stop(runId, expectedRevision);
+    }
     const body = JSON.stringify({
       expected_revision: expectedRevision,
       idempotency_key: mutationKey("hitl"),
@@ -236,7 +268,21 @@ export class RemoteAnalysisProvider implements AnalysisProvider {
   }
 
   async openFinalizedReport(runId: string): Promise<string | null> {
-    const status = await this.getStatus(runId);
-    return status.workflow_status === "finalized" ? status.result_ref : null;
+    await this.ensureSession();
+    const response = await this.fetchImpl(
+      `/api/analysis/runs/${encodeURIComponent(runId)}/report`,
+      {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+      },
+    );
+    if (!response.ok) {
+      let value: unknown;
+      try { value = await response.json(); } catch { value = null; }
+      const failure = errorBody(value);
+      throw new RemoteProviderError(failure.code, failure.message, response.status);
+    }
+    return "/report";
   }
 }

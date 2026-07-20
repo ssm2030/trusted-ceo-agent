@@ -56,7 +56,7 @@ export function RevisionChanges({
           <span className={styles.scopeBand}>현재 범위: {activeIssueTitle}</span>
         </header>
         <p className={styles.notice}>
-          플러그인이 변경 정보를 제공하지 않았으므로 웹에서 의미 차이를
+          검증 엔진이 변경 정보를 제공하지 않았으므로 웹에서 의미 차이를
           추정하지 않습니다.
         </p>
       </section>

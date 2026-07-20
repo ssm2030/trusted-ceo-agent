@@ -136,6 +136,10 @@ test("buildLaunchPlan isolates the API key and browser-public secrets", () => {
   );
   assert.equal(plan.next.options.env.NEXT_PUBLIC_THEME, "dark");
   assert.equal(plan.python.options.env.TRUSTED_CEO_SERVICE_HOST, "127.0.0.1");
+  assert.equal(
+    plan.python.options.env.PYTHONPATH.split(path.delimiter)[0],
+    path.join(REPOSITORY_ROOT, "plugin", "trusted-ceo-agent"),
+  );
   assert.equal(plan.next.options.env.TRUSTED_CEO_SERVICE_HOST, "127.0.0.1");
   assert.equal(plan.healthUrl, "http://127.0.0.1:8765/health");
   assert.deepEqual(plan.healthHeaders, {

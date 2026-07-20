@@ -118,7 +118,7 @@ export function ReportWorkspace({
       <section className={styles.section}>
         <h2>표시할 결과 문제가 없습니다.</h2>
         <p className={styles.notice}>
-          이 묶음에는 플러그인이 제공한 문제 항목이 없습니다.
+          이 묶음에는 검증 엔진이 게시한 문제 항목이 없습니다.
         </p>
       </section>
     );
@@ -223,7 +223,7 @@ export function ReportWorkspace({
           <p className={styles.eyebrow}>검증된 의사결정 기록</p>
           <h1 className={styles.reportTitle}>결정은 짧게, 근거는 깊게.</h1>
           <p className={styles.reportLead}>
-            이 화면은 분석 정본이 아닙니다. 플러그인이 제공하고 검증기가
+            이 화면은 분석 정본이 아닙니다. 검증 엔진이 제공하고 계약 검증기가
             판정한 결과 표현만 탐색할 수 있습니다.
           </p>
         </div>

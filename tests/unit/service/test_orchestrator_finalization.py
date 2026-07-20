@@ -9,11 +9,12 @@ from pathlib import Path
 
 from trusted_ceo_agent.application.models import CreateRunRequest
 from trusted_ceo_agent.application.run_application import TrustedCeoApplication
-from trusted_ceo_agent.canonical import canonical_bytes
+from trusted_ceo_agent.canonical import canonical_bytes, strict_loads
 from trusted_ceo_agent.service.contracts import HitlDecisionRequest, MutationBase
 from trusted_ceo_agent.service.orchestrator import AnalysisOrchestrator
 from trusted_ceo_agent.service.run_store import RunStore
 from trusted_ceo_agent.service.testing.fake_openai import KeylessFakeReasoningGateway
+from trusted_ceo_agent.trust.artifact_store import ArtifactStore
 from tests.support import confirmed_mission
 
 
@@ -155,12 +156,36 @@ class OrchestratorFinalizationTests(unittest.TestCase):
             self.assertEqual(run_id, report["bundle"]["run"]["run_id"])
             self.assertEqual(finalized.revision, report["bundle"]["run"]["revision"])
             self.assertEqual(manifest.bundle_hash, report["bundle"]["bundle_hash"])
-            self.assertGreaterEqual(len(gateway.calls), 5)
+            self.assertTrue(report["eligibility"]["eligible"])
+            self.assertEqual("trusted_final", report["eligibility"]["viewer_mode"])
+            self.assertEqual(run_id, report["eligibility"]["run_id"])
+            self.assertEqual(finalized.revision, report["eligibility"]["revision"])
+            self.assertEqual(manifest.bundle_hash, report["eligibility"]["bundle_hash"])
+            self.assertGreaterEqual(len(gateway.calls), 4)
             self.assertEqual(
-                {"schema_mapping", "lens", "integrated", "writer"},
+                {"lens", "integrated", "writer"},
                 {call["stage"] for call in gateway.calls},
             )
+            self.assertTrue(all(
+                call.get("_semantic_validator_applied") is True
+                for call in gateway.calls
+            ))
 
+            artifact_store = ArtifactStore(application.artifact_root)
+            artifact_store.open_run(run_id)
+            snapshot = artifact_store.verify_revision(finalized.revision)
+            joined = strict_loads(
+                (snapshot / "reasoning" / "join-result.json").read_bytes()
+            )
+            integrated_job = next(
+                strict_loads(path.read_bytes())
+                for path in (snapshot / "tasks").glob("*/job.json")
+                if strict_loads(path.read_bytes()).get("stage") == "integrated"
+            )
+            self.assertEqual(
+                sorted(joined["card_refs"]),
+                integrated_job["allowed_card_refs"],
+            )
 
 if __name__ == "__main__":
     unittest.main()

@@ -89,7 +89,7 @@ export function TrustManifest({
             실행·신뢰 기록
           </h2>
           <p className={styles.sectionDescription}>
-            플러그인 검증기가 제공한 실행, 승인, 검증 계보입니다.
+            로컬 검증 엔진이 제공한 실행, 승인, 검증 계보입니다.
           </p>
         </div>
         <span className={styles.scopeBand}>

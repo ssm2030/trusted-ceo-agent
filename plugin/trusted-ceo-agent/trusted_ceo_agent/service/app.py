@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+from contextlib import asynccontextmanager
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, File, Form, Header, UploadFile
@@ -16,6 +17,11 @@ from trusted_ceo_agent.service.contracts import (
 )
 from trusted_ceo_agent.service.openai_gateway import AIServiceError
 from trusted_ceo_agent.service.orchestrator import AnalysisOrchestrator
+from trusted_ceo_agent.service.questions import (
+    QuestionRequest,
+    QuestionService,
+    QuestionSnapshot,
+)
 from trusted_ceo_agent.service.file_policy import IncomingUpload
 from trusted_ceo_agent.service.run_store import ServiceStoreError
 from trusted_ceo_agent.service.settings import ServiceSettings
@@ -47,7 +53,13 @@ def _draft_mission() -> dict[str, Any]:
         "current_symptoms": [],
         "customer_hypotheses": [],
         "decision_context": "로컬 웹 분석",
-        "decision_units": [],
+        "decision_units": [{
+            "decision_unit_ref": "unit_enterprise",
+            "unit_type": "enterprise",
+            "scope_key": "enterprise",
+            "owner_role": "ceo",
+            "deadline": None,
+        }],
         "decision_deadline": None,
         "analysis_horizon": {"start": "2025-01-01", "end": "2026-12-31"},
         "organization_scope": [],
@@ -80,9 +92,8 @@ def create_app(
     settings: ServiceSettings,
     application: TrustedCeoApplication,
     orchestrator: AnalysisOrchestrator,
-    questions: Any | None = None,
+    questions: QuestionService,
 ) -> FastAPI:
-    del questions
     if application.artifact_root.resolve() != orchestrator.application.artifact_root.resolve():
         raise ValueError("application and orchestrator roots must match")
 
@@ -96,12 +107,20 @@ def create_app(
         if not hmac.compare_digest(supplied, settings.internal_token):
             raise ServiceStoreError("ENGINE_FAILURE", "internal authentication failed")
 
+    @asynccontextmanager
+    async def lifespan(_application: FastAPI):
+        try:
+            yield
+        finally:
+            questions.close()
+
     app = FastAPI(
         title="Trusted CEO Agent Local Service",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
         dependencies=[Depends(authenticate)],
+        lifespan=lifespan,
     )
 
     @app.middleware("http")
@@ -109,6 +128,21 @@ def create_app(
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
+        usage_totals = getattr(orchestrator.gateway, "usage_totals", None)
+        if callable(usage_totals):
+            totals = usage_totals()
+            input_tokens = totals.get("input_token_count")
+            output_tokens = totals.get("output_token_count")
+            if (
+                isinstance(input_tokens, int)
+                and not isinstance(input_tokens, bool)
+                and input_tokens >= 0
+                and isinstance(output_tokens, int)
+                and not isinstance(output_tokens, bool)
+                and output_tokens >= 0
+            ):
+                response.headers["X-Trusted-Ceo-Input-Tokens"] = str(input_tokens)
+                response.headers["X-Trusted-Ceo-Output-Tokens"] = str(output_tokens)
         return response
 
     @app.exception_handler(ServiceStoreError)
@@ -256,6 +290,26 @@ def create_app(
             browser_session_fingerprint=browser_fingerprint,
         )
 
+    @app.post(
+        "/v1/runs/{run_id}/questions",
+        response_model=QuestionSnapshot,
+        status_code=202,
+    )
+    async def start_question(
+        run_id: str,
+        body: QuestionRequest,
+    ) -> QuestionSnapshot:
+        return questions.start(run_id, body)
+
+    @app.get(
+        "/v1/runs/{run_id}/questions/{request_id}",
+        response_model=QuestionSnapshot,
+    )
+    async def question_status(
+        run_id: str,
+        request_id: str,
+    ) -> QuestionSnapshot:
+        return questions.get(run_id, request_id)
     @app.get("/v1/runs/{run_id}/report")
     async def report(run_id: str) -> dict[str, Any]:
         return orchestrator.report(run_id)

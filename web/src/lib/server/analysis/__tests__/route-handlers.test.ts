@@ -11,6 +11,7 @@ import {
 import {
   handleAnalysisCreate,
   handleAnalysisHumanResponse,
+  handleAnalysisReport,
 } from "@/lib/server/analysis/route-handlers";
 import type { AnalysisBackend } from "@/lib/server/analysis/types";
 
@@ -55,11 +56,13 @@ function backend(): AnalysisBackend {
     createRun: vi.fn(async () => snapshot()),
     deleteRun: vi.fn(),
     getHealth: vi.fn(),
+    getQuestion: vi.fn(),
     getReport: vi.fn(),
     getRun: vi.fn(),
     resume: vi.fn(),
     retry: vi.fn(),
     stop: vi.fn(),
+    startQuestion: vi.fn(),
     submitHitl: vi.fn(async () => snapshot()),
     uploadFiles: vi.fn(),
   };
@@ -75,14 +78,14 @@ describe("analysis BFF route handlers", () => {
     const denied = await handleAnalysisCreate(new Request(
       "http://127.0.0.1:3000/api/analysis/runs",
       { method: "POST", headers: { "content-type": "application/json" }, body },
-    ), { backend: service, security });
+    ), { backend: service, security, activateReport: vi.fn() });
     expect(denied.status).toBe(403);
     expect(service.createRun).not.toHaveBeenCalled();
 
     const accepted = await handleAnalysisCreate(new Request(
       "http://127.0.0.1:3000/api/analysis/runs",
       { method: "POST", headers: mutationHeaders(), body },
-    ), { backend: service, security });
+    ), { backend: service, security, activateReport: vi.fn() });
     expect(accepted.status).toBe(200);
     expect(accepted.headers.get("cache-control")).toBe("no-store");
     expect(JSON.stringify(await accepted.json())).not.toContain("Internal-Token");
@@ -105,7 +108,7 @@ describe("analysis BFF route handlers", () => {
           rationale: null,
         }),
       },
-    ), "run_20260719T000000Z_0123456789abcdef", { backend: service, security });
+    ), "run_20260719T000000Z_0123456789abcdef", { backend: service, security, activateReport: vi.fn() });
 
     expect(response.status).toBe(200);
     expect(service.submitHitl).toHaveBeenCalledWith(
@@ -113,5 +116,28 @@ describe("analysis BFF route handlers", () => {
       expect.any(Object),
       createHash("sha256").update(csrf, "utf8").digest("hex"),
     );
+  });
+
+  it("activates a validated service report before returning it", async () => {
+    const service = backend();
+    const report = {
+      bundle: { bundle_version: "1.0.0" },
+      eligibility: { decision_version: "1.0.0" },
+    };
+    vi.mocked(service.getReport).mockResolvedValue(report);
+    const activateReport = vi.fn(async () => undefined);
+
+    const response = await handleAnalysisReport(new Request(
+      "http://127.0.0.1:3000/api/analysis/runs/run_20260719T000000Z_0123456789abcdef/report",
+      { method: "GET", headers: mutationHeaders() },
+    ), "run_20260719T000000Z_0123456789abcdef", {
+      backend: service,
+      security,
+      activateReport,
+    });
+
+    expect(response.status).toBe(200);
+    expect(activateReport).toHaveBeenCalledWith(report);
+    expect(await response.json()).toEqual(report);
   });
 });

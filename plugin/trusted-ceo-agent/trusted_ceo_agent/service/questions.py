@@ -38,7 +38,7 @@ QuestionState = Literal[
     "validating",
     "completed",
     "failed",
-    "blocked_by_scope",
+    "scope_required",
     "cancelled",
 ]
 QuestionScopeKind = Literal[
@@ -55,7 +55,7 @@ PrivacyClassification = Literal["poc_deidentified", "company_restricted"]
 
 _ACTIVE_STATES = frozenset({"queued", "preparing", "asking", "validating"})
 _TERMINAL_STATES = frozenset(
-    {"completed", "failed", "blocked_by_scope", "cancelled"}
+    {"completed", "failed", "scope_required", "cancelled"}
 )
 _REQUEST_ID = re.compile(r"^questionrequest_[0-9a-f]{24}$")
 _LOCKS_GUARD = threading.Lock()
@@ -169,7 +169,7 @@ class QuestionSnapshot(StrictModel):
                 or self.retryable
             ):
                 raise ValueError("completed question snapshot is invalid")
-        elif self.state == "blocked_by_scope":
+        elif self.state == "scope_required":
             if (
                 self.answer is not None
                 or not self.scope_suggestions
@@ -207,12 +207,52 @@ class QuestionService:
         self._lifecycle_lock = threading.Lock()
         self._closed = False
         self._schemas = SchemaStore()
+        self._recover_active(
+            state="failed",
+            error_code="ENGINE_FAILURE",
+            retryable=True,
+        )
 
     def close(self) -> None:
         with self._lifecycle_lock:
             self._closed = True
         if self._owns_executor:
             self._executor.shutdown(wait=False, cancel_futures=True)
+        self._recover_active(
+            state="cancelled",
+            error_code="CANCELLED",
+            retryable=False,
+        )
+
+    def _recover_active(
+        self,
+        *,
+        state: Literal["failed", "cancelled"],
+        error_code: str,
+        retryable: bool,
+    ) -> None:
+        for run_path in sorted(self.run_store.runs_root.glob("run_*")):
+            if not run_path.is_dir():
+                continue
+            run_id = run_path.name
+            with _question_lock(self.run_store, run_id):
+                for current in self._list_locked(run_id):
+                    if current.state not in _ACTIVE_STATES:
+                        continue
+                    recovered = current.model_copy(
+                        update={
+                            "generation": current.generation + 1,
+                            "state": state,
+                            "answer": None,
+                            "scope_suggestions": [],
+                            "error_code": error_code,
+                            "retryable": retryable,
+                        }
+                    )
+                    QuestionSnapshot.model_validate(
+                        recovered.model_dump(mode="python")
+                    )
+                    self._write_locked(recovered)
 
     def start(
         self,
@@ -245,7 +285,12 @@ class QuestionService:
                     raise IntegrityError(
                         "question idempotency receipt is invalid"
                     )
-                return self._get_locked(run_id, request_id)
+                path = self._snapshot_path(run_id, request_id)
+                if path.exists():
+                    return self._get_locked(run_id, request_id)
+            else:
+                request_id = self._request_id(run_id, request.idempotency_key)
+                path = self._snapshot_path(run_id, request_id)
 
             self._assert_finalized(
                 run_id,
@@ -258,12 +303,19 @@ class QuestionService:
                     "another result question is active",
                 )
 
-            request_id = self._request_id(run_id, request.idempotency_key)
-            path = self._snapshot_path(run_id, request_id)
-            if path.exists():
-                raise IntegrityError(
-                    "question request exists without an idempotency receipt"
+            if replay is None:
+                if path.exists():
+                    raise IntegrityError(
+                        "question request exists without an idempotency receipt"
+                    )
+                self.run_store.store_idempotency_receipt(
+                    run_id,
+                    idempotency_key=request.idempotency_key,
+                    request_body=request_body,
+                    status_code=202,
+                    response={"request_id": request_id},
                 )
+
             queued = QuestionSnapshot(
                 request_id=request_id,
                 run_id=run_id,
@@ -273,13 +325,6 @@ class QuestionService:
                 scope_instance_id=request.scope_instance_id,
             )
             self._write_locked(queued, create=True)
-            self.run_store.store_idempotency_receipt(
-                run_id,
-                idempotency_key=request.idempotency_key,
-                request_body=request_body,
-                status_code=202,
-                response={"request_id": request_id},
-            )
             try:
                 self._executor.submit(
                     self._execute,
@@ -449,7 +494,7 @@ class QuestionService:
         state: Literal[
             "completed",
             "failed",
-            "blocked_by_scope",
+            "scope_required",
             "cancelled",
         ],
         answer: Mapping[str, Any] | None = None,
@@ -508,9 +553,10 @@ class QuestionService:
                 self._finish(
                     run_id,
                     request_id,
-                    state="blocked_by_scope",
+                    state="scope_required",
                     suggestions=suggestions,
                     error_code="SCOPE_REQUIRED",
+                    require_current_revision=True,
                 )
                 return
             job = self._prepared_job(

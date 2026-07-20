@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
 from trusted_ceo_agent.canonical import strict_loads
 from trusted_ceo_agent.contracts.schema_store import SchemaStore
 from trusted_ceo_agent.errors import ContractError, IntegrityError
+from trusted_ceo_agent.questions.answers import NOT_SUPPORTED_TEXT
 from trusted_ceo_agent.trust.artifact_store import ArtifactStore
 
 
@@ -17,12 +18,25 @@ class KeylessFakeReasoningGateway:
     def __init__(self, artifact_root: Path) -> None:
         self.artifact_root = artifact_root.resolve()
         self.schemas = SchemaStore()
-        self.calls: list[dict[str, str]] = []
+        self.calls: list[dict[str, Any]] = []
 
-    def execute(self, job: Mapping[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def usage_totals() -> dict[str, int]:
+        return {"input_token_count": 0, "output_token_count": 0}
+
+    def execute(
+        self,
+        job: Mapping[str, Any],
+        *,
+        validator: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
         stage = str(job.get("stage", ""))
         job_id = str(job.get("job_id", ""))
-        self.calls.append({"stage": stage, "job_id": job_id})
+        self.calls.append({
+            "stage": stage,
+            "job_id": job_id,
+            "_semantic_validator_applied": validator is not None,
+        })
         files = self._files(job)
         builders = {
             "schema_mapping": self._schema_mapping,
@@ -39,8 +53,55 @@ class KeylessFakeReasoningGateway:
         if not isinstance(schema_ref, str):
             raise ContractError("fake gateway job is missing output_schema_ref")
         self.schemas.validate(schema_ref, result)
+        if validator is not None:
+            validator(result)
         return result
 
+    def execute_question(self, job: Mapping[str, Any]) -> dict[str, Any]:
+        job_id = str(job.get("job_id", ""))
+        self.calls.append({"stage": "question", "job_id": job_id})
+        values = [str(value) for value in job.get("allowed_value_refs", [])]
+        claims = [str(value) for value in job.get("allowed_claim_refs", [])]
+        evidence = [
+            str(value)
+            for value in job.get("allowed_evidence_link_ids", [])
+        ]
+        sources = [str(value) for value in job.get("allowed_source_refs", [])]
+        if values and claims and evidence and sources:
+            value_ref = values[0]
+            block = {
+                "block_id": "block_1",
+                "support_status": "supported",
+                "text_template": (
+                    "The verified result contains "
+                    f"{{{{value:{value_ref}}}}}."
+                ),
+                "value_refs": [value_ref],
+                "claim_refs": [claims[0]],
+                "evidence_link_ids": [evidence[0]],
+                "source_refs": [sources[0]],
+            }
+        else:
+            block = {
+                "block_id": "block_1",
+                "support_status": "not_supported",
+                "text_template": (
+                    NOT_SUPPORTED_TEXT
+                ),
+                "value_refs": [],
+                "claim_refs": [],
+                "evidence_link_ids": [],
+                "source_refs": [],
+            }
+        draft = {
+            "draft_version": "1.0.0",
+            "job_id": job_id,
+            "run_id": str(job.get("run_id", "")),
+            "revision": job.get("revision"),
+            "answer_blocks": [block],
+        }
+        self.schemas.validate("result-answer-draft.schema.json", draft)
+        return draft
     def _files(self, job: Mapping[str, Any]) -> dict[str, bytes]:
         artifact_ref = job.get("artifact_ref")
         if not isinstance(artifact_ref, str) or "@r" not in artifact_ref:

@@ -8,6 +8,7 @@ import unittest
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any, Callable, Mapping
+from unittest.mock import patch
 
 from trusted_ceo_agent.application.models import ApplicationResult
 from trusted_ceo_agent.application.run_application import TrustedCeoApplication
@@ -303,6 +304,85 @@ class QuestionServiceTests(unittest.TestCase):
             self.assertNotEqual(first.request_id, next_question.request_id)
             self.assertEqual("queued", next_question.state)
 
+    def test_receipt_write_failure_leaves_no_orphan_and_replays_after_restart(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            harness = QuestionHarness(Path(directory))
+            request = harness.request()
+
+            with patch.object(
+                harness.store,
+                "store_idempotency_receipt",
+                side_effect=OSError("simulated receipt interruption"),
+            ):
+                with self.assertRaisesRegex(OSError, "receipt interruption"):
+                    harness.service.start(RUN_ID, request)
+
+            conversation_dir = harness.store.run_root(RUN_ID) / "conversations"
+            self.assertEqual([], list(conversation_dir.glob("*.json")))
+
+            harness.service.close()
+            restarted_executor = ManualExecutor()
+            restarted = QuestionService(
+                harness.application,
+                harness.store,
+                harness.gateway,
+                executor=restarted_executor,
+            )
+            queued = restarted.start(RUN_ID, request)
+            replay = restarted.start(RUN_ID, request)
+
+            self.assertEqual("queued", queued.state)
+            self.assertEqual(queued.request_id, replay.request_id)
+            self.assertEqual(1, len(restarted_executor.pending))
+
+    def test_close_and_restart_recover_active_snapshots_and_allow_new_questions(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            harness = QuestionHarness(Path(directory))
+            queued = harness.service.start(RUN_ID, harness.request())
+
+            harness.service.close()
+
+            cancelled = harness.service.get(RUN_ID, queued.request_id)
+            self.assertEqual("cancelled", cancelled.state)
+            self.assertEqual("CANCELLED", cancelled.error_code)
+            self.assertFalse(cancelled.retryable)
+
+            restarted_executor = ManualExecutor()
+            restarted = QuestionService(
+                harness.application,
+                harness.store,
+                harness.gateway,
+                executor=restarted_executor,
+            )
+            asking = restarted.start(
+                RUN_ID,
+                harness.request(idempotency_key="question_request_0002"),
+            )
+            restarted._transition(RUN_ID, asking.request_id, "asking")
+
+            after_crash_executor = ManualExecutor()
+            after_crash = QuestionService(
+                harness.application,
+                harness.store,
+                harness.gateway,
+                executor=after_crash_executor,
+            )
+            recovered = after_crash.get(RUN_ID, asking.request_id)
+            self.assertEqual("failed", recovered.state)
+            self.assertEqual("ENGINE_FAILURE", recovered.error_code)
+            self.assertTrue(recovered.retryable)
+
+            next_question = after_crash.start(
+                RUN_ID,
+                harness.request(idempotency_key="question_request_0003"),
+            )
+            self.assertEqual("queued", next_question.state)
+            self.assertEqual(1, len(after_crash_executor.pending))
+
     def test_non_finalized_and_stale_revision_requests_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             harness = QuestionHarness(Path(directory))
@@ -345,7 +425,7 @@ class QuestionServiceTests(unittest.TestCase):
             harness.executor.run_next()
 
             blocked = harness.service.get(RUN_ID, pending.request_id)
-            self.assertEqual("blocked_by_scope", blocked.state)
+            self.assertEqual("scope_required", blocked.state)
             self.assertEqual("SCOPE_REQUIRED", blocked.error_code)
             self.assertEqual(1, len(blocked.scope_suggestions))
             self.assertEqual("issue", blocked.scope_suggestions[0].scope_kind)
@@ -382,6 +462,29 @@ class QuestionServiceTests(unittest.TestCase):
                     self.assertIsNone(payload["answer"])
                     self.assertNotIn("job", payload)
                     self.assertNotIn("draft", payload)
+
+    def test_revision_change_during_scope_preparation_cancels_without_publishing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            harness = QuestionHarness(Path(directory))
+            harness.application.scope_required = True
+
+            def advance_engine_revision(_event: str) -> None:
+                state_path = harness.store.run_root(RUN_ID) / "state.json"
+                state = copy.deepcopy(json.loads(state_path.read_text("utf-8")))
+                state["revision"] = 3
+                state_path.write_bytes(canonical_bytes(state))
+
+            harness.application.observe = advance_engine_revision
+            pending = harness.service.start(RUN_ID, harness.request())
+            harness.executor.run_next()
+
+            cancelled = harness.service.get(RUN_ID, pending.request_id)
+            self.assertEqual("cancelled", cancelled.state)
+            self.assertEqual("STALE_REVISION", cancelled.error_code)
+            self.assertEqual([], cancelled.scope_suggestions)
+            self.assertIsNone(cancelled.answer)
 
     def test_revision_change_while_asking_cancels_without_publishing(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:

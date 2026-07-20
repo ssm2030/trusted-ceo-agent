@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import uvicorn
@@ -9,16 +9,33 @@ from trusted_ceo_agent.application.run_application import TrustedCeoApplication
 from trusted_ceo_agent.service.app import create_app
 from trusted_ceo_agent.service.openai_gateway import AIServiceError, OpenAIReasoningGateway
 from trusted_ceo_agent.service.orchestrator import AnalysisOrchestrator
+from trusted_ceo_agent.service.questions import QuestionService
 from trusted_ceo_agent.service.run_store import RunStore
 from trusted_ceo_agent.service.settings import ServiceSettings
 
 
 class MissingApiKeyGateway:
-    def execute(self, _job: Mapping[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _missing() -> dict[str, Any]:
         raise AIServiceError(
             "AI_AUTH_FAILURE",
             "OpenAI API access is not configured",
         )
+
+    @staticmethod
+    def usage_totals() -> dict[str, int]:
+        return {"input_token_count": 0, "output_token_count": 0}
+
+    def execute(
+        self,
+        _job: Mapping[str, Any],
+        *,
+        validator: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        return self._missing()
+
+    def execute_question(self, _job: Mapping[str, Any]) -> dict[str, Any]:
+        return self._missing()
 
 
 def build_app():
@@ -31,7 +48,13 @@ def build_app():
         else MissingApiKeyGateway()
     )
     orchestrator = AnalysisOrchestrator(application, store, gateway)
-    return settings, create_app(settings, application, orchestrator)
+    questions = QuestionService(application, store, gateway)
+    return settings, create_app(
+        settings,
+        application,
+        orchestrator,
+        questions,
+    )
 
 
 def main() -> None:

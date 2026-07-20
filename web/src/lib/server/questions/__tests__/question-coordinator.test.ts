@@ -78,6 +78,22 @@ afterEach(async () => {
 });
 
 describe("QuestionCoordinator", () => {
+  it("passes the stable client request ID to the answer service", async () => {
+    const answerQuestion = vi.fn(async () => answer);
+    const coordinator = new QuestionCoordinator({
+      lockRoot: await lockRoot(),
+      answer: answerQuestion,
+    });
+
+    const request = await coordinator.submit(submitted("stable-client-id"));
+    await waitFor(
+      () => coordinator.get(request.requestId)?.state === "completed",
+    );
+
+    expect(answerQuestion).toHaveBeenCalledWith(
+      expect.objectContaining({ clientRequestId: "stable-client-id" }),
+    );
+  });
   it("runs one request and bounds waiting positions to three", async () => {
     const releases: Array<() => void> = [];
     const coordinator = new QuestionCoordinator({

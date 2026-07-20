@@ -171,10 +171,15 @@ class SourcePreviewTests(unittest.TestCase):
                 observation_role="ledger",
             )
             place_blob(snapshot, json_path, json_source)
-            json_preview = build_source_views(
+            json_views = build_source_views(
                 snapshot,
                 closure_for(source=json_source, source_ref=json_ref),
-            ).previews[0]
+            )
+            json_preview = json_views.previews[0]
+            self.assertEqual(
+                f"json-pointer:{json_ref['locator']['pointer']}",
+                json_views.sources[0]["locator_summaries"][0]["display_locator"],
+            )
             self.assertEqual([["A", 100]], json_preview["rows"])
             self.assertNotIn("hidden", str(json_preview))
 

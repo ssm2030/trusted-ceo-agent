@@ -1,3 +1,10 @@
+import type {
+  ResultAnswerV1,
+} from "../../../../../contracts/web-report/v1/generated/types";
+import {
+  SCOPE_KINDS,
+  type ScopeKind,
+} from "@/lib/server/questions/types";
 export type BackendErrorCode =
   | "INPUT_POLICY_FAILURE"
   | "HUMAN_RESPONSE_REQUIRED"
@@ -73,6 +80,39 @@ export type BackendReport = Readonly<{
   eligibility: Readonly<Record<string, unknown>>;
 }>;
 
+export type BackendQuestionState =
+  | "queued"
+  | "preparing"
+  | "asking"
+  | "validating"
+  | "completed"
+  | "scope_required"
+  | "failed"
+  | "cancelled";
+
+export type BackendQuestionRequest = BackendMutation & Readonly<{
+  question: string;
+  scope_kind: ScopeKind;
+  scope_instance_id: string;
+  privacy_classification: "poc_deidentified" | "company_restricted";
+}>;
+
+export type BackendQuestionSnapshot = Readonly<{
+  request_id: string;
+  run_id: string;
+  revision: number;
+  generation: number;
+  state: BackendQuestionState;
+  scope_kind: ScopeKind;
+  scope_instance_id: string;
+  answer: ResultAnswerV1 | null;
+  scope_suggestions: readonly Readonly<{
+    scope_kind: ScopeKind;
+    scope_instance_id: string;
+  }>[];
+  error_code: string | null;
+  retryable: boolean;
+}>;
 export interface AnalysisBackend {
   getHealth(): Promise<BackendHealth>;
   createRun(input: BackendMutation & { mission?: Record<string, unknown> }): Promise<BackendRunSnapshot>;
@@ -89,6 +129,14 @@ export interface AnalysisBackend {
     browserFingerprint: string,
   ): Promise<BackendRunSnapshot>;
   getReport(runId: string): Promise<BackendReport>;
+  startQuestion(
+    runId: string,
+    input: BackendQuestionRequest,
+  ): Promise<BackendQuestionSnapshot>;
+  getQuestion(
+    runId: string,
+    requestId: string,
+  ): Promise<BackendQuestionSnapshot>;
   deleteRun(runId: string, input: BackendMutation & { confirmed: true }): Promise<void>;
 }
 
@@ -211,4 +259,106 @@ export function parseBackendReport(value: unknown): BackendReport {
     throw new Error("invalid backend report response");
   }
   return { bundle: value.bundle, eligibility: value.eligibility };
+}
+
+const QUESTION_STATES = new Set<BackendQuestionState>([
+  "queued", "preparing", "asking", "validating", "completed",
+  "scope_required", "failed", "cancelled",
+]);
+const QUESTION_REQUEST_ID = /^questionrequest_[0-9a-f]{24}$/u;
+const QUESTION_KEYS = [
+  "answer", "error_code", "generation", "request_id", "retryable",
+  "revision", "run_id", "scope_instance_id", "scope_kind",
+  "scope_suggestions", "state",
+] as const;
+
+function exactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const actual = Object.keys(value).sort();
+  return actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index]);
+}
+
+function parseQuestionAnswer(
+  value: unknown,
+  runId: string,
+  revision: number,
+): ResultAnswerV1 | null {
+  if (value === null) return null;
+  if (!isRecord(value) || value.answer_version !== "1.0.0" ||
+      typeof value.job_id !== "string" || value.run_id !== runId ||
+      value.revision !== revision || !isRecord(value.scope) ||
+      !isRecord(value.validation) || !Array.isArray(value.answer_blocks)) {
+    throw new Error("invalid backend question answer");
+  }
+  return value as unknown as ResultAnswerV1;
+}
+
+export function parseBackendQuestionSnapshot(
+  value: unknown,
+): BackendQuestionSnapshot {
+  if (!isRecord(value) || !exactKeys(value, QUESTION_KEYS) ||
+      typeof value.request_id !== "string" ||
+      !QUESTION_REQUEST_ID.test(value.request_id) ||
+      typeof value.run_id !== "string" || !RUN_ID.test(value.run_id) ||
+      !Number.isInteger(value.revision) || (value.revision as number) < 1 ||
+      !Number.isInteger(value.generation) || (value.generation as number) < 0 ||
+      typeof value.state !== "string" ||
+      !QUESTION_STATES.has(value.state as BackendQuestionState) ||
+      typeof value.scope_kind !== "string" ||
+      !SCOPE_KINDS.includes(value.scope_kind as ScopeKind) ||
+      typeof value.scope_instance_id !== "string" ||
+      value.scope_instance_id.length < 1 || value.scope_instance_id.length > 500 ||
+      !Array.isArray(value.scope_suggestions) ||
+      !(value.error_code === null ||
+        (typeof value.error_code === "string" && value.error_code.length <= 100)) ||
+      typeof value.retryable !== "boolean") {
+    throw new Error("invalid backend question snapshot");
+  }
+  const suggestions = value.scope_suggestions.map((item) => {
+    if (!isRecord(item) ||
+        !exactKeys(item, ["scope_instance_id", "scope_kind"]) ||
+        typeof item.scope_kind !== "string" ||
+        !SCOPE_KINDS.includes(item.scope_kind as ScopeKind) ||
+        typeof item.scope_instance_id !== "string" ||
+        item.scope_instance_id.length < 1 || item.scope_instance_id.length > 500) {
+      throw new Error("invalid backend scope suggestion");
+    }
+    return Object.freeze({
+      scope_kind: item.scope_kind as ScopeKind,
+      scope_instance_id: item.scope_instance_id,
+    });
+  });
+  const answer = parseQuestionAnswer(
+    value.answer,
+    value.run_id,
+    value.revision as number,
+  );
+  const state = value.state as BackendQuestionState;
+  const active = ["queued", "preparing", "asking", "validating"].includes(state);
+  if ((active && (answer !== null || suggestions.length > 0 ||
+        value.error_code !== null || value.retryable)) ||
+      (state === "completed" && (answer === null || suggestions.length > 0 ||
+        value.error_code !== null || value.retryable)) ||
+      (state === "scope_required" && (answer !== null || suggestions.length === 0 ||
+        value.error_code !== "SCOPE_REQUIRED" || value.retryable)) ||
+      (["failed", "cancelled"].includes(state) &&
+        (answer !== null || suggestions.length > 0 || value.error_code === null))) {
+    throw new Error("inconsistent backend question snapshot");
+  }
+  return Object.freeze({
+    request_id: value.request_id,
+    run_id: value.run_id,
+    revision: value.revision as number,
+    generation: value.generation as number,
+    state,
+    scope_kind: value.scope_kind as ScopeKind,
+    scope_instance_id: value.scope_instance_id,
+    answer,
+    scope_suggestions: Object.freeze(suggestions),
+    error_code: value.error_code as string | null,
+    retryable: value.retryable,
+  });
 }

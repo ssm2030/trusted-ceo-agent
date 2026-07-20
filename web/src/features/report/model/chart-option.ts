@@ -80,7 +80,7 @@ export function buildChartView(spec: ChartSpecV1): ChartView {
   if (spec.chart_kind === "graph") {
     return table(
       spec,
-      "문제 관계는 플러그인이 제공한 관계 그래프에서 확인할 수 있습니다.",
+      "문제 관계는 검증 엔진이 게시한 관계 그래프에서 확인할 수 있습니다.",
     );
   }
 

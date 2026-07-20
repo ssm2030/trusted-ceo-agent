@@ -371,7 +371,13 @@ def _reasoning_jobs(
         return sorted(jobs, key=lambda item: item["job_id"])
     if stage == "integrated":
         join = strict_loads(files["reasoning/join-manifest.json"])
-        return compile_stage_jobs(stage, **common, join_manifest_ref=join["join_manifest_id"])
+        joined = strict_loads(files["reasoning/join-result.json"])
+        return compile_stage_jobs(
+            stage,
+            **common,
+            join_manifest_ref=join["join_manifest_id"],
+            allowed_card_refs=joined.get("card_refs", []),
+        )
     if stage == "deep_dive":
         scope = strict_loads(files.get("components/scope.json", b"{}"))
         return compile_stage_jobs(
@@ -536,6 +542,14 @@ def _materialize_reasoning_draft(
     else:
         raise ContractError(f"unsupported reasoning stage: {stage}")
     return updates, data
+
+
+def validate_reasoning_draft(
+    job: Mapping[str, Any],
+    draft_document: Mapping[str, Any],
+    files: Mapping[str, bytes],
+) -> None:
+    _materialize_reasoning_draft(job, draft_document, files)
 
 
 def _block_reasoning_failure(
@@ -1029,6 +1043,14 @@ def _execute(args: SimpleNamespace) -> tuple[int, ApplicationResult]:
         if not isinstance(job, Mapping):
             raise IntegrityError(f"Reasoning Job is invalid: {args.job_id}")
         stage = job["stage"]
+        accepted_source = args.draft_source
+        if (
+            accepted_source == "deterministic_canonical"
+            and stage != "schema_mapping"
+        ):
+            raise ContractError(
+                "deterministic_canonical source is only allowed for schema_mapping"
+            )
         expected_states = {
             "schema_mapping": {"schema_mapping_job_ready"},
             "lens": {"lens_jobs_ready"},
@@ -1079,7 +1101,7 @@ def _execute(args: SimpleNamespace) -> tuple[int, ApplicationResult]:
             files.update(materialized_updates)
             data.update(materialized_data)
             files[validation_path] = canonical_bytes(_accepted_validation(
-                job, attempt, source="model_draft", action=action,
+                job, attempt, source=accepted_source, action=action,
             ))
         else:
             action = next_attempt_action(
@@ -1185,7 +1207,11 @@ def _execute(args: SimpleNamespace) -> tuple[int, ApplicationResult]:
                 and candidate_job.get("stage") == "schema_mapping"
                 and isinstance(validation, Mapping)
                 and validation.get("valid") is True
-                and validation.get("source") in {"model_draft", "deterministic_fallback"}
+                and validation.get("source") in {
+                    "model_draft",
+                    "deterministic_canonical",
+                    "deterministic_fallback",
+                }
             ):
                 candidates.append((payload, validation))
         if len(candidates) != 1:
@@ -1579,7 +1605,7 @@ _PARAMETER_CONTRACTS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "prepare-jobs": (frozenset({"stage"}), frozenset()),
     "ingest-result": (
         frozenset({"job_id", "draft_document"}),
-        frozenset(),
+        frozenset({"draft_source"}),
     ),
     "reduce-stage": (frozenset({"stage"}), frozenset()),
     "approval-request": (
@@ -1686,6 +1712,12 @@ def _validated_parameters(request: MutationRequest) -> dict[str, Any]:
     decision = values.get("decision")
     if "decision" in values and decision not in {"request_changes", "reject"}:
         raise ContractError(f"unsupported web decision: {decision}")
+    draft_source = values.get("draft_source")
+    if draft_source is not None and draft_source not in {
+        "model_draft",
+        "deterministic_canonical",
+    }:
+        raise ContractError(f"unsupported draft source: {draft_source}")
     return values
 
 
@@ -1704,6 +1736,7 @@ class MutationExecutor:
             "professional_input": None,
             "job_id": None,
             "draft": None,
+            "draft_source": "model_draft",
             "gate": None,
             "overlay": None,
             "request_id": None,

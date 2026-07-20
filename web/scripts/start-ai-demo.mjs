@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
@@ -19,6 +18,8 @@ const PUBLIC_SECRET_PARTS = new Set([
   "TOKEN",
 ]);
 const DEFAULT_REPOSITORY_ROOT = path.resolve(import.meta.dirname, "../..");
+const PRODUCTION_PYTHON_MODULE = "trusted_ceo_agent.service.main";
+const E2E_PYTHON_MODULE = "trusted_ceo_agent.service.testing_main";
 
 function hasSecretPublicName(name) {
   if (!name.startsWith(PUBLIC_PREFIX)) {
@@ -107,14 +108,22 @@ export function buildLaunchPlan({
   internalToken = randomBytes(32).toString("base64url"),
   nodeExecutable = process.execPath,
   platform = process.platform,
+  pythonModule = PRODUCTION_PYTHON_MODULE,
   repositoryRoot = DEFAULT_REPOSITORY_ROOT,
+  serviceDirectory = "ai-service",
 } = {}) {
   if (!isUsableInternalToken(internalToken)) {
     throw new Error("Internal token must contain at least 32 random bytes.");
   }
+  if (![PRODUCTION_PYTHON_MODULE, E2E_PYTHON_MODULE].includes(pythonModule)) {
+    throw new Error("Python module is not an approved service entrypoint.");
+  }
+  if (!/^[a-z0-9-]{1,40}$/u.test(serviceDirectory)) {
+    throw new Error("Service directory name is invalid.");
+  }
 
   const resolvedRoot = path.resolve(repositoryRoot);
-  const serviceRoot = path.join(resolvedRoot, "web", "var", "ai-service");
+  const serviceRoot = path.join(resolvedRoot, "web", "var", serviceDirectory);
   const serviceUrl = `http://${LOOPBACK_HOST}:${SERVICE_PORT}`;
   const {
     OPENAI_API_KEY: openAiApiKey,
@@ -136,9 +145,19 @@ export function buildLaunchPlan({
     HOSTNAME: LOOPBACK_HOST,
     TRUSTED_CEO_SERVICE_URL: serviceUrl,
   };
+  const pluginPythonPath = path.join(
+    resolvedRoot,
+    "plugin",
+    "trusted-ceo-agent",
+  );
+  const inheritedPythonPath = environment.PYTHONPATH;
   const pythonEnvironment = {
     ...environment,
     ...sharedServiceEnvironment,
+    PYTHONPATH:
+      typeof inheritedPythonPath === "string" && inheritedPythonPath.length > 0
+        ? `${pluginPythonPath}${path.delimiter}${inheritedPythonPath}`
+        : pluginPythonPath,
     TRUSTED_CEO_SERVICE_ROOT: serviceRoot,
   };
 
@@ -173,7 +192,7 @@ export function buildLaunchPlan({
         "--frozen",
         "python",
         "-m",
-        "trusted_ceo_agent.service.main",
+        pythonModule,
       ],
       executable: "uv",
       options: childOptions(pythonEnvironment),

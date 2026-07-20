@@ -4,12 +4,15 @@ import type {
   BackendHealth,
   BackendHitlDecision,
   BackendMutation,
+  BackendQuestionRequest,
+  BackendQuestionSnapshot,
   BackendReport,
   BackendRunSnapshot,
 } from "@/lib/server/analysis/types";
 import {
   isRecord,
   parseBackendHealth,
+  parseBackendQuestionSnapshot,
   parseBackendReport,
   parseBackendRunSnapshot,
 } from "@/lib/server/analysis/types";
@@ -17,6 +20,7 @@ import {
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,256}$/u;
 const BASE_URL_PATTERN = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})$/u;
 const RUN_ID_PATTERN = /^run_[A-Za-z0-9_-]{8,200}$/u;
+const QUESTION_REQUEST_ID_PATTERN = /^questionrequest_[0-9a-f]{24}$/u;
 const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
 export type AnalysisBackendConfig = Readonly<{
@@ -64,6 +68,13 @@ export function createAnalysisBackendConfig(input: {
 function safeRunId(runId: string): string {
   if (!RUN_ID_PATTERN.test(runId)) throw new AnalysisBackendError("INPUT_POLICY_FAILURE", 422, false);
   return encodeURIComponent(runId);
+}
+
+function safeQuestionRequestId(requestId: string): string {
+  if (!QUESTION_REQUEST_ID_PATTERN.test(requestId)) {
+    throw new AnalysisBackendError("INPUT_POLICY_FAILURE", 422, false);
+  }
+  return encodeURIComponent(requestId);
 }
 
 function parsedError(value: unknown): { code: BackendErrorCode; retryable: boolean } {
@@ -180,6 +191,24 @@ export class AnalysisBackendClient implements AnalysisBackend {
   }
   getReport(runId: string): Promise<BackendReport> {
     return this.request(`/v1/runs/${safeRunId(runId)}/report`, { method: "GET" }, parseBackendReport);
+  }
+  startQuestion(
+    runId: string,
+    input: BackendQuestionRequest,
+  ): Promise<BackendQuestionSnapshot> {
+    return this.json(
+      `/v1/runs/${safeRunId(runId)}/questions`,
+      "POST",
+      input,
+      parseBackendQuestionSnapshot,
+    );
+  }
+  getQuestion(runId: string, requestId: string): Promise<BackendQuestionSnapshot> {
+    return this.request(
+      `/v1/runs/${safeRunId(runId)}/questions/${safeQuestionRequestId(requestId)}`,
+      { method: "GET" },
+      parseBackendQuestionSnapshot,
+    );
   }
   deleteRun(runId: string, input: BackendMutation & { confirmed: true }): Promise<void> {
     return this.request(`/v1/runs/${safeRunId(runId)}`, {

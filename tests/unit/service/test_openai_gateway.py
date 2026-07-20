@@ -5,12 +5,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from trusted_ceo_agent.canonical import canonical_bytes
+from trusted_ceo_agent.canonical import canonical_bytes, strict_loads
 from trusted_ceo_agent.contracts.schema_store import SchemaStore
+from trusted_ceo_agent.errors import ContractError
+from trusted_ceo_agent.questions.index import QuestionIndex
+from trusted_ceo_agent.questions.jobs import build_result_question_job
 from trusted_ceo_agent.reasoning.jobs import build_reasoning_job
 from trusted_ceo_agent.service.openai_gateway import (
     AIServiceError,
     OpenAIReasoningGateway,
+    _openai_strict_schema,
 )
 from trusted_ceo_agent.service.settings import ServiceSettings
 from tests.fixtures.service.openai_responses import (
@@ -20,6 +24,7 @@ from tests.fixtures.service.openai_responses import (
     incomplete,
     refusal,
 )
+from tests.unit.questions.support import finalized_files
 
 
 class OpenAIReasoningGatewayTests(unittest.TestCase):
@@ -74,6 +79,31 @@ class OpenAIReasoningGatewayTests(unittest.TestCase):
             **kwargs,
         )
 
+    def test_const_schema_gets_its_required_api_type(self) -> None:
+        api_schema = _openai_strict_schema({"const": "supported"})
+
+        self.assertEqual("string", api_schema["type"])
+        self.assertEqual("supported", api_schema["const"])
+
+    def test_empty_array_false_items_becomes_an_api_object_schema(self) -> None:
+        api_schema = _openai_strict_schema({
+            "type": "array",
+            "maxItems": 0,
+            "items": False,
+        })
+
+        self.assertEqual(0, api_schema["maxItems"])
+        self.assertEqual({"type": "string"}, api_schema["items"])
+
+    def test_persisted_lens_job_preserves_integer_shard_contract(self) -> None:
+        transport = FakeResponsesTransport(completed('{"answer":"ok"}'))
+        persisted_job = strict_loads(canonical_bytes(self.job()))
+
+        result = self.gateway(transport).execute(persisted_job)
+
+        self.assertEqual({"answer": "ok"}, result)
+        self.assertEqual(1, len(transport.calls))
+
     def test_request_is_schema_bound_stateless_and_separates_untrusted_job_data(self) -> None:
         transport = FakeResponsesTransport(completed('{"answer":"ok"}'))
         gateway = self.gateway(transport)
@@ -108,6 +138,54 @@ class OpenAIReasoningGatewayTests(unittest.TestCase):
         submitted = json.loads(serialized_job)
         self.assertEqual("artifact_001", submitted["artifact_ref"])
         self.assertNotIn("injected_instruction", submitted)
+
+    def test_question_job_uses_fixed_structured_output_and_local_validation(
+        self,
+    ) -> None:
+        fixture_root = Path(self.temporary.name) / "question-fixture"
+        fixture_root.mkdir()
+        _, files = finalized_files(fixture_root)
+        index = QuestionIndex.from_snapshot(files)
+        job = build_result_question_job(
+            index=index,
+            question="What verified value answers this question?",
+            scope_kind="issue",
+            scope_instance_id="issue_main",
+            privacy_classification="poc_deidentified",
+        )
+        value_ref = job["allowed_value_refs"][0]
+        draft = {
+            "draft_version": "1.0.0",
+            "job_id": job["job_id"],
+            "run_id": job["run_id"],
+            "revision": job["revision"],
+            "answer_blocks": [{
+                "block_id": "block_1",
+                "support_status": "supported",
+                "text_template": f"The verified value is {{{{value:{value_ref}}}}}.",
+                "value_refs": [value_ref],
+                "claim_refs": [job["allowed_claim_refs"][0]],
+                "evidence_link_ids": [job["allowed_evidence_link_ids"][0]],
+                "source_refs": [job["allowed_source_refs"][0]],
+            }],
+        }
+        transport = FakeResponsesTransport(completed(json.dumps(draft)))
+        gateway = OpenAIReasoningGateway(
+            transport,
+            sleep=lambda _delay: None,
+            random_value=lambda: 0.0,
+        )
+
+        self.assertEqual(draft, gateway.execute_question(job))
+
+        call = transport.calls[0]
+        self.assertEqual(
+            "result-answer-draft",
+            call["text"]["format"]["name"],
+        )
+        submitted = json.loads(call["input"][0]["content"][0]["text"])
+        self.assertEqual(job, submitted)
+        self.assertIs(False, call["store"])
 
     def test_refusal_and_incomplete_response_are_distinct_non_retryable_errors(self) -> None:
         for response, expected_code in (
@@ -181,6 +259,32 @@ class OpenAIReasoningGatewayTests(unittest.TestCase):
         self.assertTrue(caught.exception.retryable)
         self.assertEqual(3, len(transport.calls))
 
+    def test_usage_totals_include_every_structured_response(self) -> None:
+        def response(payload: str, input_tokens: int, output_tokens: int):
+            return {
+                "status": "completed",
+                "output": [{
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": payload}],
+                }],
+                "usage": {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                },
+            }
+
+        transport = FakeResponsesTransport(
+            response('{"wrong":"field"}', 11, 3),
+            response('{"answer":"corrected"}', 13, 5),
+        )
+        gateway = self.gateway(transport)
+
+        gateway.execute(self.job())
+
+        self.assertEqual({
+            "input_token_count": 24,
+            "output_token_count": 8,
+        }, gateway.usage_totals())
     def test_schema_invalid_output_gets_one_correction_round(self) -> None:
         transport = FakeResponsesTransport(
             completed('{"wrong":"field"}'),
@@ -195,6 +299,29 @@ class OpenAIReasoningGatewayTests(unittest.TestCase):
         self.assertIn("schema-invalid", correction)
         self.assertNotIn("wrong", correction)
 
+    def test_semantic_invalid_output_gets_one_correction_round(self) -> None:
+        transport = FakeResponsesTransport(
+            completed('{"answer":"outside allowlist"}'),
+            completed('{"answer":"corrected"}'),
+        )
+        validated = []
+
+        def validate(result):
+            validated.append(result["answer"])
+            if result["answer"] != "corrected":
+                raise ContractError("private semantic validation detail")
+
+        result = self.gateway(transport).execute(
+            self.job(),
+            validator=validate,
+        )
+
+        self.assertEqual({"answer": "corrected"}, result)
+        self.assertEqual(["outside allowlist", "corrected"], validated)
+        self.assertEqual(2, len(transport.calls))
+        correction = transport.calls[1]["input"][1]["content"][0]["text"]
+        self.assertIn("runtime constraints", correction)
+        self.assertNotIn("private semantic validation detail", correction)
     def test_second_invalid_output_fails_without_a_third_request(self) -> None:
         for first, second in (
             ("not json", '{"wrong":"field"}'),

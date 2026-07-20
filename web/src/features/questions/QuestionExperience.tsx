@@ -104,9 +104,9 @@ function requestStatus(snapshot: QuestionRequestSnapshot | null): string {
     case "preparing":
       return "근거 범위 준비 중";
     case "asking":
-      return "Codex가 근거를 검토 중";
+      return "AI 서비스가 근거를 검토 중";
     case "validating":
-      return "플러그인이 답변을 검증 중";
+      return "로컬 검증 엔진이 답변 검증 중";
     case "scope_required":
       return "질문 범위를 더 좁혀 주세요";
     case "failed":

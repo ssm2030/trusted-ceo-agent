@@ -61,11 +61,23 @@ function assertNoAbsolutePaths(
   const isJsonPointerLocator =
     inheritedJsonPointerLocator || record.locator_type === "json_pointer";
   for (const [field, child] of Object.entries(record)) {
+    if (
+      record.locator_type === "json_pointer" &&
+      field === "display_locator"
+    ) {
+      const prefix = "json-pointer:";
+      if (
+        typeof child !== "string" ||
+        !child.startsWith(prefix) ||
+        !RFC6901_JSON_POINTER_PATTERN.test(child.slice(prefix.length))
+      ) {
+        throw new WebReportValidationError("invalid RFC 6901 JSON Pointer display locator");
+      }
+      continue;
+    }
     const isJsonPointerField =
       isJsonPointerLocator &&
-      (field === "display_locator" ||
-        field === "json_pointer" ||
-        field === "pointer");
+      (field === "json_pointer" || field === "pointer");
     if (isJsonPointerField) {
       if (
         typeof child !== "string" ||

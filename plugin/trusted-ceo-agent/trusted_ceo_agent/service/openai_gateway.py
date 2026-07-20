@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping
+from decimal import Decimal
+from threading import Lock
 from time import sleep as default_sleep
 from typing import Any, Protocol, cast
 
@@ -29,8 +31,10 @@ _SYSTEM_INSTRUCTIONS = "\n".join((
     "Do not call tools, browse, execute code, or infer missing facts.",
 ))
 _CORRECTION_MESSAGE = (
-    "The previous response was schema-invalid. Return a corrected JSON document "
-    "that exactly matches the supplied schema. Do not add commentary."
+    "The previous response was schema-invalid or violated runtime constraints. "
+    "Return a corrected JSON document that exactly matches the supplied schema, "
+    "uses only IDs and refs allowed by the job, and resolves every local-key "
+    "reference within the draft. Do not add commentary."
 )
 
 
@@ -111,11 +115,35 @@ def _openai_strict_schema(value: Any) -> Any:
         if key in {"$schema", "$id", "uniqueItems"}:
             continue
         normalized_key = "anyOf" if key == "oneOf" else key
-        normalized[normalized_key] = _openai_strict_schema(item)
+        if (
+            key == "items"
+            and item is False
+            and value.get("type") == "array"
+            and value.get("maxItems") == 0
+        ):
+            normalized[normalized_key] = {"type": "string"}
+        else:
+            normalized[normalized_key] = _openai_strict_schema(item)
     properties = normalized.get("properties")
     if isinstance(properties, Mapping):
         normalized["required"] = list(properties)
         normalized["additionalProperties"] = False
+    if "const" in normalized and "type" not in normalized:
+        constant = normalized["const"]
+        if constant is None:
+            normalized["type"] = "null"
+        elif isinstance(constant, bool):
+            normalized["type"] = "boolean"
+        elif isinstance(constant, int):
+            normalized["type"] = "integer"
+        elif isinstance(constant, (float, Decimal)):
+            normalized["type"] = "number"
+        elif isinstance(constant, str):
+            normalized["type"] = "string"
+        elif isinstance(constant, list):
+            normalized["type"] = "array"
+        elif isinstance(constant, Mapping):
+            normalized["type"] = "object"
     return normalized
 
 
@@ -158,6 +186,9 @@ class OpenAIReasoningGateway:
         self.sleep = sleep
         self.random_value = random_value
         self.event_sink = event_sink
+        self._usage_lock = Lock()
+        self._input_token_count = 0
+        self._output_token_count = 0
 
     @classmethod
     def from_settings(
@@ -176,9 +207,35 @@ class OpenAIReasoningGateway:
             **kwargs,
         )
 
-    def execute(self, job: Mapping[str, Any]) -> dict[str, Any]:
+    def execute(
+        self,
+        job: Mapping[str, Any],
+        *,
+        validator: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
         payload = self._trusted_job_payload(job)
         schema_reference = cast(str, payload["output_schema_ref"])
+        return self._execute_structured(
+            payload,
+            schema_reference,
+            validator=validator,
+        )
+
+    def execute_question(self, job: Mapping[str, Any]) -> dict[str, Any]:
+        payload = dict(job)
+        self.schema_store.validate("result-question-job.schema.json", payload)
+        return self._execute_structured(
+            payload,
+            "result-answer-draft.schema.json",
+        )
+
+    def _execute_structured(
+        self,
+        payload: Mapping[str, Any],
+        schema_reference: str,
+        *,
+        validator: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
         schema = self.schema_store.load(schema_reference)
         api_schema = cast(dict[str, Any], _openai_strict_schema(schema))
         request_input = [self._job_message(payload)]
@@ -193,6 +250,10 @@ class OpenAIReasoningGateway:
             text = self._response_text(response)
             try:
                 result = self.schema_store.validate_json(schema_reference, text)
+                if not isinstance(result, dict):
+                    raise ContractError("model output must be a JSON object")
+                if validator is not None:
+                    validator(result)
             except ContractError:
                 self._emit(payload, correction_round + 1, "AI_OUTPUT_INVALID")
                 if correction_round < MAX_CORRECTION_ROUNDS:
@@ -200,19 +261,17 @@ class OpenAIReasoningGateway:
                         self._job_message(payload),
                         {
                             "role": "user",
-                            "content": [{"type": "input_text", "text": _CORRECTION_MESSAGE}],
+                            "content": [{
+                                "type": "input_text",
+                                "text": _CORRECTION_MESSAGE,
+                            }],
                         },
                     ]
                     continue
                 raise AIServiceError(
                     "AI_OUTPUT_INVALID",
-                    "model output did not match the required schema",
+                    "model output did not satisfy the required contract",
                 ) from None
-            if not isinstance(result, dict):
-                raise AIServiceError(
-                    "AI_OUTPUT_INVALID",
-                    "model output must be a JSON object",
-                )
             return result
         raise AssertionError("unreachable correction loop")
 
@@ -225,6 +284,14 @@ class OpenAIReasoningGateway:
             raise ContractError("reasoning job has an invalid job_id")
         allowed = COMMON_FIELDS | STAGE_FIELDS[cast(str, stage)]
         fields = {key: job[key] for key in allowed if key in job}
+        if stage == "lens":
+            for field in ("shard_index", "shard_count"):
+                value = fields.get(field)
+                if (
+                    isinstance(value, Decimal)
+                    and value == value.to_integral_value()
+                ):
+                    fields[field] = int(value)
         rebuilt = build_reasoning_job(**fields)
         if rebuilt["job_id"] != job_id:
             raise ContractError("reasoning job_id does not match its payload")
@@ -249,7 +316,7 @@ class OpenAIReasoningGateway:
     ) -> Any:
         for retry_index in range(self.max_transient_retries + 1):
             try:
-                return self.transport.create(
+                response = self.transport.create(
                     model=self.model,
                     instructions=_SYSTEM_INSTRUCTIONS,
                     input=request_input,
@@ -263,6 +330,8 @@ class OpenAIReasoningGateway:
                     },
                     store=False,
                 )
+                self._record_usage(response)
+                return response
             except Exception as error:
                 code, retryable = self._classify_transport_error(error)
                 self._emit(payload, retry_index + 1, code)
@@ -291,6 +360,29 @@ class OpenAIReasoningGateway:
                 self.sleep(delay)
         raise AssertionError("unreachable retry loop")
 
+    def _record_usage(self, response: Any) -> None:
+        usage = _field(response, "usage")
+        input_tokens = _field(usage, "input_tokens")
+        output_tokens = _field(usage, "output_tokens")
+        if (
+            isinstance(input_tokens, bool)
+            or not isinstance(input_tokens, int)
+            or input_tokens < 0
+            or isinstance(output_tokens, bool)
+            or not isinstance(output_tokens, int)
+            or output_tokens < 0
+        ):
+            return
+        with self._usage_lock:
+            self._input_token_count += input_tokens
+            self._output_token_count += output_tokens
+
+    def usage_totals(self) -> dict[str, int]:
+        with self._usage_lock:
+            return {
+                "input_token_count": self._input_token_count,
+                "output_token_count": self._output_token_count,
+            }
     def _classify_transport_error(
         self,
         error: Exception,
@@ -360,7 +452,7 @@ class OpenAIReasoningGateway:
         if self.event_sink is None:
             return
         self.event_sink({
-            "stage": payload["stage"],
+            "stage": payload.get("stage", "question"),
             "job_id": payload["job_id"],
             "attempt": attempt,
             "error_code": code,

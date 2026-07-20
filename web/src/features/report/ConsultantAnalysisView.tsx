@@ -94,7 +94,7 @@ export function ConsultantAnalysisView({
             {activeIssue.title_template} 분석 검토
           </h2>
           <p className={styles.sectionDescription}>
-            플러그인이 저장한 결론, 근거와 검증 계획을 같은 문제 범위에서
+            검증 엔진이 게시한 결론, 근거와 검증 계획을 같은 문제 범위에서
             살펴봅니다.
           </p>
         </div>

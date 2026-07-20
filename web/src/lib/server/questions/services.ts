@@ -1,29 +1,28 @@
 import { randomUUID } from "node:crypto";
-import {
-  lstat,
-  readFile,
-} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { getAnalysisServices } from "@/lib/server/analysis/services";
 import {
-  capabilityFor,
+  serviceCapabilityFor,
   type QuestionCapability,
-  type SandboxProbeReceipt,
 } from "@/lib/server/questions/capability";
 import {
   ConversationStore,
 } from "@/lib/server/questions/conversation-store";
 import {
-  answerResultQuestion,
-} from "@/lib/server/questions/question-bridge";
-import {
   QuestionCoordinator,
 } from "@/lib/server/questions/question-coordinator";
+import type {
+  QuestionRouteDependencies,
+} from "@/lib/server/questions/question-route-handlers";
 import {
   getCurrentQuestionRunContext,
   onQuestionRunContextChanged,
 } from "@/lib/server/questions/run-context";
+import {
+  answerResultQuestionThroughService,
+} from "@/lib/server/questions/service-question-bridge";
 import type {
   ConversationKey,
   QuestionRunContext,
@@ -31,11 +30,6 @@ import type {
 import {
   getReportRuntime,
 } from "@/lib/server/report-runtime";
-import type {
-  QuestionRouteDependencies,
-} from "@/lib/server/questions/question-route-handlers";
-
-const MAX_RECEIPT_BYTES = 64 * 1024;
 
 function webRuntimeRoot(): string {
   return (
@@ -44,54 +38,30 @@ function webRuntimeRoot(): string {
   );
 }
 
-async function loadProbeReceipt(): Promise<SandboxProbeReceipt | null> {
-  const receiptPath =
-    process.env.TRUSTED_CEO_QUESTION_PROBE_RECEIPT;
-  if (
-    receiptPath === undefined ||
-    !path.isAbsolute(receiptPath)
-  ) {
-    return null;
-  }
-  try {
-    const details = await lstat(receiptPath);
-    if (
-      !details.isFile() ||
-      details.isSymbolicLink() ||
-      details.size <= 0 ||
-      details.size > MAX_RECEIPT_BYTES
-    ) {
-      return null;
-    }
-    const serialized = await readFile(receiptPath, "utf8");
-    const value = JSON.parse(serialized) as unknown;
-    return typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value)
-      ? (value as SandboxProbeReceipt)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function currentQuestionCapability(
   context: QuestionRunContext | null,
 ): Promise<QuestionCapability> {
   if (context === null) {
-    return capabilityFor({
-      receipt: null,
-      privacyClassification: "company_restricted",
+    return serviceCapabilityFor({
+      contextPresent: false,
+      serviceAvailable: true,
+      aiReady: false,
     });
   }
-  return capabilityFor({
-    receipt: await loadProbeReceipt(),
-    platform: process.platform,
-    privacyClassification: context.privacyClassification,
-    allowAutomatedFakeCodex:
-      process.env.NODE_ENV === "test" &&
-      process.env.TRUSTED_CEO_FAKE_CODEX === "1",
-  });
+  try {
+    const health = await getAnalysisServices().backend.getHealth();
+    return serviceCapabilityFor({
+      contextPresent: true,
+      serviceAvailable: true,
+      aiReady: health.ai_ready,
+    });
+  } catch {
+    return serviceCapabilityFor({
+      contextPresent: true,
+      serviceAvailable: false,
+      aiReady: false,
+    });
+  }
 }
 
 function keyFor(
@@ -107,6 +77,7 @@ function keyFor(
 
 function createServices(): QuestionRouteDependencies {
   const runtimeRoot = webRuntimeRoot();
+  const analysis = getAnalysisServices();
   const conversations = new ConversationStore(
     path.join(runtimeRoot, "conversations"),
   );
@@ -114,20 +85,23 @@ function createServices(): QuestionRouteDependencies {
   const coordinator = new QuestionCoordinator({
     lockRoot: path.join(runtimeRoot, "questions"),
     answer: async ({
+      clientRequestId,
       context,
       question,
       scope,
       signal,
       setState,
-    }) =>
-      answerResultQuestion({
-        context,
-        question,
-        scope,
-        capability: await currentQuestionCapability(context),
-        signal,
-        setState,
-      }),
+    }) => answerResultQuestionThroughService({
+      clientRequestId,
+      context,
+      question,
+      scope,
+      signal,
+      setState,
+    }, {
+      backend: analysis.backend,
+      currentContext: getCurrentQuestionRunContext,
+    }),
     onTerminal: async (input, snapshot) => {
       if (
         snapshot.state === "completed" &&

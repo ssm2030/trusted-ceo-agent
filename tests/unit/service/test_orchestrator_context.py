@@ -7,9 +7,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from trusted_ceo_agent.application.models import CreateRunRequest
+from trusted_ceo_agent.application.models import CreateRunRequest, MutationRequest
 from trusted_ceo_agent.application.run_application import TrustedCeoApplication
 from trusted_ceo_agent.canonical import strict_loads
+from trusted_ceo_agent.errors import ContractError
 from trusted_ceo_agent.service.contracts import HitlDecisionRequest, MutationBase
 from trusted_ceo_agent.service.orchestrator import AnalysisOrchestrator
 from trusted_ceo_agent.service.run_store import RunStore
@@ -26,10 +27,17 @@ class FakeGateway:
         self.result: dict[str, Any] | None = None
         self.calls: list[dict[str, Any]] = []
 
-    def execute(self, job: dict[str, Any]) -> dict[str, Any]:
+    def execute(
+        self,
+        job: dict[str, Any],
+        *,
+        validator=None,
+    ) -> dict[str, Any]:
         self.calls.append(dict(job))
         if self.result is None:
             raise AssertionError("fake gateway result was not configured")
+        if validator is not None:
+            validator(self.result)
         return self.result
 
 
@@ -155,17 +163,22 @@ class OrchestratorContextTests(unittest.TestCase):
                 MutationBase(expected_revision=2, idempotency_key="continue_mapping_0002"),
             )
             self.assertEqual(3, prepared.revision)
-            proposal = strict_loads(
-                _files(application, run_id, prepared.revision)[
-                    "intake/canonical-mapping-proposal.json"
-                ]
+            self.assertIn(
+                "intake/canonical-mapping-proposal.json",
+                _files(application, run_id, prepared.revision),
             )
-            gateway.result = proposal
             ingested = orchestrator.continue_run(
                 run_id,
                 MutationBase(expected_revision=3, idempotency_key="continue_mapping_0003"),
             )
             self.assertEqual(4, ingested.revision)
+            ingested_files = _files(application, run_id, ingested.revision)
+            validation = strict_loads(next(
+                payload
+                for path, payload in ingested_files.items()
+                if path.startswith("tasks/") and path.endswith("/validation.json")
+            ))
+            self.assertEqual("deterministic_canonical", validation["source"])
             reduced = orchestrator.continue_run(
                 run_id,
                 MutationBase(expected_revision=4, idempotency_key="continue_mapping_0004"),
@@ -203,10 +216,45 @@ class OrchestratorContextTests(unittest.TestCase):
 
             self.assertEqual("evidence_ready", approved.workflow_status)
             self.assertEqual(7, approved.revision)
-            self.assertEqual(1, len(gateway.calls))
+            self.assertEqual(0, len(gateway.calls))
             files = _files(application, run_id, 7)
             facts = strict_loads(files["evidence/fact-register.json"])
             self.assertIn("gross_margin_change_pp", {fact["fact_code"] for fact in facts})
+
+            lens_prepared = orchestrator.continue_run(
+                run_id,
+                MutationBase(
+                    expected_revision=approved.revision,
+                    idempotency_key="continue_lens_guard_0001",
+                ),
+            )
+            self.assertEqual("lens_jobs_ready", lens_prepared.workflow_status)
+            lens_files = _files(application, run_id, lens_prepared.revision)
+            lens_job = strict_loads(next(
+                payload
+                for path, payload in lens_files.items()
+                if path.startswith("tasks/")
+                and path.endswith("/job.json")
+                and strict_loads(payload).get("stage") == "lens"
+            ))
+            store = ArtifactStore(application.artifact_root)
+            store.open_run(run_id)
+            with self.assertRaisesRegex(
+                ContractError,
+                "deterministic_canonical source is only allowed for schema_mapping",
+            ):
+                application.mutate(MutationRequest(
+                    artifact_root=application.artifact_root,
+                    run_id=run_id,
+                    expected_revision=lens_prepared.revision,
+                    command="ingest-result",
+                    parameters={
+                        "job_id": lens_job["job_id"],
+                        "draft_document": {},
+                        "draft_source": "deterministic_canonical",
+                    },
+                ))
+            self.assertEqual(lens_prepared.revision, store.state()["revision"])
 
     def test_forbidden_edit_changes_neither_engine_nor_manifest(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:

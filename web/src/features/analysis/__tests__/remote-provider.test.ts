@@ -77,4 +77,29 @@ describe("RemoteAnalysisProvider", () => {
     expect(refreshed.revision).toBe(4);
     expect(refreshed.error?.code).toBe("STALE_REVISION");
   });
-});
+
+  it("routes a HITL stop through the resumable checkpoint action", async () => {
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      urls.push(url);
+      if (url === "/api/report/session") {
+        return Response.json({ csrfToken: "csrf_test_only" });
+      }
+      return Response.json(snapshot(2));
+    });
+    const provider = new RemoteAnalysisProvider({ fetchImpl });
+
+    await provider.submitDecision(
+      "run_20260719T000000Z_0123456789abcdef",
+      1,
+      "stop",
+      {},
+      "pause for review",
+    );
+
+    expect(urls).toContain(
+      "/api/analysis/runs/run_20260719T000000Z_0123456789abcdef/actions/stop",
+    );
+    expect(urls.some((url) => url.endsWith("/human-responses"))).toBe(false);
+  });});

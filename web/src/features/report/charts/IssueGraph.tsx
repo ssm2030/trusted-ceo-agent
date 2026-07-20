@@ -67,7 +67,7 @@ export function IssueGraph({
 
   return (
     <EChartCanvas
-      ariaLabel="플러그인이 제공한 전체 문제 구조"
+      ariaLabel="검증 엔진이 게시한 전체 문제 구조"
       bindings={graph.nodes.map((node, dataIndex) => ({
         dataIndex,
         ref: node.issue_ref,

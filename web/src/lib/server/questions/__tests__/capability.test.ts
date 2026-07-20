@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   capabilityFor,
+  serviceCapabilityFor,
   signSandboxProbeReceipt,
   type SandboxProbeReceiptBody,
 } from "@/lib/server/questions/capability";
@@ -93,4 +94,30 @@ describe("result question capability", () => {
       }).textQuestionEnabled,
     ).toBe(false);
   });
-});
+
+  it("uses only service readiness and validated report context for the active capability", () => {
+    expect(serviceCapabilityFor({
+      contextPresent: false,
+      serviceAvailable: true,
+      aiReady: true,
+    }).reasonCode).toBe("REGISTERED_REPORT_REQUIRED");
+    expect(serviceCapabilityFor({
+      contextPresent: true,
+      serviceAvailable: false,
+      aiReady: false,
+    }).reasonCode).toBe("AI_SERVICE_UNAVAILABLE");
+    expect(serviceCapabilityFor({
+      contextPresent: true,
+      serviceAvailable: true,
+      aiReady: false,
+    }).reasonCode).toBe("AI_API_KEY_REQUIRED");
+    expect(serviceCapabilityFor({
+      contextPresent: true,
+      serviceAvailable: true,
+      aiReady: true,
+    })).toMatchObject({
+      textQuestionEnabled: true,
+      companyDataEnabled: true,
+      reasonCode: "READY",
+    });
+  });});

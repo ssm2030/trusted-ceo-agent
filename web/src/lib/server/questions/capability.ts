@@ -34,7 +34,10 @@ export type QuestionCapabilityReason =
   | "CODEX_LOGIN_REQUIRED"
   | "REQUIRED_FLAG_MISSING"
   | "OUTSIDE_READ_NOT_DENIED"
-  | "AUTH_ISOLATION_UNVERIFIED";
+  | "AUTH_ISOLATION_UNVERIFIED"
+  | "AI_SERVICE_UNAVAILABLE"
+  | "AI_API_KEY_REQUIRED"
+  | "REGISTERED_REPORT_REQUIRED";
 
 export interface QuestionCapability {
   textQuestionEnabled: boolean;
@@ -101,6 +104,29 @@ function disabled(
   });
 }
 
+export function serviceCapabilityFor(input: {
+  contextPresent: boolean;
+  serviceAvailable: boolean;
+  aiReady: boolean;
+}): QuestionCapability {
+  if (!input.contextPresent) {
+    return disabled("REGISTERED_REPORT_REQUIRED");
+  }
+  if (!input.serviceAvailable) {
+    return disabled("AI_SERVICE_UNAVAILABLE");
+  }
+  if (!input.aiReady) {
+    return disabled("AI_API_KEY_REQUIRED");
+  }
+  return Object.freeze({
+    textQuestionEnabled: true,
+    companyDataEnabled: true,
+    pocOnly: false,
+    reasonCode: "READY",
+    disclosureVersion: "qa-remote-processing-v1",
+    modeLabelKo: "로컬 AI 서비스 연결됨",
+  });
+}
 export function capabilityFor(input: {
   receipt: SandboxProbeReceipt | null;
   platform?: NodeJS.Platform;

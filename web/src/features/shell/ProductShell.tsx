@@ -26,7 +26,7 @@ export function ProductShell({
           </div>
         </div>
         <p className="product-boundary">
-          플러그인이 분석과 신뢰의 정본입니다
+          로컬 검증 엔진이 분석과 신뢰의 정본입니다
         </p>
       </header>
       <div className="shell-control-band">
