@@ -134,7 +134,7 @@ export interface Receipt {
 export interface FinalApprovalSummary {
   gate: string | null;
   status: string | null;
-  input_method: "interactive_tty" | "test_fixture" | null;
+  input_method: "interactive_tty" | "web_hitl" | "test_fixture" | null;
   fixture_only: boolean | null;
   approval_id: string | null;
   actor_role: string | null;

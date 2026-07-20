@@ -52,10 +52,10 @@ const SAFE_JSON_HEADERS = {
 } as const;
 
 export const QUESTION_DISCLOSURES_KO = [
-  "질문용 근거 묶음이 로그인된 Codex를 통해 OpenAI 서비스로 전송됩니다.",
-  "현재 실행 모드와 파일 읽기 격리 검증 상태를 확인했습니다.",
-  "답변은 플러그인의 스키마·참조·값 검증을 통과한 뒤에만 표시됩니다.",
-  "자연어 문장의 의미가 근거를 완전히 함의하는지는 자동으로 증명되지 않습니다.",
+  "질문과 선택한 근거 범위는 로컬 Python AI 서비스를 통해 OpenAI API로 전송됩니다.",
+  "AI에는 검증된 근거 Job만 전달되며 내부 서비스 토큰이나 로컬 파일 경로는 전달되지 않습니다.",
+  "응답은 스키마, 참조, 값 검증을 통과한 뒤에만 화면에 표시됩니다.",
+  "회사 제한 데이터 질문은 OpenAI 원격 처리 동의가 있어야 전송됩니다.",
 ] as const;
 
 type CoordinatorPort = Readonly<{

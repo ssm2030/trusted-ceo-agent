@@ -12,7 +12,7 @@ STAGES = {"schema_mapping", "lens", "integrated", "deep_dive", "writer"}
 STAGE_FIELDS = {
     "schema_mapping": {"mapping_question_refs"},
     "lens": {"lens_id", "shard_index", "shard_count"},
-    "integrated": {"join_manifest_ref"},
+    "integrated": {"join_manifest_ref", "allowed_card_refs"},
     "deep_dive": {"approved_scope_ref", "component_run_refs"},
     "writer": {"structured_output_ref", "allowed_claim_ids"},
 }
@@ -29,7 +29,7 @@ SET_FIELDS = {
     "allowed_test_refs", "allowed_expert_trigger_refs", "allowed_decision_type_refs",
     "allowed_decision_unit_refs", "allowed_problem_family_refs", "allowed_response_refs",
     "required_signal_ids", "untrusted_text_markers",
-    "mapping_question_refs", "component_run_refs", "allowed_claim_ids",
+    "mapping_question_refs", "component_run_refs", "allowed_claim_ids", "allowed_card_refs",
 }
 
 

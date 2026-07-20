@@ -20,7 +20,7 @@ export function EvidenceFallbackTable({
         <thead>
           <tr>
             <th scope="col">항목</th>
-            <th scope="col">플러그인 표시값</th>
+            <th scope="col">검증된 표시값</th>
             <th scope="col">근거</th>
           </tr>
         </thead>

@@ -32,6 +32,7 @@
     "shard_index": {"type": "integer", "minimum": 0},
     "shard_count": {"type": "integer", "minimum": 1},
     "join_manifest_ref": {"type": "string", "minLength": 1},
+    "allowed_card_refs": {"$ref": "#/$defs/nonEmptyStringSet"},
     "approved_scope_ref": {"type": "string", "minLength": 1},
     "component_run_refs": {"$ref": "#/$defs/nonEmptyStringSet"},
     "structured_output_ref": {"type": "string", "minLength": 1},
@@ -42,10 +43,10 @@
     "nonEmptyStringSet": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
   },
   "oneOf": [
-    {"properties": {"stage": {"const": "schema_mapping"}, "lens_id": false, "shard_index": false, "shard_count": false, "join_manifest_ref": false, "approved_scope_ref": false, "component_run_refs": false, "structured_output_ref": false, "allowed_claim_ids": false}, "required": ["mapping_question_refs"]},
-    {"properties": {"stage": {"const": "lens"}, "mapping_question_refs": false, "join_manifest_ref": false, "approved_scope_ref": false, "component_run_refs": false, "structured_output_ref": false, "allowed_claim_ids": false}, "required": ["lens_id", "shard_index", "shard_count"]},
-    {"properties": {"stage": {"const": "integrated"}, "mapping_question_refs": false, "lens_id": false, "shard_index": false, "shard_count": false, "approved_scope_ref": false, "component_run_refs": false, "structured_output_ref": false, "allowed_claim_ids": false}, "required": ["join_manifest_ref"]},
-    {"properties": {"stage": {"const": "deep_dive"}, "mapping_question_refs": false, "lens_id": false, "shard_index": false, "shard_count": false, "join_manifest_ref": false, "structured_output_ref": false, "allowed_claim_ids": false}, "required": ["approved_scope_ref", "component_run_refs"]},
-    {"properties": {"stage": {"const": "writer"}, "mapping_question_refs": false, "lens_id": false, "shard_index": false, "shard_count": false, "join_manifest_ref": false, "approved_scope_ref": false, "component_run_refs": false}, "required": ["structured_output_ref", "allowed_claim_ids"]}
+    {"properties": {"stage": {"const": "schema_mapping"}, "lens_id": false, "shard_index": false, "shard_count": false, "join_manifest_ref": false, "allowed_card_refs": false, "approved_scope_ref": false, "component_run_refs": false, "structured_output_ref": false, "allowed_claim_ids": false}, "required": ["mapping_question_refs"]},
+    {"properties": {"stage": {"const": "lens"}, "mapping_question_refs": false, "join_manifest_ref": false, "allowed_card_refs": false, "approved_scope_ref": false, "component_run_refs": false, "structured_output_ref": false, "allowed_claim_ids": false}, "required": ["lens_id", "shard_index", "shard_count"]},
+    {"properties": {"stage": {"const": "integrated"}, "mapping_question_refs": false, "lens_id": false, "shard_index": false, "shard_count": false, "approved_scope_ref": false, "component_run_refs": false, "structured_output_ref": false, "allowed_claim_ids": false}, "required": ["join_manifest_ref", "allowed_card_refs"]},
+    {"properties": {"stage": {"const": "deep_dive"}, "mapping_question_refs": false, "lens_id": false, "shard_index": false, "shard_count": false, "join_manifest_ref": false, "allowed_card_refs": false, "structured_output_ref": false, "allowed_claim_ids": false}, "required": ["approved_scope_ref", "component_run_refs"]},
+    {"properties": {"stage": {"const": "writer"}, "mapping_question_refs": false, "lens_id": false, "shard_index": false, "shard_count": false, "join_manifest_ref": false, "allowed_card_refs": false, "approved_scope_ref": false, "component_run_refs": false}, "required": ["structured_output_ref", "allowed_claim_ids"]}
   ]
 }

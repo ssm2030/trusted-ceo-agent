@@ -136,6 +136,47 @@ class HumanInteractionSchemaTests(unittest.TestCase):
                 with self.assertRaises(ContractError):
                     self.schemas.validate("human-response.schema.json", candidate)
 
+    def test_approval_schema_separates_tty_and_web_provenance(self) -> None:
+        base = {
+            "approval_id": "approval_0123456789abcdef01234567",
+            "approval_request_id": "approvalrequest_0123456789abcdef01234567",
+            "gate": "final",
+            "base_artifact_ref": "artifact_001@r0000",
+            "result_artifact_ref": "artifact_001@r0002",
+            "decision": "approve",
+            "confirmed": True,
+            "actor_id": "ceo-1",
+            "actor_role": "ceo",
+            "target_refs": [],
+            "authorized_component_ids": [],
+            "patch_operations": [],
+            "rationale": "검토 후 승인",
+            "created_at": "2026-07-17T00:01:00Z",
+            "nonce_hash": "a" * 64,
+            "supersedes_approval_id": None,
+            "status": "current",
+            "approval_hash": "b" * 64,
+        }
+        tty = {
+            **base,
+            "input_method": "interactive_tty",
+            "tty_session_fingerprint": "c" * 64,
+        }
+        web = {
+            **base,
+            "input_method": "web_hitl",
+            "browser_session_fingerprint": "d" * 64,
+            "response_hash": "e" * 64,
+        }
+        self.schemas.validate("approval.schema.json", tty)
+        self.schemas.validate("approval.schema.json", web)
+
+        with self.assertRaises(ContractError):
+            self.schemas.validate(
+                "approval.schema.json",
+                {**web, "tty_session_fingerprint": "f" * 64},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

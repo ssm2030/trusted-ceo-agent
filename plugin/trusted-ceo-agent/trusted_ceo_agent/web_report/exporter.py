@@ -187,12 +187,14 @@ def _approval_ancestry(
 
     input_method = summary["input_method"]
     fixture_only = summary["fixture_only"] is True
-    if input_method == "interactive_tty" and not fixture_only:
+    if input_method in {"interactive_tty", "web_hitl"} and not fixture_only:
         mode = "trusted_final"
     elif input_method == "test_fixture" and fixture_only:
         mode = "poc_fixture"
     else:
-        raise IntegrityError("Final approval is neither trusted TTY nor explicit POC")
+        raise IntegrityError(
+            "Final approval is neither trusted human input nor explicit POC"
+        )
     return summary, approved_revision, mode
 
 

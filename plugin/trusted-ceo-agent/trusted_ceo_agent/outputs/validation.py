@@ -37,15 +37,15 @@ def _schema_compatible_numbers(value: Any) -> Any:
     return value
 
 
-def _walk_strings(value: Any):
+def _walk_strings(value: Any, path: tuple[str, ...] = ()):
     if isinstance(value, str):
-        yield value
+        yield path, value
     elif isinstance(value, Mapping):
-        for child in value.values():
-            yield from _walk_strings(child)
+        for key, child in value.items():
+            yield from _walk_strings(child, (*path, str(key)))
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        for child in value:
-            yield from _walk_strings(child)
+        for index, child in enumerate(value):
+            yield from _walk_strings(child, (*path, str(index)))
 
 
 def validate_active_issues(
@@ -72,9 +72,18 @@ def validate_final_approval(approvals: Sequence[Mapping[str, Any]]) -> None:
 
 
 def validate_no_absolute_paths(value: Any) -> None:
-    for text in _walk_strings(value):
+    for path, text in _walk_strings(value):
+        structured_json_pointer = (
+            (bool(path) and path[-1] == "json_pointer")
+            or (len(path) >= 2 and path[-2:] == ("locator", "pointer"))
+        )
+        if structured_json_pointer and text.startswith("/") and "\\" not in text:
+            continue
         if ABSOLUTE_PATH.search(text):
-            raise FinalValidationError("absolute paths are forbidden in customer output")
+            location = "/".join(path) or "<root>"
+            raise FinalValidationError(
+                f"absolute paths are forbidden in customer output at {location}"
+            )
 
 
 def _validate_final_result_schema(

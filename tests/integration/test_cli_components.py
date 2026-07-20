@@ -181,7 +181,7 @@ class CliComponentsIntegrationTests(unittest.TestCase):
                 "output_signals": [],
             })
             with patch(
-                "trusted_ceo_agent.cli.execute_authorized_scope",
+                "trusted_ceo_agent.application.mutations.execute_authorized_scope",
                 return_value=(plan, (failed_run,)),
             ):
                 code, result = call([

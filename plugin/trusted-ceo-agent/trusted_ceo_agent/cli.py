@@ -1,33 +1,34 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import hashlib
 import importlib.util
 import json
-import mimetypes
 import os
-import secrets
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from trusted_ceo_agent.accounting.dispatcher import dispatch_accounting_suite
 from trusted_ceo_agent.accounting.input_adapter import build_accounting_request
-from trusted_ceo_agent.analysis.runtime import (
-    ProfessionalAnalysisRuntime,
-    TaskExecutionFailure,
+from trusted_ceo_agent.application.models import (
+    CreateRunRequest,
+    ExportWebReportRequest,
+    HumanResponseRequest,
+    MutationRequest,
+    PrepareResultQuestionRequest,
+    RevisionRequest,
+    RunRequest,
+    SubmitHumanResponseRequest,
+    ValidateResultAnswerRequest,
 )
+from trusted_ceo_agent.application.run_application import TrustedCeoApplication
 from trusted_ceo_agent.canonical import canonical_bytes, strict_loads
 from trusted_ceo_agent.contracts.cli_response import response
 from trusted_ceo_agent.contracts.ids import make_id
 from trusted_ceo_agent.contracts.schema_store import SchemaStore
 from trusted_ceo_agent.errors import ContractError, IntegrityError, RevisionConflict
 from trusted_ceo_agent.evidence.core import EvidenceCoreValidator
-from trusted_ceo_agent.evidence.revalidation import revalidate_component_artifacts
 from trusted_ceo_agent.filesystem import ensure_within
-from trusted_ceo_agent.grading.grader import grade
 from trusted_ceo_agent.mission import (
     is_confirmed_mission,
     materialize_confirmed_mission,
@@ -35,51 +36,15 @@ from trusted_ceo_agent.mission import (
 )
 from trusted_ceo_agent.outputs.validation import revalidate_package
 from trusted_ceo_agent.outputs.render import render_package
-from trusted_ceo_agent.packs.runtime_index import RuntimePackIndex
-from trusted_ceo_agent.questions import (
-    QuestionIndex,
-    ScopeRequired,
-    build_result_question_job,
-    validate_and_render_answer,
-)
 from trusted_ceo_agent.questions.scope import SCOPE_KINDS
+from trusted_ceo_agent.runtime_components import normalize_authorized_scope
 from trusted_ceo_agent.runtime_scan import build_scan_artifacts
-from trusted_ceo_agent.runtime_components import (
-    bind_accounting_professional_inputs,
-    component_input_documents,
-    execute_authorized_scope,
-    merge_component_runs,
-    normalize_authorized_scope,
-)
-from trusted_ceo_agent.runtime_finalization import build_delivery_package, prepare_finalization
-from trusted_ceo_agent.reasoning.attempts import next_attempt_action
-from trusted_ceo_agent.reasoning.jobs import compile_stage_jobs
-from trusted_ceo_agent.reasoning.join import freeze_join_manifest, reduce_join
-from trusted_ceo_agent.reasoning.normalizer import normalize_lens_draft
-from trusted_ceo_agent.reasoning.stage_drafts import (
-    normalize_deep_dive_draft,
-    normalize_integrated_draft,
-    normalize_writer_draft,
-)
 from trusted_ceo_agent.trust.artifact_store import ArtifactStore
-from trusted_ceo_agent.trust.revision_validation import validate_revision
 from trusted_ceo_agent.web_report.eligibility import decide_viewer_eligibility
-from trusted_ceo_agent.web_report.contracts import load_bundle_bytes
-from trusted_ceo_agent.web_report.converter import convert_final_revision
 from trusted_ceo_agent.web_report.output import publish_web_report_output
 from trusted_ceo_agent.workflow.approvals import ApprovalService, current_approvals
-from trusted_ceo_agent.workflow.human_actions import (
-    pending_action_for_state,
-    verify_action_card,
-)
-from trusted_ceo_agent.workflow.human_response_policy import (
-    verify_human_response_policy,
-)
-from trusted_ceo_agent.workflow.overlays import apply_overlay, invalidated_gates
-from trusted_ceo_agent.workflow.responses import HumanResponseService
+from trusted_ceo_agent.workflow.overlays import apply_overlay
 from trusted_ceo_agent.workflow.revisions import RevisionManager
-from trusted_ceo_agent.workflow.snapshot_validation import validate_snapshot_files
-from trusted_ceo_agent.workflow.completion import verify_completion_assessment
 from trusted_ceo_agent.workflow.state_machine import TERMINAL, transition
 
 
@@ -217,37 +182,8 @@ def _emit(value: Mapping[str, Any]) -> None:
     sys.stdout.flush()
 
 
-def _run_id() -> str:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"run_{timestamp}_{secrets.token_hex(8)}"
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
-
-def _validate_start_paths(artifact_root: Path, mission: Path, inputs: Sequence[Path]) -> Path:
-    workspace = Path.cwd().resolve()
-    root = artifact_root.resolve()
-    if not _is_relative_to(root, workspace):
-        raise ContractError("artifact root must be inside the current workspace")
-    if _is_relative_to(root, PLUGIN_ROOT) or _is_relative_to(PLUGIN_ROOT, root):
-        raise ContractError("artifact root cannot overlap plugin root")
-    if any(part.lower() == "logs" for part in root.parts):
-        raise ContractError("artifact root cannot be logs")
-    for supplied in (mission, *inputs):
-        resolved = supplied.resolve(strict=True)
-        if resolved.is_dir():
-            raise ContractError(f"input must be a file: {supplied}")
-        if any(part.lower() == "logs" for part in resolved.parts):
-            raise ContractError("logs cannot be an input")
-        if _is_relative_to(resolved, root):
-            raise ContractError("input cannot be inside artifact root")
-    return root
+def _application_payload(result: Any) -> tuple[int, dict[str, Any]]:
+    return result.code, {"contract_version": "1.0.0", **result.to_cli_payload()}
 
 
 def _bootstrap_preflight() -> dict[str, Any]:
@@ -337,21 +273,6 @@ def _advance(state: Mapping[str, Any], event: str, context: Mapping[str, Any] | 
     return result
 
 
-def _recorded_blocker_is_resolved(files: Mapping[str, bytes], state: Mapping[str, Any]) -> bool:
-    blocker = state.get("blocker")
-    if blocker == "component_contract_failure":
-        component_runs = [
-            strict_loads(payload)
-            for path, payload in files.items()
-            if path.startswith("components/runs/") and path.endswith(".json")
-        ]
-        return bool(component_runs) and all(
-            isinstance(run, Mapping) and run.get("status") != "failed"
-            for run in component_runs
-        )
-    return False
-
-
 def _overlay_status(value: Any) -> str | None:
     if isinstance(value, str):
         return value
@@ -367,297 +288,58 @@ def _store_for(args: argparse.Namespace) -> ArtifactStore:
     return store
 
 
-def _trusted_local_principal() -> dict[str, Any]:
-    subject = getpass.getuser().strip()
-    if not subject:
-        raise ContractError("local transport principal is unavailable")
-    return {"subject": subject, "roles": ["run_owner"]}
-
-
-def _human_response_manager(store: ArtifactStore) -> RevisionManager:
-    return RevisionManager(store, validator=validate_snapshot_files)
-
-
-def _human_response_policy(
-    mission: Mapping[str, Any],
-    *,
-    owner_actor_id: str | None,
-) -> dict[str, Any]:
-    principal = _trusted_local_principal()
-    confirmation = mission.get("confirmation")
-    confirmed_actor = (
-        confirmation.get("actor_id")
-        if isinstance(confirmation, Mapping)
-        else None
-    )
-    actor_id = owner_actor_id or (
-        str(confirmed_actor) if isinstance(confirmed_actor, str) and confirmed_actor else None
-    ) or str(principal["subject"])
-    body: dict[str, Any] = {
-        "schema_version": "1.0.0",
-        "policy_id": "human-response-local-owner",
-        "policy_version": "1.0.0",
-        "transport_principal": principal["subject"],
-        "authorized_actors": [{
-            "actor_id": actor_id,
-            "roles": ["run_owner"],
-            "allowed_gates": list(GATES),
-        }],
-        "restricted_source_allowlist": [],
-        "privacy_policy": {
-            "direct_identifier_reasoning": "forbidden",
-            "minimum_group_size": 5,
-        },
-    }
-    policy = {**body, "policy_hash": hashlib.sha256(canonical_bytes(body)).hexdigest()}
-    verify_human_response_policy(policy)
-    return policy
-
-
 def _start(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    root = _validate_start_paths(args.artifact_root, args.mission_contract, args.input)
-    _, mission_payload = _stable_read(args.mission_contract.resolve(strict=True))
-    mission = strict_loads(mission_payload)
-    if not isinstance(mission, dict):
-        raise ContractError("Mission Contract must be an object")
-    mission_confirmed = is_confirmed_mission(mission)
-    if mission_confirmed:
-        validate_confirmed_mission(mission)
-    run_id = _run_id()
-    store = ArtifactStore(root)
-    store.create_run(run_id)
-    state_name = "context_ready" if mission_confirmed else "context_confirmation_required"
-    files: dict[str, bytes] = {
-        "mission/mission-contract.json": canonical_bytes(mission),
-        "workflow/human-response-policy.json": canonical_bytes(_human_response_policy(
-            mission,
-            owner_actor_id=args.run_owner_actor_id,
-        )),
-    }
-    sources_by_id: dict[str, dict[str, Any]] = {}
-    resolver: dict[str, str] = {}
-    received_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    for input_path in args.input:
-        resolved, payload = _stable_read(input_path.resolve(strict=True))
-        digest = hashlib.sha256(payload).hexdigest()
-        token = make_id("path", {"name": resolved.name, "sha256": digest})
-        files[f"sources/blobs/{digest}"] = payload
-        resolver[token] = str(resolved)
-        source_id = f"source_{digest[:24]}"
-        existing = sources_by_id.get(source_id)
-        if existing is not None:
-            if resolved.name != existing["display_name"] and resolved.name not in existing["aliases"]:
-                existing["aliases"].append(resolved.name)
-                existing["aliases"].sort()
-            continue
-        sources_by_id[source_id] = {
-            "source_id": source_id,
-            "source_type": "uploaded_file",
-            "access_policy": "permitted",
-            "evidence_usage": "primary",
-            "observation_roles": [],
-            "display_name": resolved.name,
-            "media_type": mimetypes.guess_type(resolved.name)[0] or "application/octet-stream",
-            "sha256": digest,
-            "size_bytes": len(payload),
-            "received_at": received_at,
-            "snapshot_ref": f"sources/blobs/{digest}",
-            "original_path_token": token,
-            "aliases": [],
-            "metadata": {"extension": resolved.suffix.lower()},
-        }
-    sources = [sources_by_id[key] for key in sorted(sources_by_id)]
-    files["sources/registry.json"] = canonical_bytes(sorted(sources, key=lambda item: item["source_id"]))
-    files["sources/resolver.json"] = canonical_bytes(resolver)
-    state = {
-        "run_id": run_id,
-        "revision": 1,
-        "state": state_name,
-        "resume_state": None,
-        "blocker": None,
-        "approvals": [],
-    }
-    files["workflow/state.json"] = canonical_bytes(state)
-    store.publish(0, files)
-    return 0, response(
-        command="start", ok=True, code=0, message="run created",
-        run_id=run_id, revision=1, state=state_name,
-        data={"source_count": len(sources)},
-    )
+    result = TrustedCeoApplication(args.artifact_root).create_run(CreateRunRequest(
+        mission=args.mission_contract,
+        inputs=tuple(args.input),
+        run_owner_actor_id=args.run_owner_actor_id,
+        run_id=None,
+    ))
+    return _application_payload(result)
 
 
 def _status(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    store = _store_for(args)
-    pointer = store.state()
-    revision = int(pointer["revision"])
-    files = _snapshot_payloads(store, revision)
-    state = _workflow_state(files)
-    return 0, response(
-        command="status", ok=True, code=0, message="status read",
-        run_id=args.run_id, revision=revision, state=state["state"], data=state,
-    )
-
-
-def _pending_action_document(
-    store: ArtifactStore,
-    *,
-    run_id: str,
-    revision: int,
-) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    files = _snapshot_payloads(store, revision)
-    state = _workflow_state(files)
-    stored = files.get("workflow/pending-action.json")
-    if stored is not None:
-        card = json.loads(stored.decode("utf-8"))
-        if not isinstance(card, dict):
-            raise IntegrityError("stored Human Action Card is invalid")
-    else:
-        resolution_payload = files.get("workflow/human-action-resolution.json")
-        resolved_here = False
-        if resolution_payload is not None:
-            resolution = json.loads(resolution_payload.decode("utf-8"))
-            if not isinstance(resolution, Mapping):
-                raise IntegrityError("stored Human Action resolution is invalid")
-            value = dict(resolution)
-            SchemaStore().validate("human-action-resolution.schema.json", value)
-            claimed = value.pop("resolution_hash")
-            actual = hashlib.sha256(canonical_bytes(value)).hexdigest()
-            if claimed != actual:
-                raise IntegrityError("stored Human Action resolution hash is invalid")
-            resolved_here = (
-                resolution.get("result_revision") == revision
-                and resolution.get("workflow_state") == state.get("state")
-            )
-        card = None if resolved_here else pending_action_for_state(
-            run_id=run_id,
-            revision=revision,
-            workflow_state=str(state["state"]),
-            evidence_refs=[],
-            expires_at=None,
-        )
-    if card is not None:
-        verify_action_card(card)
-        if (
-            card.get("run_id") != run_id
-            or card.get("base_revision") != revision
-            or card.get("workflow_state") != state.get("state")
-        ):
-            raise IntegrityError("stored Human Action Card does not match current workflow")
-    return card, state
-
-
-def _action_from_args(
-    store: ArtifactStore,
-    args: argparse.Namespace,
-) -> dict[str, Any]:
-    card, _ = _pending_action_document(
-        store,
-        run_id=args.run_id,
-        revision=args.expected_revision,
-    )
-    if card is None:
-        raise ContractError("no Human Action Card is pending at the expected revision")
-    if card["action_id"] != args.action_id:
-        raise RevisionConflict("Human Action Card ID is stale")
-    if card["content_hash"] != args.action_content_hash:
-        raise RevisionConflict("Human Action Card content hash is stale")
-    return card
-
-
-def _human_response_input(path: Path) -> dict[str, Any]:
-    resolved = path.resolve(strict=True)
-    if any(part.lower() == "logs" for part in resolved.parts):
-        raise ContractError("logs cannot be a Human Response input")
-    _, payload = _stable_read(resolved)
-    value = strict_loads(payload)
-    if not isinstance(value, Mapping):
-        raise ContractError("Human Response input must be an object")
-    return dict(value)
+    result = TrustedCeoApplication(args.artifact_root).status(RunRequest(args.run_id))
+    return _application_payload(result)
 
 
 def _pending_action(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    store = _store_for(args)
-    revision = int(store.state()["revision"])
-    card, state = _pending_action_document(
-        store,
-        run_id=args.run_id,
-        revision=revision,
-    )
-    code = 2 if card is not None else 0
-    return code, response(
-        command=args.command,
-        ok=True,
-        code=code,
-        message="human action required" if card is not None else "no human action pending",
-        run_id=args.run_id,
-        revision=revision,
-        state=state["state"],
-        data={"action": card},
-    )
+    result = TrustedCeoApplication(args.artifact_root).pending_action(RunRequest(args.run_id))
+    return _application_payload(result)
 
 
 def _preview_human_response(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    store = _store_for(args)
-    current = int(store.state()["revision"])
-    if current != args.expected_revision:
-        raise RevisionConflict(f"expected revision {args.expected_revision}, current is {current}")
-    card = _action_from_args(store, args)
-    receipt = HumanResponseService(
-        _human_response_manager(store),
-        trusted_principal=_trusted_local_principal(),
-    ).preview(
-        expected_revision=args.expected_revision,
-        action=card,
-        response=_human_response_input(args.response),
+    result = TrustedCeoApplication(args.artifact_root).preview_human_response(
+        HumanResponseRequest(
+            run_id=args.run_id,
+            expected_revision=args.expected_revision,
+            action_id=args.action_id,
+            action_content_hash=args.action_content_hash,
+            response=args.response,
+        )
     )
-    return 0, response(
-        command=args.command,
-        ok=True,
-        code=0,
-        message="human response previewed",
-        run_id=args.run_id,
-        revision=current,
-        state=receipt["workflow_state"],
-        data={"receipt": receipt},
-    )
+    return _application_payload(result)
 
 
 def _submit_human_response(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    store = _store_for(args)
-    card = _action_from_args(store, args)
-    receipt, revision = HumanResponseService(
-        _human_response_manager(store),
-        trusted_principal=_trusted_local_principal(),
-    ).submit(
-        expected_revision=args.expected_revision,
-        action=card,
-        response=_human_response_input(args.response),
-        idempotency_key=args.idempotency_key,
+    result = TrustedCeoApplication(args.artifact_root).submit_human_response(
+        SubmitHumanResponseRequest(
+            run_id=args.run_id,
+            expected_revision=args.expected_revision,
+            action_id=args.action_id,
+            action_content_hash=args.action_content_hash,
+            response=args.response,
+            idempotency_key=args.idempotency_key,
+        )
     )
-    code = 2 if receipt["terminal_approval_required"] else 0
-    return code, response(
-        command=args.command,
-        ok=True,
-        code=code,
-        message=(
-            "terminal approval required"
-            if receipt["terminal_approval_required"]
-            else "human response committed"
-        ),
-        run_id=args.run_id,
-        revision=revision,
-        state=receipt["workflow_state"],
-        data={"receipt": receipt},
-    )
+    return _application_payload(result)
 
 
 def _validate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    validation = validate_revision(_store_for(args), args.revision)
-    return 0, response(
-        command="validate", ok=True, code=0, message="revision valid",
-        run_id=args.run_id, revision=args.revision,
-        data={"validated": True, "checks": list(validation.checks)},
+    result = TrustedCeoApplication(args.artifact_root).validate(
+        RevisionRequest(run_id=args.run_id, revision=args.revision)
     )
+    return _application_payload(result)
 
 
 def _render(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
@@ -782,47 +464,15 @@ def _prepare_accounting_input(args: argparse.Namespace) -> tuple[int, dict[str, 
     )
 
 def _export_web_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    store = _store_for(args)
-    _, manifest_payload = _stable_read(
-        args.input_manifest.resolve(strict=True)
+    result = TrustedCeoApplication(args.artifact_root).export_web_report(
+        ExportWebReportRequest(
+            run_id=args.run_id,
+            revision=args.revision,
+            output=args.output,
+            input_manifest=args.input_manifest,
+        )
     )
-    try:
-        strict_loads(manifest_payload)
-        manifest = json.loads(manifest_payload.decode("utf-8"))
-    except (UnicodeError, ValueError) as error:
-        raise ContractError("web report input manifest is invalid JSON") from error
-    if not isinstance(manifest, Mapping):
-        raise ContractError("web report input manifest must be an object")
-    SchemaStore().validate("web-report-input-manifest.schema.json", manifest)
-    if (
-        manifest["run_id"] != args.run_id
-        or manifest["revision"] != args.revision
-    ):
-        raise IntegrityError("web report input manifest run or revision mismatch")
-    expected_hash = manifest["files"][0]["sha256"]
-    payload = convert_final_revision(
-        store,
-        run_id=args.run_id,
-        revision=args.revision,
-        expected_final_result_hash=expected_hash,
-    )
-    bundle = load_bundle_bytes(payload)
-    run_dir = store.open_run(args.run_id)
-    publish_web_report_output(
-        args.output.resolve(strict=False), payload,
-        workspace=Path.cwd(), run_dir=run_dir, plugin_root=PLUGIN_ROOT,
-    )
-    receipt = bundle["viewer_eligibility_receipt"]
-    return 0, response(
-        command="export-web-report", ok=True, code=0,
-        message="web report exported", run_id=args.run_id,
-        revision=args.revision,
-        data={
-            "bundle_hash": bundle["bundle_hash"],
-            "viewer_mode": receipt["claimed_viewer_mode"],
-            "checks": list(receipt["completed_checks"]),
-        },
-    )
+    return _application_payload(result)
 
 
 def _validate_web_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
@@ -841,746 +491,63 @@ def _validate_web_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]
 
 
 def _prepare_result_question(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    files = _snapshot_payloads(_store_for(args), args.revision)
-    index = QuestionIndex.from_snapshot(files)
-    _, question_payload = _stable_read(args.question_file.resolve(strict=True))
-    question = question_payload.decode("utf-8")
-    try:
-        job = build_result_question_job(
-            index=index,
-            question=question,
+    result = TrustedCeoApplication(args.artifact_root).prepare_result_question(
+        PrepareResultQuestionRequest(
+            run_id=args.run_id,
+            revision=args.revision,
+            question=args.question_file,
             scope_kind=args.scope_kind,
             scope_instance_id=args.scope_instance_id,
             privacy_classification=args.privacy_classification,
         )
-    except ScopeRequired as error:
-        return 2, response(
-            command="prepare-result-question", ok=True, code=2,
-            message="scope required", run_id=args.run_id,
-            revision=args.revision, state="finalized",
-            data={
-                "error_code": error.code,
-                "suggestions": [dict(item) for item in error.suggestions],
-            },
-        )
-    return 0, response(
-        command="prepare-result-question", ok=True, code=0,
-        message="result question job prepared", run_id=args.run_id,
-        revision=args.revision, state="finalized", data={"job": job},
     )
+    return _application_payload(result)
 
 
 def _validate_result_answer(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    files = _snapshot_payloads(_store_for(args), args.revision)
-    index = QuestionIndex.from_snapshot(files)
-    _, job_payload = _stable_read(args.job.resolve(strict=True))
-    _, draft_payload = _stable_read(args.draft.resolve(strict=True))
-    job = strict_loads(job_payload)
-    draft = strict_loads(draft_payload)
-    if not isinstance(job, Mapping) or not isinstance(draft, Mapping):
-        raise ContractError("result question Job and answer draft must be objects")
-    answer = validate_and_render_answer(job, draft, index)
-    return 0, response(
-        command="validate-result-answer", ok=True, code=0,
-        message="result answer validated", run_id=args.run_id,
-        revision=args.revision, state="finalized", data={"answer": answer},
+    result = TrustedCeoApplication(args.artifact_root).validate_result_answer(
+        ValidateResultAnswerRequest(
+            run_id=args.run_id,
+            revision=args.revision,
+            job=args.job,
+            draft=args.draft,
+        )
     )
-
-
-def _pack_reasoning_context(files: Mapping[str, bytes]) -> dict[str, Any]:
-    index = RuntimePackIndex.from_files(files)
-    core = strict_loads(files.get("evidence/core.json", b"{}"))
-    if not isinstance(core, Mapping):
-        raise ContractError("Evidence Core is missing for reasoning")
-    mission = strict_loads(files.get(
-        "mission/effective-mission-contract.json",
-        files.get("mission/mission-contract.json", b"{}"),
-    ))
-    selection = strict_loads(files.get("packs/selection.json", b"{}"))
-    selected_refs = set(selection.get("selected_problem_refs", [])) if isinstance(selection, Mapping) else set()
-    selected_packs = tuple(
-        pack for pack in index.problem_packs
-        if f"{pack['pack_id']}@{pack['pack_version']}" in selected_refs
-    )
-    facts = [
-        item for item in core.get("fact_register", [])
-        if isinstance(item, Mapping) and isinstance(item.get("fact_id"), str)
-    ]
-    signals = [
-        item for item in core.get("signal_register", [])
-        if isinstance(item, Mapping) and isinstance(item.get("signal_id"), str)
-    ]
-    capabilities = [
-        item for item in core.get("capability_map", {}).get("capabilities", [])
-        if isinstance(item, Mapping) and isinstance(item.get("capability_id"), str)
-    ]
-    domain_content = index.domain_pack["content"]
-    mechanisms = {
-        str(item["mechanism_ref"])
-        for item in domain_content.get("mechanism_catalog", [])
-    }
-    tests = {
-        str(reference)
-        for item in domain_content.get("mechanism_catalog", [])
-        for reference in item.get("distinguishing_test_refs", [])
-    }
-    experts = {
-        str(item["expert_trigger_ref"])
-        for item in domain_content.get("expert_triggers", [])
-    }
-    families: set[str] = set()
-    responses: set[str] = set()
-    conditions: set[str] = set()
-    decision_types: set[str] = set()
-    for pack in selected_packs:
-        content = pack["content"]
-        families.update({
-            str(content["problem_family_code"]),
-            str(pack["pack_id"]),
-            f"{pack['pack_id']}@{pack['pack_version']}",
-        })
-        for item in content.get("distinguishing_tests", []):
-            tests.add(str(item["test_ref"]))
-        for item in content.get("conditional_response_catalog", []):
-            responses.add(str(item["response_ref"]))
-            conditions.update(str(value) for value in item.get("preconditions", []))
-            conditions.update(str(value) for value in item.get("disqualifiers", []))
-        for item in content.get("blocking_counter_evidence_conditions", []):
-            conditions.add(str(item["condition_ref"]))
-        experts.update(str(value) for value in content.get("expert_trigger_refs", []))
-        decision_types.update(
-            str(item["decision_type_ref"])
-            for item in content.get("decision_type_catalog", [])
-        )
-    decision_units = {
-        str(item["decision_unit_ref"])
-        for item in mission.get("decision_units", [])
-        if isinstance(item, Mapping) and isinstance(item.get("decision_unit_ref"), str)
-    } if isinstance(mission, Mapping) else set()
-    claim_refs: set[str] = set()
-    data_request_refs: set[str] = set()
-    for path, payload in files.items():
-        if not path.startswith("tasks/") or not path.endswith("/card.json"):
-            continue
-        card = strict_loads(payload)
-        normalized = card.get("normalized_payload", {}) if isinstance(card, Mapping) else {}
-        if not isinstance(normalized, Mapping):
-            continue
-        for field in (
-            "business_meanings", "problem_candidates", "cause_hypotheses",
-            "counter_hypotheses", "expert_trigger_candidates",
-        ):
-            for item in normalized.get(field, []):
-                if isinstance(item, Mapping) and isinstance(item.get("claim_id"), str):
-                    claim_refs.add(str(item["claim_id"]))
-        for item in normalized.get("data_requests", []):
-            if isinstance(item, Mapping) and isinstance(item.get("local_key"), str):
-                data_request_refs.add(str(item["local_key"]))
-    return {
-        "index": index,
-        "core": core,
-        "mission": mission,
-        "selected_packs": selected_packs,
-        "facts": facts,
-        "signals": signals,
-        "capabilities": capabilities,
-        "allowed_mechanism_refs": sorted(mechanisms),
-        "allowed_test_refs": sorted(tests),
-        "allowed_expert_trigger_refs": sorted(experts),
-        "allowed_problem_family_refs": sorted(families),
-        "allowed_response_refs": sorted(responses),
-        "allowed_condition_refs": sorted(conditions),
-        "allowed_decision_type_refs": sorted(decision_types),
-        "allowed_decision_unit_refs": sorted(decision_units),
-        "allowed_claim_refs": sorted(claim_refs),
-        "allowed_data_request_refs": sorted(data_request_refs),
-        "allowed_monitoring_metric_refs": sorted({
-            str(item.get("metric_code") or item.get("fact_code"))
-            for item in facts
-            if item.get("metric_code") or item.get("fact_code")
-        }),
-    }
-
-
-def _reasoning_jobs(
-    stage: str,
-    *,
-    files: Mapping[str, bytes],
-    pointer: Mapping[str, Any],
-    run_id: str,
-    revision: int,
-) -> list[dict[str, Any]]:
-    context = _pack_reasoning_context(files)
-    mission = context["mission"]
-    mission_hash = str(mission.get("confirmation", {}).get("contract_hash", ""))
-    if len(mission_hash) != 64:
-        mission_hash = hashlib.sha256(canonical_bytes(mission)).hexdigest()
-    pack_hash = str(context["index"].manifest["manifest_hash"])
-    artifact_ref = f"{run_id}@r{revision:04d}:{pointer.get('manifest_hash', '')}"
-    common = {
-        "artifact_ref": artifact_ref,
-        "mission_contract_hash": mission_hash,
-        "pack_manifest_hash": pack_hash,
-        "prompt_template_hash": hashlib.sha256(f"trusted-ceo-{stage}-v1".encode("utf-8")).hexdigest(),
-        "model_profile": "balanced_structured" if stage in {"schema_mapping", "lens"} else "strong_structured",
-        "output_schema_ref": f"{stage.replace('_', '-')}-draft.schema.json",
-        "capability_ids": [item["capability_id"] for item in context["capabilities"]],
-        "allowed_fact_ids": [item["fact_id"] for item in context["facts"]],
-        "allowed_signal_ids": [item["signal_id"] for item in context["signals"]],
-        "allowed_mechanism_refs": context["allowed_mechanism_refs"],
-        "allowed_test_refs": context["allowed_test_refs"],
-        "allowed_expert_trigger_refs": context["allowed_expert_trigger_refs"],
-        "allowed_decision_type_refs": context["allowed_decision_type_refs"],
-        "allowed_decision_unit_refs": context["allowed_decision_unit_refs"],
-        "allowed_problem_family_refs": context["allowed_problem_family_refs"],
-        "allowed_response_refs": context["allowed_response_refs"],
-    }
-    if stage == "schema_mapping":
-        proposal = strict_loads(files.get("intake/canonical-mapping-proposal.json", b"{}"))
-        references = sorted(
-            item["mapping_question_ref"]
-            for item in proposal.get("mappings", [])
-            if isinstance(item, Mapping) and isinstance(item.get("mapping_question_ref"), str)
-        )
-        if not references:
-            raise ContractError("canonical mapping proposal has no questions")
-        return compile_stage_jobs(stage, **common, mapping_question_refs=references)
-    if stage == "lens":
-        facts = context["facts"]
-        signals = context["signals"]
-        work_items = [
-            {
-                "id": item["fact_id"],
-                "scope": item.get("scope", []),
-                "period": item.get("time_context", {}),
-                "component_id": (item.get("derivation") or {}).get("component_id", "intake"),
-            }
-            for item in facts
-            if isinstance(item, dict) and isinstance(item.get("fact_id"), str)
-        ]
-        signal_ids = sorted(
-            item["signal_id"] for item in signals
-            if isinstance(item, dict) and isinstance(item.get("signal_id"), str)
-        )
-        required_signal_ids = sorted(
-            item["signal_id"] for item in signals
-            if isinstance(item, dict)
-            and isinstance(item.get("signal_id"), str)
-            and item.get("outcome") in {"triggered", "not_assessable"}
-        )
-        jobs: list[dict[str, Any]] = []
-        for pack in context["selected_packs"]:
-            content = pack["content"]
-            family_refs = sorted({
-                str(content["problem_family_code"]),
-                str(pack["pack_id"]),
-                f"{pack['pack_id']}@{pack['pack_version']}",
-            })
-            response_refs = sorted(
-                str(item["response_ref"])
-                for item in content.get("conditional_response_catalog", [])
-            )
-            decision_refs = sorted(
-                str(item["decision_type_ref"])
-                for item in content.get("decision_type_catalog", [])
-            )
-            for lens in content.get("lens_plan", []):
-                lens_common = dict(common)
-                lens_common.update({
-                    "allowed_signal_ids": signal_ids,
-                    "required_signal_ids": required_signal_ids,
-                    "allowed_problem_family_refs": family_refs,
-                    "allowed_mechanism_refs": sorted(set(lens.get("allowed_mechanism_refs", []))),
-                    "allowed_response_refs": response_refs,
-                    "allowed_decision_type_refs": decision_refs,
-                })
-                jobs.extend(compile_stage_jobs(
-                    stage, **lens_common, work_items=work_items,
-                    lens_id=str(lens["lens_id"]),
-                ))
-        if not jobs:
-            boundary_common = dict(common)
-            boundary_common.update({
-                "allowed_signal_ids": signal_ids,
-                "required_signal_ids": required_signal_ids,
-                "allowed_problem_family_refs": [],
-                "allowed_mechanism_refs": [],
-                "allowed_test_refs": [],
-                "allowed_expert_trigger_refs": [],
-                "allowed_response_refs": [],
-                "allowed_decision_type_refs": [],
-            })
-            jobs.extend(compile_stage_jobs(
-                stage, **boundary_common, work_items=work_items,
-                lens_id="bounded_not_assessable",
-            ))
-        return sorted(jobs, key=lambda item: item["job_id"])
-    if stage == "integrated":
-        join = strict_loads(files["reasoning/join-manifest.json"])
-        return compile_stage_jobs(stage, **common, join_manifest_ref=join["join_manifest_id"])
-    if stage == "deep_dive":
-        scope = strict_loads(files.get("components/scope.json", b"{}"))
-        return compile_stage_jobs(
-            stage, **common, approved_scope_ref=scope.get("scope_ref", ""),
-            component_run_refs=scope.get("component_run_ids", []),
-        )
-    if stage == "writer":
-        structured = strict_loads(files.get("final/structured-output.json", b"{}"))
-        return compile_stage_jobs(
-            stage, **common, structured_output_ref="final/structured-output.json",
-            allowed_claim_ids=sorted(
-                item["issue_id"] for item in structured.get("issues", [])
-                if isinstance(item, dict) and isinstance(item.get("issue_id"), str)
-            ),
-        )
-    raise ContractError(f"unsupported stage: {stage}")
-
-
-def _reasoning_attempt_records(
-    files: Mapping[str, bytes], job_id: str, stage: str,
-) -> list[dict[str, Any]]:
-    prefix = f"tasks/{job_id}/attempts/attempt-"
-    records: list[dict[str, Any]] = []
-    for path, payload in files.items():
-        if not path.startswith(prefix) or not path.endswith(".json"):
-            continue
-        record = strict_loads(payload)
-        if not isinstance(record, Mapping):
-            raise IntegrityError(f"Reasoning attempt record is invalid: {path}")
-        if record.get("job_id") != job_id or record.get("stage") != stage:
-            raise IntegrityError(f"Reasoning attempt record identity mismatch: {path}")
-        try:
-            attempt = int(record["attempt"])
-        except (KeyError, TypeError, ValueError) as error:
-            raise IntegrityError(f"Reasoning attempt number is invalid: {path}") from error
-        normalized = dict(record)
-        normalized["attempt"] = attempt
-        records.append(normalized)
-    records.sort(key=lambda item: item["attempt"])
-    if [item["attempt"] for item in records] != list(range(1, len(records) + 1)):
-        raise IntegrityError(f"Reasoning attempt history is not contiguous: {job_id}")
-    return records
-
-
-def _reasoning_attempt_record(
-    job: Mapping[str, Any], draft: bytes, attempt: int, *,
-    valid: bool, action: str, failure_kind: str | None = None,
-    validation_errors: Sequence[str] = (),
-) -> dict[str, Any]:
-    record: dict[str, Any] = {
-        "job_id": str(job["job_id"]),
-        "stage": str(job["stage"]),
-        "attempt": attempt,
-        "valid": valid,
-        "action": action,
-        "draft_sha256": hashlib.sha256(draft).hexdigest(),
-        "validation_errors": list(validation_errors),
-    }
-    if failure_kind is not None:
-        record["failure_kind"] = failure_kind
-    return record
-
-
-def _accepted_validation(
-    job: Mapping[str, Any], attempt: int, *, source: str, action: str,
-) -> dict[str, Any]:
-    return {
-        "job_id": str(job["job_id"]),
-        "stage": str(job["stage"]),
-        "attempt": attempt,
-        "valid": True,
-        "source": source,
-        "action": action,
-        "validation_errors": [],
-    }
-
-
-def _deterministic_writer_fallback(job: Mapping[str, Any]) -> dict[str, Any]:
-    draft = {
-        "structured_output_ref": job.get("structured_output_ref"),
-        "claim_templates": [],
-        "expert_packet_templates": [],
-        "ceo_brief_section_order": [],
-    }
-    SchemaStore().validate("writer-draft.schema.json", draft)
-    normalized = normalize_writer_draft(job, draft)
-    normalized.pop("writer_result_id", None)
-    normalized["materialized_by"] = "deterministic_template_fallback"
-    normalized["writer_result_id"] = (
-        "writer_" + hashlib.sha256(canonical_bytes(normalized)).hexdigest()[:24]
-    )
-    return normalized
-
-
-def _materialize_reasoning_draft(
-    job: Mapping[str, Any], draft_document: Mapping[str, Any], files: Mapping[str, bytes],
-) -> tuple[dict[str, bytes], dict[str, Any]]:
-    job_id = str(job["job_id"])
-    stage = str(job["stage"])
-    updates: dict[str, bytes] = {
-        f"tasks/{job_id}/draft.json": canonical_bytes(draft_document),
-    }
-    data: dict[str, Any] = {"job_id": job_id}
-    if stage == "schema_mapping":
-        SchemaStore().validate("schema-mapping-draft.schema.json", draft_document)
-        canonical_proposal = strict_loads(files["intake/canonical-mapping-proposal.json"])
-        if canonical_bytes(draft_document) != canonical_bytes(canonical_proposal):
-            raise ContractError(
-                "schema mapping draft differs from the deterministic canonical proposal"
-            )
-    elif stage == "lens":
-        normalized = normalize_lens_draft(job, draft_document)
-        SchemaStore().validate("normalized-card.schema.json", normalized)
-        updates[f"tasks/{job_id}/card.json"] = canonical_bytes(normalized)
-        data["card_id"] = normalized["card_id"]
-    elif stage == "integrated":
-        SchemaStore().validate("integrated-draft.schema.json", draft_document)
-        joined = strict_loads(files["reasoning/join-result.json"])
-        runtime_context = _pack_reasoning_context(files)
-        normalized = normalize_integrated_draft(
-            job,
-            draft_document,
-            allowed_card_refs=set(joined.get("card_refs", [])),
-            allowed_claim_refs=set(runtime_context["allowed_claim_refs"]),
-            allowed_problem_family_refs=set(runtime_context["allowed_problem_family_refs"]),
-            allowed_response_refs=set(runtime_context["allowed_response_refs"]),
-            allowed_condition_refs=set(runtime_context["allowed_condition_refs"]),
-            allowed_data_request_refs=set(runtime_context["allowed_data_request_refs"]),
-        )
-        updates[f"tasks/{job_id}/integrated.json"] = canonical_bytes(normalized)
-        data["integrated_assessment_id"] = normalized["integrated_assessment_id"]
-    elif stage == "deep_dive":
-        SchemaStore().validate("deep-dive-draft.schema.json", draft_document)
-        runtime_context = _pack_reasoning_context(files)
-        integrated = strict_loads(files.get("reasoning/integrated-assessment.json", b"{}"))
-        integrated_claim_refs: set[str] = set(runtime_context["allowed_claim_refs"])
-        for issue in integrated.get("payload", {}).get("integrated_issues", []):
-            payload = issue.get("payload", {}) if isinstance(issue, Mapping) else {}
-            for field in (
-                "source_candidate_ids", "observation_claim_refs",
-                "cause_hypothesis_refs", "counter_hypothesis_refs",
-            ):
-                integrated_claim_refs.update(
-                    str(value) for value in payload.get(field, [])
-                    if isinstance(value, str)
-                )
-        scope = strict_loads(files.get("components/scope.json", b"{}"))
-        normalized = normalize_deep_dive_draft(
-            job,
-            draft_document,
-            allowed_issue_refs=set(scope.get("issue_ids", [])),
-            allowed_claim_refs=integrated_claim_refs,
-            allowed_response_refs=set(runtime_context["allowed_response_refs"]),
-            allowed_condition_refs=set(runtime_context["allowed_condition_refs"]),
-            allowed_monitoring_metric_refs=set(runtime_context["allowed_monitoring_metric_refs"]),
-        )
-        updates[f"tasks/{job_id}/deep-dive.json"] = canonical_bytes(normalized)
-        data["deep_dive_result_id"] = normalized["deep_dive_result_id"]
-    elif stage == "writer":
-        SchemaStore().validate("writer-draft.schema.json", draft_document)
-        normalized = normalize_writer_draft(job, draft_document)
-        updates[f"tasks/{job_id}/writer.json"] = canonical_bytes(normalized)
-        data["writer_result_id"] = normalized["writer_result_id"]
-    else:
-        raise ContractError(f"unsupported reasoning stage: {stage}")
-    return updates, data
-
-
-def _block_reasoning_failure(
-    state: Mapping[str, Any], stage: str,
-) -> dict[str, Any]:
-    if stage == "lens":
-        return _advance(
-            state, "contract_failure", {"blocker": "reasoning_contract_failure"},
-        )
-    if stage == "deep_dive":
-        return _advance(
-            state, "deep_failure", {"blocker": "reasoning_contract_failure"},
-        )
-    blocked = dict(state)
-    blocked["resume_state"] = state["state"]
-    blocked["state"] = "blocked"
-    blocked["blocker"] = "reasoning_contract_failure"
-    return blocked
-
-
-_ACCOUNTING_INPUT_KEYS = frozenset({
-    "scope_ref",
-    "suite",
-    "tier_zero_input",
-    "raw_core_population",
-    "revenue_input",
-    "cashflow_input",
-    "project_cost_inputs",
-})
-
-
-def _accounting_component_artifacts(
-    path: Path,
-    *,
-    run_id: str,
-    revision: int,
-    approved_scope_ref: str,
-) -> tuple[dict[str, bytes], dict[str, Any], dict[str, Any]]:
-    raw_bytes = path.read_bytes()
-    strict_loads(raw_bytes)
-    request = json.loads(raw_bytes.decode("utf-8"))
-    if not isinstance(request, Mapping):
-        raise ContractError("accounting input must be an object")
-    actual_keys = frozenset(request)
-    if actual_keys != _ACCOUNTING_INPUT_KEYS:
-        missing = sorted(_ACCOUNTING_INPUT_KEYS - actual_keys)
-        unknown = sorted(actual_keys - _ACCOUNTING_INPUT_KEYS)
-        raise ContractError(
-            "accounting input must be a closed contract; "
-            f"missing={missing}, unknown={unknown}"
-        )
-    if request["scope_ref"] != approved_scope_ref:
-        raise ContractError("accounting input scope_ref does not match approved scope")
-
-    bundle = dispatch_accounting_suite(
-        suite=request["suite"],
-        tier_zero_input=request["tier_zero_input"],
-        raw_core_population=request["raw_core_population"],
-        revenue_input=request["revenue_input"],
-        cashflow_input=request["cashflow_input"],
-        project_cost_inputs=request["project_cost_inputs"],
-    )
-    if (bundle["run_id"], bundle["revision"]) != (run_id, revision):
-        raise ContractError("accounting input must bind to the target run and revision")
-
-    request_bytes = canonical_bytes(request)
-    request_hash = hashlib.sha256(request_bytes).hexdigest()
-    bundle_hash = str(bundle["content_hash"])
-    return (
-        {
-            f"accounting/requests/{request_hash}.json": request_bytes,
-            f"accounting/executions/{bundle_hash}.json": canonical_bytes(bundle),
-        },
-        {
-            "accounting_request_hash": request_hash,
-            "accounting_execution_bundle_hash": bundle_hash,
-            "accounting_issue_family_count": len(
-                bundle["execution_manifest"]["family_records"]
-            ),
-            "accounting_result_artifact_count": len(bundle["result_artifacts"]),
-        },
-        bundle,
-    )
-
-
-_PROFESSIONAL_INPUT_KEYS = frozenset({
-    "scope_ref",
-    "runtime_input",
-    "task_results",
-    "task_failures",
-})
-_PROFESSIONAL_RUNTIME_KEYS = frozenset({
-    "event_type",
-    "field_fact_refs",
-    "registered_domains",
-    "candidate_sets",
-    "screen_results",
-    "pack_manifest",
-    "pack_catalog",
-    "jurisdiction",
-    "effective_at",
-    "signals",
-    "case_plans",
-    "work_plans",
-    "priority_policy_ref",
-    "policy",
-    "policy_release_id",
-    "concurrency_profile_id",
-    "execution_authority_inputs",
-    "runtime_control",
-    "relation_plans",
-    "cluster_plans",
-    "boundary_packet_refs",
-    "limited_basis",
-    "user_confirmed_limitations",
-    "final_validator_passed",
-    "tty_final_approval_ready",
-})
-
-
-def _closed_keys(
-    value: Mapping[str, Any], expected: frozenset[str], label: str,
-) -> None:
-    actual = frozenset(value)
-    if actual != expected:
-        missing = sorted(expected - actual)
-        unknown = sorted(actual - expected)
-        raise ContractError(
-            f"{label} must be a closed contract; "
-            f"missing={missing}, unknown={unknown}"
-        )
-
-
-def _professional_component_artifacts(
-    path: Path,
-    *,
-    run_id: str,
-    revision: int,
-    approved_scope_ref: str,
-    evidence_core: Mapping[str, Any],
-    accounting_bundle: Mapping[str, Any] | None = None,
-) -> tuple[dict[str, bytes], dict[str, Any], dict[str, Any]]:
-    raw_bytes = path.read_bytes()
-    strict_loads(raw_bytes)
-    request = json.loads(raw_bytes.decode("utf-8"))
-    if not isinstance(request, Mapping):
-        raise ContractError("professional input must be an object")
-    _closed_keys(request, _PROFESSIONAL_INPUT_KEYS, "professional input")
-    if request["scope_ref"] != approved_scope_ref:
-        raise ContractError("professional input scope_ref does not match approved scope")
-
-    runtime_input = request["runtime_input"]
-    task_results = request["task_results"]
-    task_failures = request["task_failures"]
-    if not isinstance(runtime_input, Mapping):
-        raise ContractError("professional runtime_input must be an object")
-    if not isinstance(task_results, Mapping) or not isinstance(task_failures, Mapping):
-        raise ContractError("professional task results and failures must be objects")
-    _closed_keys(
-        runtime_input,
-        _PROFESSIONAL_RUNTIME_KEYS,
-        "professional runtime_input",
-    )
-    if any(not isinstance(key, str) or not key for key in task_results):
-        raise ContractError("professional task result keys must be non-empty strings")
-    if any(not isinstance(key, str) or not key for key in task_failures):
-        raise ContractError("professional task failure keys must be non-empty strings")
-    overlap = set(task_results) & set(task_failures)
-    if overlap:
-        raise ContractError(
-            f"professional task cannot both succeed and fail: {sorted(overlap)}"
-        )
-    work_plans = runtime_input["work_plans"]
-    if not isinstance(work_plans, list) or not work_plans:
-        raise ContractError("professional runtime requires Work Item plans")
-    work_keys = [
-        item.get("local_key")
-        for item in work_plans
-        if isinstance(item, Mapping)
-    ]
-    if len(work_keys) != len(work_plans) or any(
-        not isinstance(key, str) or not key for key in work_keys
-    ):
-        raise ContractError("professional Work Item plan keys are invalid")
-    if len(work_keys) != len(set(work_keys)):
-        raise ContractError("professional Work Item plan keys are duplicated")
-    declared_keys = set(task_results) | set(task_failures)
-    if set(work_keys) != declared_keys:
-        raise ContractError(
-            "professional task outcomes must cover every Work Item plan; "
-            f"missing={sorted(set(work_keys) - declared_keys)}, "
-            f"unknown={sorted(declared_keys - set(work_keys))}"
-        )
-
-    accounting_binding = (
-        bind_accounting_professional_inputs(accounting_bundle, request)
-        if accounting_bundle is not None else None
-    )
-
-    def execute_task(task_request: dict[str, Any]) -> Mapping[str, Any]:
-        work_key = task_request.get("work_plan_key")
-        if not isinstance(work_key, str) or work_key not in declared_keys:
-            raise ContractError("runtime requested an undeclared Work Item result")
-        if work_key in task_failures:
-            failure_code = task_failures[work_key]
-            if not isinstance(failure_code, str):
-                raise ContractError("professional task failure code must be a string")
-            raise TaskExecutionFailure(failure_code)
-        result = task_results[work_key]
-        if not isinstance(result, Mapping):
-            raise ContractError("professional task result must be an object")
-        return result
-
-    envelope = evidence_core.get("envelope")
-    if not isinstance(envelope, Mapping):
-        raise ContractError("Evidence Core envelope is missing")
-    result = ProfessionalAnalysisRuntime().run(
-        run_id=run_id,
-        revision=revision,
-        evidence_core=evidence_core,
-        expected_evidence_core_hash=str(envelope.get("artifact_hash", "")),
-        task_executor=execute_task,
-        **runtime_input,
-    )
-    request_bytes = canonical_bytes(request)
-    request_hash = hashlib.sha256(request_bytes).hexdigest()
-    result_hash = str(result["content_hash"])
-    artifact_files: dict[str, bytes] = {
-        f"analysis/professional/requests/{request_hash}.json": request_bytes,
-        "analysis/professional/runtime-result.json": canonical_bytes(result),
-        f"analysis/professional/runs/{result_hash}.json": canonical_bytes(result),
-        "analysis/professional/economic-event.json": canonical_bytes(result["event"]),
-        "analysis/professional/routing-decisions.json": canonical_bytes(
-            result["routing_decisions"]
-        ),
-        "analysis/professional/domain-routes.json": canonical_bytes(
-            result["domain_routes"]
-        ),
-        "analysis/professional/signal-cases.json": canonical_bytes(
-            result["signal_cases"]
-        ),
-        "analysis/professional/priority-records.json": canonical_bytes(
-            result["priority_records"]
-        ),
-        "analysis/professional/work-graphs.json": canonical_bytes(result["graphs"]),
-        "analysis/professional/work-items.json": canonical_bytes(result["work_items"]),
-        "analysis/professional/result-cas.json": canonical_bytes(result["result_cas"]),
-        "analysis/professional/domain-assessments.json": canonical_bytes(
-            result["domain_assessments"]
-        ),
-        "analysis/professional/findings.json": canonical_bytes(result["findings"]),
-        "analysis/professional/relations.json": canonical_bytes(result["relations"]),
-        "analysis/professional/issue-clusters.json": canonical_bytes(result["clusters"]),
-        "analysis/professional/completion-assessment.json": canonical_bytes(
-            result["completion"]
-        ),
-        "analysis/professional/grading-inputs.json": canonical_bytes(
-            result["grading_inputs"]
-        ),
-        "analysis/professional/grade-records.json": canonical_bytes(
-            result["grade_records"]
-        ),
-        "analysis/professional/execution-authority.json": canonical_bytes(
-            result["execution_authority"]
-        ),
-    }
-    if accounting_binding is not None:
-        artifact_files["analysis/professional/accounting-binding.json"] = (
-            canonical_bytes(accounting_binding)
-        )
-    if result["finding_join_manifest"] is not None:
-        artifact_files["analysis/professional/finding-join-manifest.json"] = (
-            canonical_bytes(result["finding_join_manifest"])
-        )
-    if result["cross_domain_integration"] is not None:
-        artifact_files["analysis/professional/cross-domain-integration.json"] = (
-            canonical_bytes(result["cross_domain_integration"])
-        )
-    return (
-        artifact_files,
-        {
-            "professional_request_hash": request_hash,
-            "professional_runtime_result_hash": result_hash,
-            "professional_completion_status": result["completion"]["status"],
-            "professional_finalization_allowed": result["finalization_allowed"],
-            "professional_finding_count": len(result["findings"]),
-            "professional_product_display": result["execution_authority"]["product_display"],
-            "accounting_professional_binding_hash": (
-                accounting_binding["content_hash"]
-                if accounting_binding is not None else None
-            ),
-        },
-        result,
-    )
+    return _application_payload(result)
 
 
 def _mutation(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+    if args.command not in {"approve-interactive", "decide-interactive"}:
+        parameters: dict[str, Any] = {}
+        if args.command == "run-components":
+            parameters = {
+                "scope_ref": args.scope_ref,
+                "accounting_input": args.accounting_input,
+                "professional_input": args.professional_input,
+            }
+        elif args.command in {"prepare-jobs", "reduce-stage"}:
+            parameters = {"stage": args.stage}
+        elif args.command == "ingest-result":
+            _, draft_payload = _stable_read(args.draft.resolve(strict=True))
+            parameters = {
+                "job_id": args.job_id,
+                "draft_document": draft_payload,
+            }
+        elif args.command == "approval-request":
+            _, overlay_payload = _stable_read(args.overlay.resolve(strict=True))
+            parameters = {
+                "gate": args.gate,
+                "overlay_document": overlay_payload,
+            }
+        result = TrustedCeoApplication(args.artifact_root).mutate(MutationRequest(
+            artifact_root=args.artifact_root,
+            run_id=args.run_id,
+            expected_revision=args.expected_revision,
+            command=args.command,
+            parameters=parameters,
+        ))
+        return _application_payload(result)
+
     store = _store_for(args)
     pointer = store.state()
     current = int(pointer["revision"])
@@ -1590,469 +557,8 @@ def _mutation(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     state = _workflow_state(files)
     if state["state"] in TERMINAL:
         raise ContractError(f"terminal state cannot mutate: {state['state']}")
-    data: dict[str, Any] = {}
-    exit_code = 0
-    command_ok = True
-    command_message = "mutation committed"
-    if args.command == "scan":
-        if state["state"] not in {"context_ready", "data_confirmation_required", "mapping_proposal_ready"}:
-            raise ContractError(f"scan is not allowed from {state['state']}")
-        effective_mission = _effective_mission(files)
-        scan_files = dict(files)
-        scan_files["mission/effective-mission-contract.json"] = canonical_bytes(effective_mission)
-        updates, scan_data = build_scan_artifacts(
-            files=scan_files,
-            pointer=pointer,
-            run_id=args.run_id,
-            current_revision=current,
-            source_root=store.verify_revision(current),
-            mission=effective_mission,
-        )
-        updates["mission/effective-mission-contract.json"] = canonical_bytes(effective_mission)
-        files.update(updates)
-        data.update(scan_data)
-        if scan_data["mapping_question_count"] and not scan_data["mapping_applied"]:
-            state = _advance(state, "scan", {"mapping_ambiguous": True})
-            exit_code = 2
-        else:
-            state = _advance(state, "scan", {"scan_passed": True})
-    elif args.command == "run-components":
-        if state["state"] != "deep_dive_authorized":
-            raise ContractError(f"run-components is not allowed from {state['state']}")
-        overlay = strict_loads(files.get("workflow/hitl-overlay.json", b"{}"))
-        scope = overlay.get("deep_dive_scope") if isinstance(overlay, dict) else None
-        if not isinstance(scope, dict):
-            raise ContractError("approved deep-dive scope is missing")
-        normalized_scope = normalize_authorized_scope(scope)
-        required_inputs = set(normalized_scope["required_inputs"])
-        provided_inputs = {
-            name
-            for name, value in (
-                ("accounting", args.accounting_input),
-                ("professional", args.professional_input),
-            )
-            if value is not None
-        }
-        missing_inputs = sorted(required_inputs - provided_inputs)
-        if missing_inputs:
-            raise ContractError(
-                f"required input is missing from approved scope: {missing_inputs}"
-            )
-        core = json.loads(files["evidence/core.json"].decode("utf-8"))
-        integrated = strict_loads(files.get("reasoning/integrated-assessment.json", b"{}"))
-        plan, runs = execute_authorized_scope(
-            files, core, integrated, scope, args.scope_ref,
-        )
-        accounting_bundle: dict[str, Any] | None = None
-        if args.accounting_input is not None:
-            accounting_files, accounting_data, accounting_bundle = (
-                _accounting_component_artifacts(
-                args.accounting_input,
-                run_id=args.run_id,
-                revision=current + 1,
-                approved_scope_ref=args.scope_ref,
-                )
-            )
-            files.update(accounting_files)
-            data.update(accounting_data)
-        files[f"components/plans/deep-dive-{args.scope_ref}.json"] = canonical_bytes(plan.to_dict())
-        for run in runs:
-            files[f"components/runs/{run['component_run_id']}.json"] = canonical_bytes(run)
-        for run_id, document in component_input_documents(plan, runs).items():
-            files[f"components/inputs/{run_id}.json"] = canonical_bytes(document)
-        updated_core = merge_component_runs(
-            core, runs, run_id=args.run_id, revision=current + 1,
-            parent_artifact_hash=str(pointer.get("manifest_hash", "")),
-        )
-        EvidenceCoreValidator().validate(updated_core, source_root=store.verify_revision(current))
-        files["evidence/core.json"] = canonical_bytes(updated_core)
-        scope_doc = {
-            "scope_ref": args.scope_ref,
-            "component_ids": normalized_scope["component_ids"],
-            "issue_ids": normalized_scope["issue_ids"],
-            "required_inputs": normalized_scope["required_inputs"],
-            "component_run_ids": [run["component_run_id"] for run in runs],
-        }
-        files["components/scope.json"] = canonical_bytes(scope_doc)
-        files["components/input-requirements.json"] = canonical_bytes({
-            "schema_version": "1.0.0",
-            "scope_ref": args.scope_ref,
-            "required_inputs": normalized_scope["required_inputs"],
-            "provided_inputs": sorted(provided_inputs),
-        })
-        data["component_run_ids"] = scope_doc["component_run_ids"]
-        failed_run_ids = [
-            str(run["component_run_id"])
-            for run in runs
-            if run.get("status") == "failed"
-        ]
-        professional_result: dict[str, Any] | None = None
-        if args.professional_input is not None and not failed_run_ids:
-            professional_files, professional_data, professional_result = (
-                _professional_component_artifacts(
-                    args.professional_input,
-                    run_id=args.run_id,
-                    revision=current + 1,
-                    approved_scope_ref=args.scope_ref,
-                    evidence_core=updated_core,
-                    accounting_bundle=accounting_bundle,
-                )
-            )
-            files.update(professional_files)
-            data.update(professional_data)
-        state = _advance(
-            state,
-            "run_deep_components",
-            {"authorized_components_only": True},
-        )
-        if failed_run_ids:
-            state = _advance(
-                state,
-                "deep_failure",
-                {"blocker": "component_contract_failure"},
-            )
-            data["failed_component_run_ids"] = failed_run_ids
-            exit_code = EXIT_CONTRACT
-            command_ok = False
-            command_message = "component execution failed; workflow blocked"
-        elif professional_result is not None and not professional_result[
-            "finalization_allowed"
-        ]:
-            state = _advance(
-                state,
-                "deep_failure",
-                {"blocker": "professional_analysis_incomplete"},
-            )
-            exit_code = EXIT_CONTRACT
-            command_ok = False
-            command_message = "professional analysis incomplete; workflow blocked"
-    elif args.command == "prepare-finalization":
-        if state["state"] not in {"deep_dive_ready", "finalization_jobs_ready"}:
-            raise ContractError(f"prepare-finalization is not allowed from {state['state']}")
-        professional_payload = files.get(
-            "analysis/professional/completion-assessment.json"
-        )
-        if professional_payload is not None:
-            strict_loads(professional_payload)
-            professional_completion = json.loads(professional_payload.decode("utf-8"))
-            verify_completion_assessment(professional_completion)
-            if professional_completion["status"] not in {
-                "finalization_ready", "limited_completion_ready",
-            }:
-                raise ContractError("professional completion blocks finalization")
-        revalidate_component_artifacts(files)
-        updates, finalization_data = prepare_finalization(
-            files, run_id=args.run_id, revision=current + 1,
-            parent_artifact_hash=str(pointer.get("manifest_hash", "")),
-        )
-        candidate_core = json.loads(updates["evidence/core.json"].decode("utf-8"))
-        EvidenceCoreValidator().validate(candidate_core, source_root=store.verify_revision(current))
-        files.update(updates)
-        data.update(finalization_data)
-        if state["state"] == "deep_dive_ready":
-            state = _advance(state, "prepare_finalization", {"deep_result_valid": True})
-    elif args.command == "prepare-jobs":
-        allowed_states = {
-            "schema_mapping": {"schema_mapping_job_ready"},
-            "integrated": {"lens_ready"},
-            "deep_dive": {"deep_dive_jobs_ready"},
-            "writer": {"finalization_jobs_ready"},
-        }
-        if args.stage != "lens" and state["state"] not in allowed_states[args.stage]:
-            raise ContractError(f"prepare-jobs:{args.stage} is not allowed from {state['state']}")
-        jobs = _reasoning_jobs(
-            args.stage, files=files, pointer=pointer, run_id=args.run_id, revision=current,
-        )
-        if args.stage == "lens":
-            state = _advance(state, "prepare_lens", {"estimated_card_count": len(jobs)})
-            if state["state"] == "scope_narrowing_required":
-                jobs = []
-                exit_code = 2
-        for job in jobs:
-            SchemaStore().validate("reasoning-job.schema.json", job)
-            files[f"tasks/{job['job_id']}/job.json"] = canonical_bytes(job)
-        data["job_ids"] = [job["job_id"] for job in jobs]
-    elif args.command == "ingest-result":
-        job_path = f"tasks/{args.job_id}/job.json"
-        if job_path not in files:
-            raise ContractError(f"unknown Reasoning Job: {args.job_id}")
-        job = strict_loads(files[job_path])
-        if not isinstance(job, Mapping):
-            raise IntegrityError(f"Reasoning Job is invalid: {args.job_id}")
-        stage = job["stage"]
-        expected_states = {
-            "schema_mapping": {"schema_mapping_job_ready"},
-            "lens": {"lens_jobs_ready"},
-            "integrated": {"lens_ready"},
-            "deep_dive": {"deep_dive_jobs_ready"},
-            "writer": {"finalization_jobs_ready"},
-        }
-        if state["state"] not in expected_states.get(stage, set()):
-            raise ContractError(f"ingest-result:{stage} is not allowed from {state['state']}")
-        validation_path = f"tasks/{args.job_id}/validation.json"
-        if validation_path in files:
-            current_validation = strict_loads(files[validation_path])
-            if isinstance(current_validation, Mapping) and current_validation.get("valid") is True:
-                raise ContractError(f"Reasoning Job already has an accepted result: {args.job_id}")
-        attempts = _reasoning_attempt_records(files, args.job_id, stage)
-        if len(attempts) >= 2:
-            raise ContractError(f"Reasoning Job exhausted two attempts: {args.job_id}")
-        attempt = len(attempts) + 1
-        draft = args.draft.read_bytes()
-        attempt_root = f"tasks/{args.job_id}/attempts/attempt-{attempt}"
-        files[f"{attempt_root}.draft"] = draft
 
-        failure_kind: str | None = None
-        validation_error: str | None = None
-        materialized_updates: dict[str, bytes] = {}
-        materialized_data: dict[str, Any] = {}
-        try:
-            draft_document = strict_loads(draft)
-        except (UnicodeError, ValueError) as error:
-            failure_kind = "invalid_json"
-            validation_error = str(error)
-        else:
-            try:
-                if not isinstance(draft_document, Mapping):
-                    raise ContractError("Reasoning draft must be an object")
-                materialized_updates, materialized_data = _materialize_reasoning_draft(
-                    job, draft_document, files,
-                )
-            except ContractError as error:
-                failure_kind = "contract"
-                validation_error = str(error)
-
-        if failure_kind is None:
-            action = "accepted"
-            attempt_record = _reasoning_attempt_record(
-                job, draft, attempt, valid=True, action=action,
-            )
-            files.update(materialized_updates)
-            data.update(materialized_data)
-            files[validation_path] = canonical_bytes(_accepted_validation(
-                job, attempt, source="model_draft", action=action,
-            ))
-        else:
-            action = next_attempt_action(
-                stage, attempt, required=True, failure_kind=failure_kind,
-            )
-            attempt_record = _reasoning_attempt_record(
-                job,
-                draft,
-                attempt,
-                valid=False,
-                action=action,
-                failure_kind=failure_kind,
-                validation_errors=(validation_error or "draft validation failed",),
-            )
-            data["validation_errors"] = attempt_record["validation_errors"]
-            files[validation_path] = canonical_bytes(attempt_record)
-            if action == "deterministic_mapping":
-                fallback = strict_loads(files["intake/canonical-mapping-proposal.json"])
-                SchemaStore().validate("schema-mapping-draft.schema.json", fallback)
-                files[f"tasks/{args.job_id}/draft.json"] = canonical_bytes(fallback)
-                files[validation_path] = canonical_bytes(_accepted_validation(
-                    job, attempt, source="deterministic_fallback", action=action,
-                ))
-            elif action == "fallback":
-                fallback = _deterministic_writer_fallback(job)
-                files[f"tasks/{args.job_id}/writer.json"] = canonical_bytes(fallback)
-                files[validation_path] = canonical_bytes(_accepted_validation(
-                    job, attempt, source="deterministic_fallback", action=action,
-                ))
-                data["writer_result_id"] = fallback["writer_result_id"]
-            elif action == "blocked":
-                state = _block_reasoning_failure(state, stage)
-                exit_code = EXIT_CONTRACT
-                command_ok = False
-                command_message = "reasoning draft failed twice; workflow blocked"
-            elif action == "retry":
-                exit_code = EXIT_CONTRACT
-                command_ok = False
-                command_message = "reasoning draft validation failed; one retry remains"
-            else:
-                raise ContractError(f"unsupported Reasoning attempt action: {action}")
-        files[f"{attempt_root}.json"] = canonical_bytes(attempt_record)
-        data.update({
-            "job_id": args.job_id,
-            "attempt": attempt,
-            "attempt_action": action,
-        })
-    elif args.command == "reduce-stage" and args.stage == "lens":
-        jobs = []
-        for path, payload in files.items():
-            if path.startswith("tasks/") and path.endswith("/job.json"):
-                job = strict_loads(payload)
-                if job.get("stage") == "lens":
-                    jobs.append(job)
-        if not jobs:
-            raise ContractError("no lens Jobs are prepared")
-        tasks = [
-            {
-                "job_id": job["job_id"],
-                "required": True,
-                "required_signal_ids": job.get("required_signal_ids", []),
-            }
-            for job in jobs
-        ]
-        first = sorted(jobs, key=lambda item: item["job_id"])[0]
-        manifest = freeze_join_manifest(
-            first["artifact_ref"], first["mission_contract_hash"], first["pack_manifest_hash"],
-            tasks, "1970-01-01T00:00:00Z",
-        )
-        results = []
-        for job in jobs:
-            card_path = f"tasks/{job['job_id']}/card.json"
-            validation_path = f"tasks/{job['job_id']}/validation.json"
-            validation = strict_loads(files.get(validation_path, b"{}"))
-            if (
-                card_path not in files
-                or not isinstance(validation, Mapping)
-                or validation.get("valid") is not True
-                or validation.get("source") != "model_draft"
-            ):
-                raise ContractError(f"lens Job lacks a validated card: {job['job_id']}")
-            card = strict_loads(files[card_path])
-            status = "valid_not_assessable" if card.get("assessment_status") == "not_assessable" else "completed"
-            results.append({"job_id": job["job_id"], "status": status, "card": card})
-        joined = reduce_join(manifest, results)
-        files["reasoning/join-manifest.json"] = canonical_bytes(manifest)
-        files["reasoning/join-result.json"] = canonical_bytes(joined)
-        data.update({"join_manifest_id": manifest["join_manifest_id"], "join_result_id": joined["join_result_id"]})
-        state = _advance(state, "reduce_lens", {"required_tasks_accepted": True})
-    elif args.command == "reduce-stage" and args.stage == "schema_mapping":
-        candidates: list[tuple[bytes, Mapping[str, Any]]] = []
-        for path, payload in files.items():
-            if not path.startswith("tasks/") or not path.endswith("/draft.json"):
-                continue
-            job_path = path.replace("/draft.json", "/job.json")
-            validation_path = path.replace("/draft.json", "/validation.json")
-            if job_path not in files or validation_path not in files:
-                continue
-            candidate_job = strict_loads(files[job_path])
-            validation = strict_loads(files[validation_path])
-            if (
-                isinstance(candidate_job, Mapping)
-                and candidate_job.get("stage") == "schema_mapping"
-                and isinstance(validation, Mapping)
-                and validation.get("valid") is True
-                and validation.get("source") in {"model_draft", "deterministic_fallback"}
-            ):
-                candidates.append((payload, validation))
-        if len(candidates) != 1:
-            raise ContractError("schema_mapping reducer requires exactly one validated draft")
-        proposal = strict_loads(candidates[0][0])
-        SchemaStore().validate("schema-mapping-draft.schema.json", proposal)
-        canonical_proposal = strict_loads(files["intake/canonical-mapping-proposal.json"])
-        if canonical_bytes(proposal) != canonical_bytes(canonical_proposal):
-            raise ContractError("schema mapping draft differs from the deterministic canonical proposal")
-        files["reasoning/schema-mapping-proposal.json"] = canonical_bytes(proposal)
-        data["reduction_source"] = candidates[0][1]["source"]
-        state = _advance(state, "ingest_schema_mapping", {"draft_or_fallback_valid": True})
-    elif args.command == "reduce-stage" and args.stage in {"integrated", "deep_dive", "writer"}:
-        artifact_names = {
-            "integrated": ("integrated.json", "reasoning/integrated-assessment.json", "integrated_assessment_id"),
-            "deep_dive": ("deep-dive.json", "reasoning/deep-dive-result.json", "deep_dive_result_id"),
-            "writer": ("writer.json", "reasoning/writer-result.json", "writer_result_id"),
-        }
-        leaf, destination, identifier_key = artifact_names[args.stage]
-        candidates: list[tuple[dict[str, Any], Mapping[str, Any]]] = []
-        for path, payload in files.items():
-            if path.startswith("tasks/") and path.endswith(f"/{leaf}"):
-                task_root = path.rsplit("/", 1)[0]
-                job_path = f"{task_root}/job.json"
-                validation_path = f"{task_root}/validation.json"
-                if job_path not in files or validation_path not in files:
-                    continue
-                candidate_job = strict_loads(files[job_path])
-                validation = strict_loads(files[validation_path])
-                materialized = strict_loads(payload)
-                allowed_sources = (
-                    {"model_draft", "deterministic_fallback"}
-                    if args.stage == "writer" else {"model_draft"}
-                )
-                if (
-                    isinstance(candidate_job, Mapping)
-                    and candidate_job.get("stage") == args.stage
-                    and isinstance(validation, Mapping)
-                    and validation.get("valid") is True
-                    and validation.get("source") in allowed_sources
-                    and isinstance(materialized, dict)
-                ):
-                    candidates.append((materialized, validation))
-        if len(candidates) != 1:
-            raise ContractError(f"{args.stage} reducer requires exactly one validated result")
-        materialized, validation = candidates[0]
-        files[destination] = canonical_bytes(materialized)
-        data[identifier_key] = materialized[identifier_key]
-        data["reduction_source"] = validation["source"]
-        events = {
-            "integrated": ("ingest_integrated", {"barrier_and_draft_valid": True}),
-            "deep_dive": ("ingest_deep_result", {"required_deep_valid": True}),
-            "writer": ("ingest_writer", {"grade_and_writer_valid": True}),
-        }
-        if args.stage == "writer" and validation["source"] == "deterministic_fallback":
-            event, event_context = (
-                "writer_fallback", {"fallback_valid_after_two_attempts": True},
-            )
-        else:
-            event, event_context = events[args.stage]
-        state = _advance(state, event, event_context)
-    elif args.command == "approval-request":
-        overlay = strict_loads(args.overlay.read_bytes())
-        if not isinstance(overlay, dict) or not isinstance(overlay.get("patch_operations", []), list):
-            raise ContractError("HITL overlay must contain patch_operations")
-        operations = overlay.get("patch_operations", [])
-        base_overlay = strict_loads(files.get("workflow/hitl-overlay.json", b"{}"))
-        preview = apply_overlay(
-            base_overlay, args.gate, operations,
-            runtime_context=overlay.get("runtime_context", {}),
-        )
-        paths = [item.get("path", "") for item in operations if isinstance(item, dict)]
-        invalidated = sorted(invalidated_gates(paths))
-        if args.gate == "context":
-            if state["state"] != "context_confirmation_required":
-                raise ContractError(f"context approval is not allowed from {state['state']}")
-        elif args.gate == "data":
-            if state["state"] == "mapping_proposal_ready":
-                state = _advance(state, "request_data_approval", {"proposal_diff_valid": True})
-            elif state["state"] != "data_confirmation_required":
-                raise ContractError(f"data approval is not allowed from {state['state']}")
-        elif args.gate == "scope_narrowing":
-            if state["state"] != "scope_narrowing_required":
-                raise ContractError(f"scope approval is not allowed from {state['state']}")
-        elif args.gate == "diagnostic":
-            state = _advance(state, "request_diagnostic_approval", {"issues_valid": True})
-        elif args.gate == "final":
-            state = _advance(state, "request_final_approval", {"output_valid": True})
-        next_state = dict(state)
-        next_state["revision"] = current + 1
-        additional = {
-            "workflow/state.json": canonical_bytes(next_state),
-            "workflow/pending-overlay.json": canonical_bytes(preview),
-            "workflow/pending-runtime-context.json": canonical_bytes(overlay.get("runtime_context", {})),
-            f"audit/events/r{current + 1:04d}-approval-request.json": canonical_bytes({
-                "command": "approval-request", "gate": args.gate,
-                "from_revision": current, "to_revision": current + 1,
-            }),
-        }
-        service = ApprovalService(RevisionManager(store))
-        request_record, nonce, revision = service.request(
-            expected_revision=current,
-            gate=args.gate,
-            base_artifact_ref=f"{args.run_id}@r{current:04d}",
-            base_artifact_hash=str(pointer.get("manifest_hash", "")),
-            patch_operations=operations,
-            invalidated_approval_ids=invalidated,
-            result_preview_hash=hashlib.sha256(canonical_bytes(preview)).hexdigest(),
-            additional_updates=additional,
-        )
-        return 2, response(
-            command=args.command, ok=True, code=2, message="human action required",
-            run_id=args.run_id, revision=revision, state=next_state["state"],
-            data={"approval_request_id": request_record["approval_request_id"], "nonce": nonce},
-        )
-    elif args.command == "approve-interactive":
+    if args.command == "approve-interactive":
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             raise IntegrityError("interactive approval requires TTY stdin and stdout")
         revisions = RevisionManager(store)
@@ -2079,7 +585,7 @@ def _mutation(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             next_state = _advance(state, "approve_context", {"approval_valid": True})
         elif gate == "data":
             effective_mission = _effective_mission(files)
-            scan_updates, scan_data = build_scan_artifacts(
+            scan_updates, _ = build_scan_artifacts(
                 files=files,
                 pointer=pointer,
                 run_id=args.run_id,
@@ -2226,40 +732,6 @@ def _mutation(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                 "decision": args.decision,
             },
         )
-    elif args.command == "resume":
-        blocker_resolved = _recorded_blocker_is_resolved(files, state)
-        if not blocker_resolved:
-            raise ContractError("recorded blocker is unresolved")
-        state = _advance(
-            state,
-            "resume",
-            {"blocker_resolved": blocker_resolved, "expected_revision": current},
-        )
-    elif args.command == "stop":
-        state = _advance(state, "stop", {})
-    elif args.command == "cancel":
-        state = _advance(state, "cancel", {})
-    elif args.command == "finalize":
-        if state["state"] != "delivery_approved":
-            raise ContractError("finalize requires delivery_approved state")
-        revalidate_component_artifacts(files)
-        package = build_delivery_package(files, run_id=args.run_id, revision=current + 1)
-        files.update(package)
-        data["delivery_files"] = sorted(package)
-        state = _advance(state, "finalize", {"final_validator_passed": True})
-
-    new_revision = current + 1
-    state["revision"] = new_revision
-    files["workflow/state.json"] = canonical_bytes(state)
-    files[f"audit/events/r{new_revision:04d}-{args.command}.json"] = canonical_bytes(
-        {"command": args.command, "from_revision": current, "to_revision": new_revision}
-    )
-    store.publish(current, files)
-    return exit_code, response(
-        command=args.command, ok=command_ok, code=exit_code,
-        message="human action required" if exit_code == 2 else command_message,
-        run_id=args.run_id, revision=new_revision, state=state["state"], data=data,
-    )
 
 
 def _dispatch(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:

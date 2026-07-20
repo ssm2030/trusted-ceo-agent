@@ -1,5 +1,6 @@
 import type {
   AnalysisProvider,
+  HitlDecision,
   PendingAction,
   ProviderSnapshot,
 } from "@/features/analysis/analysis-provider";
@@ -122,6 +123,27 @@ export class ReplayAnalysisProvider implements AnalysisProvider {
       progress: 18,
       error: null,
     });
+  }
+
+  async submitDecision(
+    runId: string,
+    expectedRevision: number,
+    decision: HitlDecision,
+    edits: Readonly<Record<string, unknown>> = {},
+    rationale: string | null = null,
+  ): Promise<ProviderSnapshot> {
+    void edits;
+    if (decision === "stop") {
+      return this.stop(runId, expectedRevision);
+    }
+    if (decision === "reanalyze") {
+      return this.requestChanges(runId, expectedRevision);
+    }
+    return this.submitHumanResponse(
+      runId,
+      expectedRevision,
+      rationale ?? "승인",
+    );
   }
 
   async requestChanges(
@@ -283,6 +305,14 @@ export class ReplayAnalysisProvider implements AnalysisProvider {
       latest_event: "저장된 작업 흐름을 취소했습니다.",
       error: { code: "CANCELLED", message: "작업 흐름이 취소되었습니다." },
     });
+  }
+
+  async deleteRun(runId: string, expectedRevision: number): Promise<void> {
+    const boundaryError = this.checkMutation(runId, expectedRevision);
+    if (boundaryError) {
+      throw new Error(boundaryError.error?.message ?? "실행을 삭제할 수 없습니다.");
+    }
+    this.current = createInitialReplaySnapshot();
   }
 
   async openFinalizedReport(runId: string): Promise<string | null> {

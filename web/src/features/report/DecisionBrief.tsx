@@ -52,7 +52,7 @@ export function DecisionBrief({
             최고경영자 의사결정 요약
           </h2>
           <p className={styles.sectionDescription}>
-            플러그인이 선택한 문제와 표시값만 보여 줍니다. 웹은 순위나 수치를
+            검증 엔진이 선택한 문제와 표시값만 보여 줍니다. 웹은 순위나 수치를
             새로 만들지 않습니다.
           </p>
         </div>
@@ -91,7 +91,7 @@ export function DecisionBrief({
 
       {activeCharts.length === 0 ? (
         <p className={styles.empty}>
-          이 문제 범위에 플러그인이 제공한 차트가 없습니다.
+          이 문제 범위에 검증 엔진이 게시한 차트가 없습니다.
         </p>
       ) : (
         <div className={styles.chartGrid}>

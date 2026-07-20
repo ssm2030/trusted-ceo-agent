@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[3]
 RUN_ID = "run_20260717T010203Z_0123456789abcdef"
 
 
-def _approval() -> dict:
+def _approval(input_method: str = "interactive_tty") -> dict:
     record = {
         "approval_id": "approval_final",
         "approval_request_id": "approvalrequest_final",
@@ -32,19 +32,23 @@ def _approval() -> dict:
         "target_refs": [],
         "authorized_component_ids": [],
         "patch_operations": [],
-        "rationale": "interactive approval",
+        "rationale": "browser approval" if input_method == "web_hitl" else "interactive approval",
         "created_at": "2026-07-17T00:00:00Z",
-        "input_method": "interactive_tty",
+        "input_method": input_method,
         "nonce_hash": "a" * 64,
-        "tty_session_fingerprint": "b" * 64,
         "supersedes_approval_id": None,
         "status": "current",
     }
+    if input_method == "web_hitl":
+        record["browser_session_fingerprint"] = "b" * 64
+        record["response_hash"] = "c" * 64
+    else:
+        record["tty_session_fingerprint"] = "b" * 64
     record["approval_hash"] = hashlib.sha256(canonical_bytes(record)).hexdigest()
     return record
 
 
-def _final_result() -> dict:
+def _final_result(input_method: str = "interactive_tty") -> dict:
     body = {
         "run_summary": {"run_id": RUN_ID, "revision": 2},
         "mission_summary": {"objective": "승인된 결과를 확인합니다."},
@@ -59,7 +63,7 @@ def _final_result() -> dict:
             {
                 "gate": "final",
                 "status": "current",
-                "input_method": "interactive_tty",
+                "input_method": input_method,
                 "approval_id": "approval_final",
                 "actor_role": "ceo",
                 "result_artifact_ref": f"{RUN_ID}@r0001",
@@ -86,10 +90,13 @@ def _core() -> dict:
     }
 
 
-def _fixture(root: Path) -> tuple[ArtifactStore, RevisionValidation]:
+def _fixture(
+    root: Path,
+    input_method: str = "interactive_tty",
+) -> tuple[ArtifactStore, RevisionValidation]:
     store = ArtifactStore(root / "artifacts")
     store.create_run(RUN_ID)
-    approval = _approval()
+    approval = _approval(input_method)
     store.publish(
         0,
         {
@@ -108,7 +115,7 @@ def _fixture(root: Path) -> tuple[ArtifactStore, RevisionValidation]:
                 approval
             ),
             "evidence/core.json": canonical_bytes(_core()),
-            "final/result.json": canonical_bytes(_final_result()),
+            "final/result.json": canonical_bytes(_final_result(input_method)),
             "final/structured-output.json": canonical_bytes(
                 {"issues": [], "expert_review_packets": []}
             ),
@@ -139,6 +146,19 @@ def _fixture(root: Path) -> tuple[ArtifactStore, RevisionValidation]:
 
 
 class WebReportExporterTests(unittest.TestCase):
+    def test_web_hitl_final_approval_exports_as_trusted_final(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            store, validation = _fixture(Path(directory), "web_hitl")
+            with patch(
+                "trusted_ceo_agent.web_report.exporter.validate_revision",
+                return_value=validation,
+            ):
+                exported = export_web_report(store, run_id=RUN_ID, revision=2)
+
+        receipt = exported.bundle["viewer_eligibility_receipt"]
+        self.assertEqual("trusted_final", receipt["claimed_viewer_mode"])
+        self.assertEqual("web_hitl", receipt["final_approval_summary"]["input_method"])
+
     def test_export_requires_finalized_state_and_all_required_checks(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             store, validation = _fixture(Path(directory))

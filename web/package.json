@@ -7,13 +7,16 @@
   },
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
+    "dev:ai": "node scripts/start-ai-demo.mjs",
+    "dev:ai:e2e": "node scripts/start-ai-e2e.mjs",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && npm run test:launcher",
     "test:focused": "vitest run --reporter=dot --passWithNoTests",
     "test:changed": "vitest related --run --reporter=dot --passWithNoTests",
+    "test:launcher": "node --test scripts/start-ai-demo.test.mjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test"
   },

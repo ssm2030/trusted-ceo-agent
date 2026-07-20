@@ -25,7 +25,7 @@ export function FullIssueStructure({
       <header className={styles.structureHeader}>
         <div>
           <p className={styles.sectionKicker}>제공된 문제 관계</p>
-          <h3 id="issue-structure-title">플러그인이 제공한 전체 문제 구조</h3>
+          <h3 id="issue-structure-title">검증 엔진이 게시한 전체 문제 구조</h3>
         </div>
         <button className={styles.closeButton} onClick={onClose} type="button">
           구조 닫기

@@ -126,7 +126,7 @@ export function EvidenceWorkbench({
               <h3 className={styles.evidenceHeading}>{fact.fact_code}</h3>
               <dl className={styles.dataList}>
                 <div className={styles.dataRow}>
-                  <dt>플러그인 값</dt>
+                  <dt>검증된 값</dt>
                   <dd>{String(fact.value.canonical_value)}</dd>
                 </div>
                 <div className={styles.dataRow}>

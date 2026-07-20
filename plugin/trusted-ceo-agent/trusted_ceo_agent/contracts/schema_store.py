@@ -169,7 +169,7 @@ class SchemaStore:
 
     def validate_json(self, name: str, payload: str | bytes) -> Any:
         try:
-            value = strict_loads(payload)
+            value = _schema_numbers(strict_loads(payload))
         except (UnicodeError, ValueError) as error:
             raise ContractError(f"invalid strict JSON: {error}") from error
         self.validate(name, value)

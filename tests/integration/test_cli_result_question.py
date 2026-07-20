@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import tempfile
 import unittest
@@ -53,6 +54,25 @@ class CliResultQuestionTests(unittest.TestCase):
             self.assertEqual(0, code, prepared)
             job = prepared["data"]["job"]
             self.assertEqual("finalized", prepared["state"])
+
+            relative_dir = root / "questions"
+            relative_dir.mkdir()
+            relative_question = relative_dir / "question.txt"
+            relative_question.write_text(
+                "관찰된 값과 그 근거를 알려 주세요.",
+                encoding="utf-8",
+            )
+            with contextlib.chdir(root):
+                relative_code, relative_prepared = call([
+                    "prepare-result-question",
+                    *common,
+                    "--question-file", "questions/question.txt",
+                    "--scope-kind", "issue",
+                    "--scope-instance-id", "issue_main",
+                    "--privacy-classification", "poc_deidentified",
+                ])
+            self.assertEqual(0, relative_code, relative_prepared)
+            self.assertEqual(job, relative_prepared["data"]["job"])
 
             job_file = root / "question-job.json"
             job_file.write_text(
@@ -113,6 +133,19 @@ class CliResultQuestionTests(unittest.TestCase):
             self.assertEqual(
                 manifest_before,
                 (snapshot / "snapshot-manifest.json").read_bytes(),
+            )
+
+            job_file.write_text("[]", encoding="utf-8")
+            code, rejected = call([
+                "validate-result-answer",
+                *common,
+                "--job", str(job_file),
+                "--draft", str(draft_file),
+            ])
+            self.assertEqual(3, code)
+            self.assertEqual(
+                "result question Job and answer draft must be objects",
+                rejected["message"],
             )
 
 

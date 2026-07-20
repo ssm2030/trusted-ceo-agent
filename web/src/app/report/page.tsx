@@ -9,7 +9,7 @@ export default function ReportPage() {
           <p className="eyebrow">의사결정 근거 리포트</p>
           <h1>결과 리포트</h1>
         </div>
-        <p>플러그인이 검증해 제공한 문제, 근거, 신뢰 기록만 표시합니다.</p>
+        <p>로컬 검증 엔진이 게시한 문제, 근거, 신뢰 기록만 표시합니다.</p>
       </div>
       <ReportLoader />
     </ProductShell>

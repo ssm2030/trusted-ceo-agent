@@ -164,14 +164,16 @@ uv run --project plugin/trusted-ceo-agent --frozen --offline --no-sync `
 
 전체 상태 전이와 승인 순서는 [플러그인 Skill](plugin/trusted-ceo-agent/skills/trusted-ceo-agent/SKILL.md)과 [Workflow Reference](plugin/trusted-ceo-agent/skills/trusted-ceo-agent/references/workflow.md)를 따릅니다. Artifact root는 작업공간 안의 별도 디렉터리를 사용하고 입력·플러그인·`logs` 디렉터리를 사용하지 않습니다.
 
-### 웹
+### localhost AI 서비스와 웹
 
 ```powershell
 npm --prefix web install
-npm --prefix web run dev
+npm --prefix web run dev:ai
 ```
 
-기본 주소는 `http://127.0.0.1:3000`입니다. 웹은 finalized WebReportBundle을 읽어 표시하며 실제 승인은 플러그인의 TTY 흐름에서만 수행합니다.
+기본 주소는 `http://127.0.0.1:3000`입니다. 한 명령이 내부 토큰으로 보호된 Python AI 서비스와 Web UI를 IPv4 localhost에 함께 시작합니다. 브라우저에서 자료 업로드, 웹 HITL, 최종 보고서, 근거 기반 결과 질문과 실행 삭제를 수행하며 플러그인·Codex CLI·터미널 승인을 직접 조작하지 않습니다. API 접근이 준비되지 않으면 저장 보고서 열람은 유지되고 새 AI 분석은 비활성화됩니다.
+
+로그인 없는 단일 사용자 데모이므로 외부에 공개하지 마세요. 입력 한도, 승인 의미, 실패 복구, 저장·삭제 범위와 분리된 live smoke는 [Local AI 서비스 데모](docs/local-ai-demo.md)를 확인합니다.
 
 ## 대회 당일 운영
 

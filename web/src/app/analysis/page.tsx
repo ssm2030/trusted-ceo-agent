@@ -1,4 +1,4 @@
-import { ReplayCommandCenter } from "@/features/analysis/ReplayCommandCenter";
+import { LiveAnalysisCommandCenter } from "@/features/analysis/LiveAnalysisCommandCenter";
 import { ProductShell } from "@/features/shell/ProductShell";
 
 export default function AnalysisPage() {
@@ -7,14 +7,14 @@ export default function AnalysisPage() {
       <div className="page-intro">
         <div>
           <p className="eyebrow">분석 지휘 화면</p>
-          <h1>분석 작업</h1>
+          <h1>실시간 AI 분석</h1>
         </div>
         <p>
-          준비된 흐름에서 자료, 사람 확인, 터미널 승인 경계를 한눈에
-          확인합니다.
+          자료 업로드, AI 분석, 사람의 승인, 검증된 최종 보고서까지 하나의
+          localhost 작업 흐름에서 관리합니다.
         </p>
       </div>
-      <ReplayCommandCenter />
+      <LiveAnalysisCommandCenter />
     </ProductShell>
   );
 }

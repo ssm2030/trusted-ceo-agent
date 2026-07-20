@@ -4,6 +4,8 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from trusted_ceo_agent.reasoning.jobs import build_reasoning_job
+
 
 SCHEMA_ROOT = Path(__file__).parents[2] / "plugin" / "trusted-ceo-agent" / "schemas"
 
@@ -40,6 +42,24 @@ class SchemaContractTests(unittest.TestCase):
             "limits_ref": "default", "untrusted_text_markers": [],
         }
         self.assertTrue(list(validator.iter_errors(invalid)))
+
+    def test_integrated_reasoning_job_requires_card_allowlist(self) -> None:
+        validator = Draft202012Validator(self.load("reasoning-job.schema.json"))
+        job = build_reasoning_job(
+            stage="integrated",
+            artifact_ref="artifact_001",
+            mission_contract_hash="a" * 64,
+            pack_manifest_hash="b" * 64,
+            prompt_template_hash="c" * 64,
+            model_profile="strong_structured",
+            output_schema_ref="integrated-draft.schema.json",
+            join_manifest_ref="join_001",
+            allowed_card_refs=["card_001"],
+        )
+
+        self.assertFalse(list(validator.iter_errors(job)))
+        job.pop("allowed_card_refs")
+        self.assertTrue(list(validator.iter_errors(job)))
 
     def test_integrated_and_deep_draft_nested_payloads_are_closed(self) -> None:
         integrated = {

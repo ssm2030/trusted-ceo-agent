@@ -1,5 +1,5 @@
 type RunHeaderProps = {
-  badge: "저장된 시연 흐름" | "실시간 플러그인";
+  badge: "저장된 시연 흐름" | "실시간 플러그인" | "실시간 AI 분석";
   runId: string;
   revision: number;
   status: string;
