@@ -37,7 +37,11 @@ def source_ref() -> dict:
 
 class EvidenceBuilderTests(unittest.TestCase):
     @staticmethod
-    def _document_core(source: dict, documents: list[dict]) -> dict:
+    def _document_core(
+        source: dict,
+        documents: list[dict],
+        links: list[dict] | None = None,
+    ) -> dict:
         return assemble_evidence_core(
             envelope={
                 'schema_version': '1.0.0',
@@ -58,7 +62,7 @@ class EvidenceBuilderTests(unittest.TestCase):
             fact_register=[],
             signal_register=[],
             document_evidence_register=documents,
-            evidence_links=[],
+            evidence_links=links or [],
             capability_map={
                 'capability_map_id': 'capability_map_' + 'd' * 24,
                 'capabilities': [],
@@ -126,6 +130,37 @@ class EvidenceBuilderTests(unittest.TestCase):
             with self.assertRaises(IntegrityError):
                 EvidenceCoreValidator().validate(
                     self._document_core(source, [documents[0], documents[0]]),
+                    source_root=root,
+                )
+
+            missing_document_link = {
+                'evidence_link_id': 'evidence_' + 'a' * 24,
+                'target_ref': 'claim_' + 'b' * 24,
+                'target_type': 'business_meaning',
+                'evidence_ref': 'document_' + 'f' * 24,
+                'evidence_kind': 'document',
+                'polarity': 'supports',
+                'role': 'corroboration',
+                'rationale_template': 'The document corroborates this claim.',
+                'value_refs': [],
+                'stage': 'lens',
+                'materialized_by': 'runtime_normalizer',
+                'origin': {
+                    'origin_type': 'model_proposal',
+                    'origin_job_id': 'job_' + 'c' * 24,
+                    'model_profile': 'balanced_structured',
+                    'prompt_hash': SHA,
+                    'proposal_hash': SHA,
+                },
+                'independence_group_id': 'independence_' + 'd' * 24,
+            }
+            with self.assertRaises(IntegrityError):
+                EvidenceCoreValidator().validate(
+                    self._document_core(
+                        source,
+                        documents,
+                        [missing_document_link],
+                    ),
                     source_root=root,
                 )
 

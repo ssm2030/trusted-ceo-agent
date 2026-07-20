@@ -64,15 +64,23 @@ def _index(document: Mapping[str, Any], fields: Sequence[str]) -> dict[str, tupl
     return result
 
 
-def _evidence_ref(reference: Any, facts: set[str], signals: set[str], label: str) -> None:
+def _evidence_ref(
+    reference: Any,
+    facts: set[str],
+    signals: set[str],
+    label: str,
+    documents: set[str] | None = None,
+) -> None:
     if not isinstance(reference, str):
         raise ContractError(f"{label} must be a string")
     if reference.startswith("fact_"):
         _require_allowed({reference}, facts, "Fact")
     elif reference.startswith("signal_"):
         _require_allowed({reference}, signals, "Signal")
+    elif reference.startswith('document_') and documents is not None:
+        _require_allowed({reference}, documents, 'Document Evidence')
     else:
-        raise ContractError(f"{label} is not a Fact or Signal ref: {reference}")
+        raise ContractError(f"{label} is not an allowed Evidence ref: {reference}")
 
 
 def _evidence_refs(values: Any, facts: set[str], signals: set[str], label: str) -> None:
@@ -82,13 +90,55 @@ def _evidence_refs(values: Any, facts: set[str], signals: set[str], label: str) 
         _evidence_ref(reference, facts, signals, label)
 
 
-def _proposals(values: Any, facts: set[str], signals: set[str], label: str) -> None:
+def _proposals(
+    values: Any,
+    facts: set[str],
+    signals: set[str],
+    label: str,
+    documents: set[str] | None = None,
+) -> None:
     if not isinstance(values, list):
         raise ContractError(f"{label} must be an array")
     for proposal in values:
         if not isinstance(proposal, Mapping):
             raise ContractError(f"{label} entries must be objects")
-        _evidence_ref(proposal.get("evidence_ref"), facts, signals, label)
+        _evidence_ref(
+            proposal.get("evidence_ref"), facts, signals, label, documents,
+        )
+
+
+def validate_lens_references(
+    job: Mapping[str, Any],
+    draft: Mapping[str, Any],
+) -> None:
+    facts = _job_set(job, 'allowed_fact_ids')
+    signals = _job_set(job, 'allowed_signal_ids')
+    documents = _job_set(job, 'allowed_document_evidence_ids')
+    for observation in draft.get('observations', []):
+        _require_allowed(observation.get('fact_ids', []), facts, 'Fact')
+        _require_allowed(observation.get('signal_ids', []), signals, 'Signal')
+        _require_allowed(
+            observation.get('document_evidence_ids', []),
+            documents,
+            'Document Evidence',
+        )
+        _value_refs(observation.get('value_refs', []), facts, signals, 'observation value ref')
+    for field in (
+        'business_meanings',
+        'problem_candidates',
+        'cause_hypotheses',
+        'counter_hypotheses',
+        'expert_trigger_candidates',
+    ):
+        for claim in draft.get(field, []):
+            _value_refs(claim.get('value_refs', []), facts, signals, f'{field} value ref')
+            _proposals(
+                claim.get('evidence_proposals', []),
+                facts,
+                signals,
+                f'{field} evidence',
+                documents,
+            )
 
 
 def _value_refs(values: Any, facts: set[str], signals: set[str], label: str) -> None:
