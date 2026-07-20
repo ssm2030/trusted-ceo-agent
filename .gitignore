@@ -38,6 +38,9 @@ web/*.tsbuildinfo
 *.pid
 .env
 .env.*
+.env.local
+web/.env.local
+web/var/ai-service/
 !.env.example
 *.pem
 *.key
