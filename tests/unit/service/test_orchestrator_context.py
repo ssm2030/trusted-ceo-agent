@@ -160,6 +160,47 @@ class OrchestratorContextTests(unittest.TestCase):
                 )
             self.assertEqual(full.revision, orchestrator.snapshot(run_id).revision)
 
+    def test_markdown_scan_registers_document_evidence_without_fabricating_facts(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            root = Path(directory)
+            application, _, _, orchestrator = self._runtime(root)
+            run_id = 'run_20260721T010000Z_0123456789abcdef'
+            created = orchestrator.create_run(CreateRunRequest(
+                mission=confirmed_mission(),
+                run_id=run_id,
+            ))
+            attached = orchestrator.attach_files(
+                run_id,
+                MutationBase(
+                    expected_revision=created.revision,
+                    idempotency_key='upload_markdown_scan_0001',
+                ),
+                (IncomingUpload.from_bytes(
+                    'plan.md',
+                    'text/markdown',
+                    b'# Plan\nRevenue assumptions\n',
+                    logical_path='strategy/plan.md',
+                ),),
+            )
+
+            scanned = orchestrator.continue_run(
+                run_id,
+                MutationBase(
+                    expected_revision=attached.revision,
+                    idempotency_key='continue_markdown_scan_0001',
+                ),
+            )
+            files = _files(application, run_id, scanned.revision)
+            core = strict_loads(files['evidence/core.json'])
+
+            self.assertGreater(len(core['document_evidence_register']), 0)
+            self.assertEqual([], [
+                item for item in core['data_quality_register']
+                if item.get('reason_code') == 'source_parse_failed'
+            ])
+            self.assertEqual([], core['fact_register'])
+            self.assertEqual([], core['capability_map']['capabilities'])
+
     def test_context_card_keeps_nonce_private_and_web_approval_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             root = Path(directory)

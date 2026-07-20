@@ -17,6 +17,16 @@ _HEADING = re.compile(r'^(#{1,6})[ \t]+(.+?)#*[ \t]*$')
 _FENCE_OPEN = re.compile(r'^[ \t]{0,3}(`{3,}|~{3,})')
 
 
+def normalize_markdown_blob(payload: bytes) -> str:
+    if not isinstance(payload, bytes):
+        raise ContractError('Markdown evidence blob must be bytes')
+    try:
+        decoded = payload.decode('utf-8-sig')
+    except UnicodeDecodeError as exc:
+        raise ContractError('Markdown evidence blob must be UTF-8') from exc
+    return _normalized_text(decoded)
+
+
 def _normalized_text(value: str) -> str:
     if not isinstance(value, str):
         raise ContractError('Markdown evidence text must be a string')

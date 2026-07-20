@@ -6,7 +6,7 @@
   "properties": {
     "evidence_link_id": {"type": "string", "pattern": "^evidence_[0-9a-f]{24}$"}, "target_ref": {"type": "string", "minLength": 1},
     "target_type": {"enum": ["business_meaning", "problem_candidate", "cause_hypothesis", "counter_hypothesis", "integrated_issue", "causal_relation_hypothesis", "cross_issue_conflict", "conditional_response", "expert_review_need"]},
-    "evidence_ref": {"type": "string", "pattern": "^(fact|signal)_[0-9a-f]{24}$"}, "evidence_kind": {"enum": ["fact", "signal"]},
+    "evidence_ref": {"type": "string", "pattern": "^(fact|signal|document)_[0-9a-f]{24}$"}, "evidence_kind": {"enum": ["fact", "signal", "document"]},
     "polarity": {"enum": ["supports", "contradicts"]}, "role": {"enum": ["observation", "corroboration", "mechanism", "counter_evidence", "boundary"]},
     "rationale_template": {"type": "string", "maxLength": 1000},
     "value_refs": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["token", "fact_or_signal_id", "display_field", "display_format_ref"], "properties": {"token": {"type": "string"}, "fact_or_signal_id": {"type": "string", "pattern": "^(fact|signal)_[0-9a-f]{24}$"}, "display_field": {"type": "string"}, "display_format_ref": {"type": "string"}}}},
