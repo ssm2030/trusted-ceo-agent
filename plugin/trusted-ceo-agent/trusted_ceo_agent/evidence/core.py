@@ -7,8 +7,12 @@ from typing import Any, Mapping, Sequence
 
 from trusted_ceo_agent.canonical import canonical_bytes
 from trusted_ceo_agent.contracts.schema_store import SchemaStore
-from trusted_ceo_agent.errors import IntegrityError
+from trusted_ceo_agent.errors import ContractError, IntegrityError
 from trusted_ceo_agent.filesystem import ensure_within
+from trusted_ceo_agent.intake.document_evidence import (
+    normalize_markdown_blob,
+    validate_document_evidence_registry,
+)
 
 
 def _payload_hash(value: Mapping[str, Any]) -> str:
@@ -27,6 +31,7 @@ def assemble_evidence_core(
     signal_register: Sequence[Mapping[str, Any]],
     evidence_links: Sequence[Mapping[str, Any]],
     capability_map: Mapping[str, Any],
+    document_evidence_register: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     body = {
         "envelope": deepcopy(dict(envelope)),
@@ -37,6 +42,10 @@ def assemble_evidence_core(
         "data_quality_register": sorted((deepcopy(dict(item)) for item in data_quality_register), key=lambda item: item["quality_issue_id"]),
         "fact_register": sorted((deepcopy(dict(item)) for item in fact_register), key=lambda item: item["fact_id"]),
         "signal_register": sorted((deepcopy(dict(item)) for item in signal_register), key=lambda item: item["signal_id"]),
+        "document_evidence_register": sorted(
+            (deepcopy(dict(item)) for item in document_evidence_register),
+            key=lambda item: item["document_evidence_id"],
+        ),
         "evidence_links": sorted((deepcopy(dict(item)) for item in evidence_links), key=lambda item: item["evidence_link_id"]),
         "capability_map": deepcopy(dict(capability_map)),
     }
@@ -57,8 +66,13 @@ class EvidenceCoreValidator:
         quality = self._unique(core["data_quality_register"], "quality_issue_id")
         facts = self._unique(core["fact_register"], "fact_id")
         signals = self._unique(core["signal_register"], "signal_id")
+        documents = self._unique(
+            core.get('document_evidence_register', []),
+            'document_evidence_id',
+        )
         links = self._unique(core["evidence_links"], "evidence_link_id")
 
+        source_payloads: dict[str, bytes] = {}
         if source_root is not None:
             root = source_root.resolve(strict=True)
             for source in sources.values():
@@ -66,6 +80,56 @@ class EvidenceCoreValidator:
                 payload = path.read_bytes()
                 if len(payload) != source["size_bytes"] or hashlib.sha256(payload).hexdigest() != source["sha256"]:
                     raise IntegrityError(f"Source snapshot hash mismatch: {source['source_id']}")
+                source_payloads[str(source['source_id'])] = payload
+
+        documents_by_source: dict[str, list[Mapping[str, Any]]] = {}
+        for document in documents.values():
+            document_id = str(document['document_evidence_id'])
+            document_body = {
+                key: deepcopy(value)
+                for key, value in document.items()
+                if key != 'integrity'
+            }
+            if _payload_hash(document_body) != document['integrity']['payload_hash']:
+                raise IntegrityError(
+                    f'Document Evidence payload hash mismatch: {document_id}'
+                )
+            source_id = str(document['source_id'])
+            source = sources.get(source_id)
+            if source is None:
+                raise IntegrityError(
+                    f'Document Evidence references unknown Source: {source_id}'
+                )
+            if document['logical_path'] != source['display_name']:
+                raise IntegrityError(
+                    f'Document Evidence logical path differs from Source: {document_id}'
+                )
+            documents_by_source.setdefault(source_id, []).append(document)
+
+        if source_root is not None:
+            source_ids_to_validate = set(documents_by_source)
+            if 'document_evidence_register' in core:
+                source_ids_to_validate.update(
+                    source_id
+                    for source_id, source in sources.items()
+                    if Path(str(source['display_name'])).suffix.casefold() == '.md'
+                )
+            for source_id in sorted(source_ids_to_validate):
+                source = sources[source_id]
+                try:
+                    normalized = normalize_markdown_blob(source_payloads[source_id])
+                    validate_document_evidence_registry(
+                        source,
+                        normalized,
+                        sorted(
+                            documents_by_source.get(source_id, []),
+                            key=lambda item: item['chunk_index'],
+                        ),
+                    )
+                except (KeyError, ContractError) as exc:
+                    raise IntegrityError(
+                        f'Document Evidence cannot be rebuilt from Source: {source_id}'
+                    ) from exc
 
         for fact in facts.values():
             fact_body = {key: deepcopy(value) for key, value in fact.items() if key != "integrity"}
@@ -91,7 +155,12 @@ class EvidenceCoreValidator:
 
         for link in links.values():
             evidence_ref = link["evidence_ref"]
-            evidence = facts.get(evidence_ref) if link["evidence_kind"] == "fact" else signals.get(evidence_ref)
+            if link['evidence_kind'] == 'fact':
+                evidence = facts.get(evidence_ref)
+            elif link['evidence_kind'] == 'signal':
+                evidence = signals.get(evidence_ref)
+            else:
+                evidence = documents.get(evidence_ref)
             if evidence is None:
                 raise IntegrityError(f"Evidence Link references unknown Evidence: {evidence_ref}")
             if link["evidence_kind"] == "signal":

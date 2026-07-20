@@ -7,9 +7,9 @@ import type {
   HitlDecision,
   ProviderSnapshot,
 } from "@/features/analysis/analysis-provider";
-import type { ReplayFileMetadata } from "@/features/analysis/analysis-model";
 import {
   getWorkflowStatusLabel,
+  type AnalysisUpload,
 } from "@/features/analysis/analysis-model";
 import { DataUploadCard } from "@/features/analysis/DataUploadCard";
 import { HitlDecisionPanel } from "@/features/analysis/HitlDecisionPanel";
@@ -49,7 +49,6 @@ export function LiveAnalysisCommandCenter({
   );
   const [health, setHealth] = useState<LiveHealth | null>(null);
   const [snapshot, setSnapshot] = useState<ProviderSnapshot | null>(null);
-  const [selectedFiles, setSelectedFiles] = useState<ReplayFileMetadata[]>([]);
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [deleted, setDeleted] = useState(false);
@@ -132,20 +131,13 @@ export function LiveAnalysisCommandCenter({
     }
   }
 
-  async function handleFilesSelected(files: File[]) {
+  async function handleUploadsSelected(uploads: AnalysisUpload[]) {
     if (snapshot === null) return;
-    const next = await perform(() => provider.attachData(
+    await perform(() => provider.attachData(
       snapshot.run_id,
       snapshot.revision,
-      files,
+      uploads,
     ));
-    if (next !== null && next.error === null) {
-      setSelectedFiles(files.map(({ name, size, type }) => ({
-        name,
-        size,
-        type,
-      })));
-    }
   }
 
   async function handleDecision(
@@ -205,7 +197,6 @@ export function LiveAnalysisCommandCenter({
     try {
       await provider.deleteRun(snapshot.run_id, snapshot.revision);
       window.sessionStorage.removeItem(RUN_STORAGE_KEY);
-      setSelectedFiles([]);
       setSnapshot(null);
       setDeleted(true);
     } catch {
@@ -347,10 +338,10 @@ export function LiveAnalysisCommandCenter({
         </section>
         <aside className="analysis-side-column">
           <DataUploadCard
-            disabled={busy}
-            files={selectedFiles}
+            disabled={busy || !snapshot.allowed_actions.includes('attach_data')}
+            files={snapshot.uploaded_files}
             mode="service"
-            onFilesSelected={handleFilesSelected}
+            onUploadsSelected={handleUploadsSelected}
           />
           <RunDetailsPanel snapshot={snapshot} />
         </aside>

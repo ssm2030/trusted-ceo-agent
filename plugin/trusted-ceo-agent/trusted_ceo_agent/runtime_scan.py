@@ -21,6 +21,10 @@ from trusted_ceo_agent.intake.mapping import (
 )
 from trusted_ceo_agent.intake.materialize import materialize_observed_facts
 from trusted_ceo_agent.intake.models import ParsedDataset
+from trusted_ceo_agent.intake.document_evidence import (
+    build_document_evidence,
+    normalize_markdown_blob,
+)
 from trusted_ceo_agent.intake.quality import quality_issue
 from trusted_ceo_agent.packs.loader import PackLoader
 from trusted_ceo_agent.packs.evidence_selection import (
@@ -159,10 +163,18 @@ def build_scan_artifacts(
     quality_register: list[dict[str, Any]] = []
     semantic_rows: list[dict[str, str]] = []
     datasets: list[ParsedDataset] = []
+    document_evidence: list[dict[str, Any]] = []
     parsed_count = 0
     for source in sources:
         source_id = str(source["source_id"])
         blob = source_root / str(source["snapshot_ref"])
+        if Path(str(source['display_name'])).suffix.casefold() == '.md':
+            normalized = normalize_markdown_blob(blob.read_bytes())
+            chunks = build_document_evidence(source, normalized)
+            document_evidence.extend(chunks)
+            updates[f'intake/document-evidence/{source_id}.json'] = canonical_bytes(chunks)
+            parsed_count += 1
+            continue
         try:
             adapter = select_adapter(str(source["display_name"]), blob)
             dataset = adapter.parse(blob, source_id)
@@ -248,6 +260,9 @@ def build_scan_artifacts(
         "semantic_rows": sorted(semantic_rows, key=lambda item: item["source_id"]),
         "quality_issue_ids": sorted(item["quality_issue_id"] for item in quality_register),
         "fact_ids": sorted(item["fact_id"] for item in facts),
+        'document_evidence_ids': sorted(
+            item['document_evidence_id'] for item in document_evidence
+        ),
         "mapping_question_refs": [
             item["mapping_question_ref"] for item in canonical_proposal["mappings"]
         ],
@@ -283,6 +298,7 @@ def build_scan_artifacts(
         data_quality_register=quality_register,
         fact_register=facts,
         signal_register=[],
+        document_evidence_register=document_evidence,
         evidence_links=[],
         capability_map=capability,
     )
@@ -335,11 +351,15 @@ def build_scan_artifacts(
             )
         analysis_run_count = len(runs)
 
-    capability = build_problem_capability_map(
-        pack_index,
-        core.get("fact_register", []),
-        core.get("data_quality_register", []),
-        source_registry,
+    capability = (
+        build_capability_map({}, ())
+        if document_evidence and not datasets
+        else build_problem_capability_map(
+            pack_index,
+            core.get("fact_register", []),
+            core.get("data_quality_register", []),
+            source_registry,
+        )
     )
     problem_selection = build_problem_selection(
         pack_index,
@@ -357,6 +377,7 @@ def build_scan_artifacts(
         data_quality_register=core["data_quality_register"],
         fact_register=core["fact_register"],
         signal_register=core["signal_register"],
+        document_evidence_register=core.get('document_evidence_register', []),
         evidence_links=core["evidence_links"],
         capability_map=capability,
     )

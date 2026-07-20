@@ -10,6 +10,7 @@ import {
 } from "@/lib/server/local-request-security";
 import {
   handleAnalysisCreate,
+  handleAnalysisFiles,
   handleAnalysisHumanResponse,
   handleAnalysisReport,
 } from "@/lib/server/analysis/route-handlers";
@@ -46,6 +47,7 @@ function snapshot() {
     result_ref: null,
     hitl_card: null,
     error: null,
+    uploaded_files: [],
   };
 }
 
@@ -116,6 +118,54 @@ describe("analysis BFF route handlers", () => {
       expect.any(Object),
       createHash("sha256").update(csrf, "utf8").digest("hex"),
     );
+  });
+
+  it('forwards files with aligned logical paths and rejects count mismatches', async () => {
+    const service = backend();
+    vi.mocked(service.uploadFiles).mockResolvedValue(snapshot());
+    const form = new FormData();
+    form.set('expected_revision', '1');
+    form.set('idempotency_key', 'upload_route_test_0001');
+    form.append('files', new File(['# A'], 'a.md', { type: 'text/markdown' }));
+    form.append('logical_paths', 'folder-a/a.md');
+    form.append('files', new File(['x,y\n1,2\n'], 'b.csv', { type: 'text/csv' }));
+    form.append('logical_paths', 'folder-b/b.csv');
+    const headers = mutationHeaders();
+    headers.delete('content-type');
+
+    const response = await handleAnalysisFiles(new Request(
+      'http://127.0.0.1:3000/api/analysis/runs/run_20260719T000000Z_0123456789abcdef/files',
+      { method: 'POST', headers, body: form },
+    ), 'run_20260719T000000Z_0123456789abcdef', {
+      backend: service,
+      security,
+      activateReport: vi.fn(),
+    });
+
+    expect(response.status).toBe(200);
+    const forwarded = vi.mocked(service.uploadFiles).mock.calls[0][1];
+    expect((forwarded.getAll('files') as File[]).map((file) => file.name)).toEqual(['a.md', 'b.csv']);
+    expect(forwarded.getAll('logical_paths')).toEqual(['folder-a/a.md', 'folder-b/b.csv']);
+
+    const mismatchForm = new FormData();
+    mismatchForm.set('expected_revision', '1');
+    mismatchForm.set('idempotency_key', 'upload_route_test_0002');
+    mismatchForm.append('files', new File(['# A'], 'a.md', { type: 'text/markdown' }));
+    mismatchForm.append('files', new File(['# B'], 'b.md', { type: 'text/markdown' }));
+    mismatchForm.append('logical_paths', 'folder-a/a.md');
+    const mismatchHeaders = mutationHeaders();
+    mismatchHeaders.delete('content-type');
+    const mismatch = await handleAnalysisFiles(new Request(
+      'http://127.0.0.1:3000/api/analysis/runs/run_20260719T000000Z_0123456789abcdef/files',
+      { method: 'POST', headers: mismatchHeaders, body: mismatchForm },
+    ), 'run_20260719T000000Z_0123456789abcdef', {
+      backend: service,
+      security,
+      activateReport: vi.fn(),
+    });
+
+    expect(mismatch.status).toBe(422);
+    expect(vi.mocked(service.uploadFiles)).toHaveBeenCalledTimes(1);
   });
 
   it("activates a validated service report before returning it", async () => {

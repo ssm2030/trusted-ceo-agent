@@ -187,6 +187,15 @@ class HitlCard(StrictModel):
             raise ValueError("allowed decisions must be unique")
         return value
 
+class UploadedFileSummary(StrictModel):
+    source_id: str = Field(pattern=r'^source_[0-9a-f]{24}$')
+    logical_path: str = Field(min_length=1, max_length=512)
+    display_name: str = Field(min_length=1, max_length=512)
+    media_type: str = Field(min_length=1, max_length=128)
+    size_bytes: int = Field(ge=0)
+    collection_label: str = Field(min_length=1, max_length=512)
+
+
 class RunSnapshot(StrictModel):
     provider_kind: Literal["service"] = "service"
     display_badge: Literal["실시간 AI 분석"] = "실시간 AI 분석"
@@ -203,6 +212,7 @@ class RunSnapshot(StrictModel):
     result_ref: str | None = Field(default=None, max_length=500)
     hitl_card: HitlCard | None = None
     error: ServiceErrorBody | None = None
+    uploaded_files: list[UploadedFileSummary] = Field(default_factory=list, max_length=64)
 
     @model_validator(mode="after")
     def validate_browser_state(self) -> RunSnapshot:

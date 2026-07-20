@@ -14,6 +14,7 @@
     "component_manifest": {"type": "object", "additionalProperties": false, "required": ["component_refs"], "properties": {"component_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}}},
     "source_registry": {"type": "array", "items": {"$ref": "source.schema.json"}}, "data_quality_register": {"type": "array", "items": {"$ref": "data-quality.schema.json"}},
     "fact_register": {"type": "array", "items": {"$ref": "fact.schema.json"}}, "signal_register": {"type": "array", "items": {"$ref": "signal.schema.json"}},
+    "document_evidence_register": {"type": "array", "items": {"$ref": "document-evidence.schema.json"}},
     "evidence_links": {"type": "array", "items": {"$ref": "evidence-link.schema.json"}}, "capability_map": {"$ref": "capability-map.schema.json"},
     "integrity": {"type": "object", "additionalProperties": false, "required": ["payload_hash"], "properties": {"payload_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}
   }

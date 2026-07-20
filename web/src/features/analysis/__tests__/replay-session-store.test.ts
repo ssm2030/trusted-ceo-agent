@@ -21,6 +21,7 @@ const snapshot: ProviderSnapshot = {
   progress: 12,
   result_ref: null,
   error: null,
+  uploaded_files: [],
 };
 
 describe("replay session storage", () => {

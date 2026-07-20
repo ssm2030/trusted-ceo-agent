@@ -80,6 +80,63 @@ def _xlsx_with_malformed_workbook_xml() -> bytes:
 
 
 class UploadPolicyTests(unittest.TestCase):
+    def test_markdown_utf8_and_safe_logical_paths_are_staged(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            policy = UploadPolicy(Path(directory))
+            item = _stage(policy, (
+                IncomingUpload.from_bytes(
+                    'plan.md',
+                    'text/markdown; charset=utf-8',
+                    b'\xef\xbb\xbf# Plan\r\n\r\nRevenue assumptions\r\n',
+                    logical_path='\uc804\ub7b5\uc790\ub8cc/2026/plan.md',
+                ),
+            ))[0]
+
+            self.assertEqual('\uc804\ub7b5\uc790\ub8cc/2026/plan.md', item.logical_path)
+            self.assertEqual('# Plan\n\nRevenue assumptions\n', item.normalized_text)
+            self.assertEqual(item.logical_path, item.public_metadata()['logical_path'])
+            policy.discard(item)
+
+    def test_markdown_binary_controls_and_unsafe_logical_paths_are_rejected(self) -> None:
+        invalid = (
+            (b'\xff\xfe', 'notes/bad.md'),
+            (b'hello\x00world', 'notes/bad.md'),
+            (b' \r\n\t', 'notes/bad.md'),
+            (b'hello', '../bad.md'),
+            (b'hello', 'C:/bad.md'),
+            (b'hello', 'https://example.test/bad.md'),
+            (b'hello', 'notes/not-the-name.md'),
+            (b'hello', 'notes\\bad.md'),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            policy = UploadPolicy(Path(directory))
+            for payload, logical_path in invalid:
+                with self.subTest(logical_path=logical_path, payload=payload):
+                    with self.assertRaises(ContractError):
+                        _stage(policy, (
+                            IncomingUpload.from_bytes(
+                                'bad.md',
+                                'application/octet-stream',
+                                payload,
+                                logical_path=logical_path,
+                            ),
+                        ))
+
+    def test_logical_path_is_normalized_to_nfc(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            policy = UploadPolicy(Path(directory))
+            item = _stage(policy, (
+                IncomingUpload.from_bytes(
+                    'plan.md',
+                    'text/plain',
+                    b'# Plan\n',
+                    logical_path='re\u0301sume\u0301/plan.md',
+                ),
+            ))[0]
+
+            self.assertEqual('r\u00e9sum\u00e9/plan.md', item.logical_path)
+            policy.discard(item)
+
     def test_allowed_streams_are_staged_without_public_path_leak(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             policy = UploadPolicy(Path(directory))

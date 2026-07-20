@@ -160,6 +160,11 @@ def _pack_reasoning_context(files: Mapping[str, bytes]) -> dict[str, Any]:
         item for item in core.get("signal_register", [])
         if isinstance(item, Mapping) and isinstance(item.get("signal_id"), str)
     ]
+    documents = [
+        item for item in core.get('document_evidence_register', [])
+        if isinstance(item, Mapping)
+        and isinstance(item.get('document_evidence_id'), str)
+    ]
     capabilities = [
         item for item in core.get("capability_map", {}).get("capabilities", [])
         if isinstance(item, Mapping) and isinstance(item.get("capability_id"), str)
@@ -233,6 +238,7 @@ def _pack_reasoning_context(files: Mapping[str, bytes]) -> dict[str, Any]:
         "selected_packs": selected_packs,
         "facts": facts,
         "signals": signals,
+        'documents': documents,
         "capabilities": capabilities,
         "allowed_mechanism_refs": sorted(mechanisms),
         "allowed_test_refs": sorted(tests),
@@ -311,6 +317,15 @@ def _reasoning_jobs(
             }
             for item in facts
             if isinstance(item, dict) and isinstance(item.get("fact_id"), str)
+        ] + [
+            {
+                'id': item['document_evidence_id'],
+                'kind': 'document',
+                'context': item,
+                'scope': item.get('logical_path', ''),
+                'period': item.get('line_start', 0),
+            }
+            for item in context['documents']
         ]
         signal_ids = sorted(
             item["signal_id"] for item in signals

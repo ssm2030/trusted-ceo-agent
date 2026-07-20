@@ -602,6 +602,16 @@ button {
   gap: 1rem;
 }
 
+.upload-choice-grid {
+  display: grid;
+  gap: 0.65rem;
+  margin: 1rem;
+}
+
+.upload-choice-grid .file-drop {
+  margin: 0;
+}
+
 .file-drop {
   align-items: center;
   background: #eef3f1;
@@ -1217,4 +1227,33 @@ button {
   .service-blocked-state {
     grid-template-columns: 1fr;
   }
+}
+
+.upload-status {
+  background: #eef3f1;
+  border-left: 3px solid var(--signal-green);
+  color: var(--ink-700);
+  font-size: 0.7rem;
+  margin: 0 1rem 1rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.file-groups {
+  margin: 0 1rem 1rem;
+}
+
+.file-group + .file-group {
+  border-top: 1px solid var(--line);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.file-group h3 {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.file-group .file-list {
+  margin: 0.35rem 0 0;
 }

@@ -38,6 +38,7 @@ function snapshot(
       sections: [],
     },
     error: null,
+    uploaded_files: [],
     ...overrides,
   };
 }
@@ -143,7 +144,65 @@ describe("LiveAnalysisCommandCenter", () => {
       "현재 revision을 새로 확인해 주세요.",
     );
   });
-  it("uploads bounded files and exposes final report and confirmed deletion actions", async () => {
+
+  it('accumulates canonical folder groups and disables upload when attachment closes', async () => {
+    const user = userEvent.setup();
+    const uploadable = snapshot({
+      workflow_status: 'context_ready',
+      pending_action: 'request_changes',
+      pending_approval_request_id: null,
+      allowed_actions: ['attach_data'],
+      hitl_card: null,
+      uploaded_files: [],
+    });
+    const firstFiles = [{
+      source_id: 'source_aaaaaaaaaaaaaaaaaaaaaaaa',
+      logical_path: 'folder-a/a.md',
+      display_name: 'a.md',
+      media_type: 'text/markdown',
+      size_bytes: 3,
+      collection_label: 'folder-a',
+    }];
+    const secondFiles = [...firstFiles, {
+      source_id: 'source_bbbbbbbbbbbbbbbbbbbbbbbb',
+      logical_path: 'folder-b/b.csv',
+      display_name: 'b.csv',
+      media_type: 'text/csv',
+      size_bytes: 8,
+      collection_label: 'folder-b',
+    }];
+    const service = provider(uploadable);
+    service.attachData
+      .mockResolvedValueOnce(snapshot({
+        ...uploadable,
+        revision: 4,
+        uploaded_files: firstFiles,
+      }))
+      .mockResolvedValueOnce(snapshot({
+        ...uploadable,
+        revision: 5,
+        allowed_actions: [],
+        uploaded_files: secondFiles,
+      }));
+    render(<LiveAnalysisCommandCenter provider={service} />);
+    const folderInput = await screen.findByLabelText('분석 폴더 선택');
+    const first = new File(['# A'], 'a.md', { type: 'text/markdown' });
+    Object.defineProperty(first, 'webkitRelativePath', { value: 'folder-a/a.md' });
+    await user.upload(folderInput, first);
+    expect(await screen.findByText('folder-a/a.md')).toBeVisible();
+
+    const second = new File(['x,y\n1,2\n'], 'b.csv', { type: 'text/csv' });
+    Object.defineProperty(second, 'webkitRelativePath', { value: 'folder-b/b.csv' });
+    await user.upload(folderInput, second);
+
+    expect(await screen.findByText('folder-b/b.csv')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'folder-a' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'folder-b' })).toBeVisible();
+    expect(screen.getByLabelText('분석 자료 선택')).toBeDisabled();
+    expect(screen.getByLabelText('분석 폴더 선택')).toBeDisabled();
+  });
+
+  it("exposes final report and confirmed deletion actions", async () => {
     const user = userEvent.setup();
     const finalized = snapshot({
       revision: 9,
@@ -162,21 +221,14 @@ describe("LiveAnalysisCommandCenter", () => {
     render(<LiveAnalysisCommandCenter provider={service} onNavigate={navigate} />);
 
     await screen.findByText("업로드 자료");
-    await user.upload(
-      screen.getByLabelText("분석 자료 선택"),
-      new File(["period,value\n2026-01,1"], "monthly.csv", {
-        type: "text/csv",
-      }),
-    );
-    await waitFor(() => expect(service.attachData).toHaveBeenCalled());
-    expect(screen.getByText("monthly.csv")).toBeVisible();
+    expect(screen.getByLabelText("분석 자료 선택")).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "최종 보고서 열기" }));
     expect(service.openFinalizedReport).toHaveBeenCalledWith(RUN_ID);
     expect(navigate).toHaveBeenCalledWith("/report");
 
     await user.click(screen.getByRole("button", { name: "실행 데이터 삭제" }));
-    expect(service.deleteRun).toHaveBeenCalledWith(RUN_ID, 10);
+    expect(service.deleteRun).toHaveBeenCalledWith(RUN_ID, 9);
     expect(window.sessionStorage.getItem("trusted-ceo-live-run-id")).toBeNull();
     expect(await screen.findByText("실행 데이터가 삭제되었습니다.")).toBeVisible();
   });

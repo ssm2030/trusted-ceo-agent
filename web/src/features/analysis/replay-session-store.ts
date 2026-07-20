@@ -23,6 +23,7 @@ function copySafeSnapshot(snapshot: ProviderSnapshot): ProviderSnapshot {
     latest_event: snapshot.latest_event,
     progress: snapshot.progress,
     result_ref: snapshot.result_ref,
+    uploaded_files: snapshot.uploaded_files.map((item) => ({ ...item })),
     error: snapshot.error ? { ...snapshot.error } : null,
   };
 }

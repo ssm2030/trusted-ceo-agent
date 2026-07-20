@@ -237,18 +237,23 @@ def create_app(
         files: list[UploadFile] = File(...),
         expected_revision: int = Form(...),
         idempotency_key: str = Form(...),
+        logical_paths: list[str] | None = Form(default=None),
     ) -> RunSnapshot:
         request = MutationBase(
             expected_revision=expected_revision,
             idempotency_key=idempotency_key,
         )
+        if logical_paths is not None and len(logical_paths) != len(files):
+            raise ContractError('one logical path is required for each upload')
+        resolved_paths = logical_paths or [upload.filename or '' for upload in files]
         uploads = tuple(
             IncomingUpload(
                 filename=upload.filename or "",
                 content_type=upload.content_type or "",
                 chunks=_upload_chunks(upload),
+                logical_path=logical_path,
             )
-            for upload in files
+            for upload, logical_path in zip(files, resolved_paths, strict=True)
         )
         return orchestrator.attach_files(run_id, request, uploads)
 

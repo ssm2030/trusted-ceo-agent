@@ -9,6 +9,7 @@ from typing import Any
 from trusted_ceo_agent.canonical import canonical_bytes, strict_loads
 from trusted_ceo_agent.contracts.schema_store import SchemaStore
 from trusted_ceo_agent.errors import ContractError
+from trusted_ceo_agent.reasoning.ref_validation import validate_lens_references
 
 
 ARRAY_FIELDS = (
@@ -51,9 +52,15 @@ def _validate_templates(draft: Mapping[str, Any]) -> None:
             raise ContractError(f"numeric literal is forbidden in {key}")
 
 
-def _collect_refs(draft: Mapping[str, Any], allowed_facts: set[str], allowed_signals: set[str]) -> tuple[set[str], set[str]]:
+def _collect_refs(
+    draft: Mapping[str, Any],
+    allowed_facts: set[str],
+    allowed_signals: set[str],
+    allowed_documents: set[str],
+) -> tuple[set[str], set[str], set[str]]:
     facts: set[str] = set()
     signals: set[str] = set()
+    documents: set[str] = set()
     for key, value in _walk(draft):
         values: list[str] = []
         if key in {"fact_ids", "searched_fact_ids", "result_fact_ids"} and isinstance(value, list):
@@ -62,16 +69,35 @@ def _collect_refs(draft: Mapping[str, Any], allowed_facts: set[str], allowed_sig
         elif key in {"signal_ids", "searched_signal_ids", "result_signal_ids"} and isinstance(value, list):
             values = [item for item in value if isinstance(item, str)]
             signals.update(values)
-        elif key in {"fact_or_signal_id", "evidence_ref", "signal_id", "duplicate_of_signal_id"} and isinstance(value, str):
+        elif key == 'document_evidence_ids' and isinstance(value, list):
+            values = [item for item in value if isinstance(item, str)]
+            documents.update(values)
+        elif key == 'fact_or_signal_id' and isinstance(value, str):
             if value.startswith("fact_"):
                 facts.add(value)
             elif value.startswith("signal_"):
                 signals.add(value)
+            else:
+                raise ContractError(
+                    f'value reference is not a Fact or Signal ref: {value}'
+                )
+        elif key in {"evidence_ref", "signal_id", "duplicate_of_signal_id"} and isinstance(value, str):
+            if value.startswith("fact_"):
+                facts.add(value)
+            elif value.startswith("signal_"):
+                signals.add(value)
+            elif key == 'evidence_ref' and value.startswith('document_'):
+                documents.add(value)
     outside_facts = facts - allowed_facts
     outside_signals = signals - allowed_signals
-    if outside_facts or outside_signals:
-        raise ContractError(f"draft references values outside Job allowlist: facts={sorted(outside_facts)}, signals={sorted(outside_signals)}")
-    return facts, signals
+    outside_documents = documents - allowed_documents
+    if outside_facts or outside_signals or outside_documents:
+        raise ContractError(
+            'draft references values outside Job allowlist: '
+            f'facts={sorted(outside_facts)}, signals={sorted(outside_signals)}, '
+            f'documents={sorted(outside_documents)}'
+        )
+    return facts, signals, documents
 
 
 def _local_key_index(draft: Mapping[str, Any]) -> dict[str, tuple[str, dict[str, Any]]]:
@@ -193,8 +219,12 @@ def normalize_lens_draft(job: Mapping[str, Any], draft: Mapping[str, Any] | str 
     _validate_graph(payload, index)
     _validate_status(job, payload)
     _validate_pack_allowlists(job, payload)
-    used_facts, used_signals = _collect_refs(
-        payload, set(job.get("allowed_fact_ids", [])), set(job.get("allowed_signal_ids", [])),
+    validate_lens_references(job, payload)
+    used_facts, used_signals, used_documents = _collect_refs(
+        payload,
+        set(job.get("allowed_fact_ids", [])),
+        set(job.get("allowed_signal_ids", [])),
+        set(job.get('allowed_document_evidence_ids', [])),
     )
 
     claim_ids: dict[str, str] = {}
@@ -210,12 +240,18 @@ def normalize_lens_draft(job: Mapping[str, Any], draft: Mapping[str, Any] | str 
         for item in payload.get(field, []):
             for proposal in item.get("evidence_proposals", []):
                 evidence_ref = proposal.get("evidence_ref")
-                if evidence_ref not in used_facts | used_signals:
+                if evidence_ref not in used_facts | used_signals | used_documents:
                     raise ContractError(f"invalid evidence proposal ref: {evidence_ref}")
+                evidence_kind = (
+                    'fact' if evidence_ref.startswith('fact_')
+                    else 'signal' if evidence_ref.startswith('signal_')
+                    else 'document'
+                )
                 link_body = {
                     "target_ref": claim_ids[item["local_key"]],
                     "target_type": target_type,
                     "evidence_ref": evidence_ref,
+                    'evidence_kind': evidence_kind,
                     "polarity": proposal.get("polarity"),
                     "role": proposal.get("role"),
                     "stage": "lens",
@@ -245,6 +281,7 @@ def normalize_lens_draft(job: Mapping[str, Any], draft: Mapping[str, Any] | str 
         "assessment_status": payload["assessment_status"],
         "used_fact_ids": sorted(used_facts),
         "used_signal_ids": sorted(used_signals),
+        'used_document_evidence_ids': sorted(used_documents),
         "normalized_payload": normalized_payload,
         "evidence_link_ids": [item["evidence_link_id"] for item in links],
         "evidence_links": links,

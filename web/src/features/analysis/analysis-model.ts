@@ -12,6 +12,20 @@ export const ANALYSIS_PHASES = [
 
 export type AnalysisPhase = (typeof ANALYSIS_PHASES)[number];
 export type ReplayFileMetadata = { name: string; size: number; type: string };
+export type AnalysisUpload = Readonly<{
+  file: File;
+  logicalPath: string;
+  collectionLabel: string;
+}>;
+
+export type UploadedFileSummary = Readonly<{
+  source_id: string;
+  logical_path: string;
+  display_name: string;
+  media_type: string;
+  size_bytes: number;
+  collection_label: string;
+}>;
 
 export const WORKFLOW_STATUS_LABELS: Readonly<Record<string, string>> = Object.freeze({
   created: "준비",

@@ -789,6 +789,7 @@ def _prepare_professional_finalization(
         data_quality_register=core["data_quality_register"],
         fact_register=core["fact_register"],
         signal_register=core["signal_register"],
+        document_evidence_register=core.get('document_evidence_register', []),
         evidence_links=core["evidence_links"],
         capability_map=core["capability_map"],
     )
@@ -1117,6 +1118,7 @@ def prepare_finalization(
         pack_manifest=core["pack_manifest"], component_manifest=core["component_manifest"],
         source_registry=core["source_registry"], data_quality_register=core["data_quality_register"],
         fact_register=core["fact_register"], signal_register=core["signal_register"],
+        document_evidence_register=core.get('document_evidence_register', []),
         evidence_links=list(links.values()), capability_map=core["capability_map"],
     )
     structured = {

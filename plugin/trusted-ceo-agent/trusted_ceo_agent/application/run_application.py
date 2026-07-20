@@ -7,6 +7,7 @@ import json
 import os
 import re
 import secrets
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -58,6 +59,7 @@ _MEDIA_TYPES = {
     ".csv": "text/csv",
     ".json": "application/json",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    '.md': 'text/markdown',
 }
 
 
@@ -224,14 +226,41 @@ def _human_response_policy(mission: Mapping[str, Any], *, owner_actor_id: str | 
     return policy
 
 
+def _source_display_name(path: Path, value: str | None) -> str:
+    filename = unicodedata.normalize('NFC', path.name)
+    logical = unicodedata.normalize('NFC', filename if value is None else value)
+    if (
+        not logical
+        or len(logical) > 512
+        or '\\' in logical
+        or logical.startswith('/')
+        or re.match(r'^[A-Za-z][A-Za-z0-9+.-]*:', logical)
+    ):
+        raise ContractError('source logical path must be relative')
+    parts = logical.split('/')
+    if any(not part or part in {'.', '..'} for part in parts):
+        raise ContractError('source logical path contains an unsafe segment')
+    if any(
+        unicodedata.category(character) == 'Cc'
+        for part in parts
+        for character in part
+    ):
+        raise ContractError('source logical path contains control characters')
+    if parts[-1] != filename:
+        raise ContractError('source logical path basename does not match filename')
+    return logical
+
+
 def _source_document(
     path: Path,
     payload: bytes,
     *,
     received_at: str,
+    display_name: str | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     digest = hashlib.sha256(payload).hexdigest()
-    token = make_id("path", {"name": path.name, "sha256": digest})
+    name = _source_display_name(path, display_name)
+    token = make_id('path', {'name': name, 'sha256': digest})
     source_id = f"source_{digest[:24]}"
     return source_id, token, {
         "source_id": source_id,
@@ -239,9 +268,9 @@ def _source_document(
         "access_policy": "permitted",
         "evidence_usage": "primary",
         "observation_roles": [],
-        "display_name": path.name,
+        "display_name": name,
         "media_type": _MEDIA_TYPES.get(
-            path.suffix.lower(),
+            Path(name).suffix.lower(),
             "application/octet-stream",
         ),
         "sha256": digest,
@@ -250,7 +279,7 @@ def _source_document(
         "snapshot_ref": f"sources/blobs/{digest}",
         "original_path_token": token,
         "aliases": [],
-        "metadata": {"extension": path.suffix.lower()},
+        "metadata": {"extension": Path(name).suffix.lower()},
     }
 
 
@@ -423,6 +452,19 @@ class TrustedCeoApplication:
         }
         if len(sources_by_id) != len(raw_registry):
             raise IntegrityError("stored source registry contains invalid or duplicate entries")
+        source_id_by_path: dict[str, str] = {}
+        for source_id, item in sources_by_id.items():
+            display_name = item.get('display_name')
+            aliases = item.get('aliases', [])
+            if not isinstance(display_name, str) or not isinstance(aliases, list):
+                raise IntegrityError('stored source registry paths are invalid')
+            for logical_path in [display_name, *aliases]:
+                if not isinstance(logical_path, str):
+                    raise IntegrityError('stored source registry path is invalid')
+                claimed = source_id_by_path.get(logical_path)
+                if claimed is not None and claimed != source_id:
+                    raise IntegrityError('stored source registry path is ambiguous')
+                source_id_by_path[logical_path] = source_id
         resolver = {str(key): str(value) for key, value in raw_resolver.items()}
         received_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         attached_count = 0
@@ -451,7 +493,19 @@ class TrustedCeoApplication:
                 upload.expected_sha256,
             ):
                 raise ContractError("source changed after upload policy validation")
-            _, token, document = _source_document(resolved, payload, received_at=received_at)
+            _, token, document = _source_document(
+                resolved,
+                payload,
+                received_at=received_at,
+                display_name=upload.logical_path,
+            )
+            source_id = str(document['source_id'])
+            logical_path = str(document['display_name'])
+            existing_path_source = source_id_by_path.get(logical_path)
+            if existing_path_source is not None and existing_path_source != source_id:
+                raise ContractError(
+                    'upload logical path already exists with different content'
+                )
             blob_path = f"sources/blobs/{document['sha256']}"
             existing_blob = files.get(blob_path)
             if existing_blob is not None and existing_blob != payload:
@@ -463,6 +517,7 @@ class TrustedCeoApplication:
                 resolver[token] = locator
             if _merge_source(sources_by_id, document):
                 attached_count += 1
+            source_id_by_path[logical_path] = source_id
 
         new_revision = current + 1
         state["revision"] = new_revision

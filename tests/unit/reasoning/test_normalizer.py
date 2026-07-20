@@ -1,7 +1,11 @@
 import unittest
+import copy
 
 from trusted_ceo_agent.errors import ContractError
 from trusted_ceo_agent.reasoning.normalizer import normalize_lens_draft
+
+
+DOCUMENT_ID = 'document_' + 'd' * 24
 
 
 def job() -> dict:
@@ -19,6 +23,7 @@ def job() -> dict:
         "allowed_test_refs": ["test_mix"],
         "allowed_expert_trigger_refs": [],
         "required_signal_ids": ["signal_margin"],
+        'allowed_document_evidence_ids': [DOCUMENT_ID],
     }
 
 
@@ -86,6 +91,40 @@ def valid_draft() -> dict:
 
 
 class LensNormalizerTests(unittest.TestCase):
+    def test_allowed_document_citations_are_materialized_but_not_accepted_as_values(self) -> None:
+        draft = valid_draft()
+        draft['observations'][0]['document_evidence_ids'] = [DOCUMENT_ID]
+        draft['business_meanings'][0]['evidence_proposals'] = [{
+            'evidence_ref': DOCUMENT_ID,
+            'polarity': 'supports',
+            'role': 'corroboration',
+        }]
+
+        card = normalize_lens_draft(job(), draft)
+
+        self.assertEqual([DOCUMENT_ID], card['used_document_evidence_ids'])
+        document_link = next(
+            item for item in card['evidence_links']
+            if item['evidence_ref'] == DOCUMENT_ID
+        )
+        self.assertEqual('document', document_link['evidence_kind'])
+
+        for outside_id in ('document_' + 'e' * 24, 'document_' + 'f' * 24):
+            with self.subTest(outside_id=outside_id):
+                outside = copy.deepcopy(draft)
+                outside['business_meanings'][0]['evidence_proposals'][0][
+                    'evidence_ref'
+                ] = outside_id
+                with self.assertRaises(ContractError):
+                    normalize_lens_draft(job(), outside)
+
+        invalid_value = copy.deepcopy(draft)
+        invalid_value['observations'][0]['value_refs'][0][
+            'fact_or_signal_id'
+        ] = DOCUMENT_ID
+        with self.assertRaises(ContractError):
+            normalize_lens_draft(job(), invalid_value)
+
     def test_runtime_derives_used_refs_and_materializes_evidence(self) -> None:
         card = normalize_lens_draft(job(), valid_draft())
         self.assertEqual(["fact_margin", "fact_revenue"], card["used_fact_ids"])

@@ -17,6 +17,7 @@ export function createInitialReplaySnapshot(): ProviderSnapshot {
     progress: 4,
     result_ref: null,
     error: null,
+    uploaded_files: [],
   };
 }
 

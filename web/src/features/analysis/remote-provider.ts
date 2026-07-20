@@ -5,6 +5,10 @@ import type {
   ProviderErrorCode,
   ProviderSnapshot,
 } from "@/features/analysis/analysis-provider";
+import type {
+  AnalysisUpload,
+  UploadedFileSummary,
+} from '@/features/analysis/analysis-model';
 
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -12,7 +16,44 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+const SOURCE_ID = /^source_[0-9a-f]{24}$/u;
+const URI_OR_DRIVE = /^[A-Za-z][A-Za-z0-9+.-]*:/u;
+const CONTROL = /[\u0000-\u001F\u007F]/u;
+
+function safeLogicalPath(value: string): boolean {
+  const parts = value.split('/');
+  return value.length > 0 && value.length <= 512 && value.normalize('NFC') === value &&
+    !value.startsWith('/') && !value.includes('\\') && !URI_OR_DRIVE.test(value) &&
+    parts.every((part) => part.length > 0 && part !== '.' && part !== '..' && !CONTROL.test(part));
+}
+
+function parseUploadedFiles(value: unknown): UploadedFileSummary[] | null {
+  if (!Array.isArray(value) || value.length > 64) return null;
+  const seen = new Set<string>();
+  const summaries: UploadedFileSummary[] = [];
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.source_id !== 'string' || !SOURCE_ID.test(item.source_id) ||
+        typeof item.logical_path !== 'string' || !safeLogicalPath(item.logical_path) ||
+        typeof item.display_name !== 'string' ||
+        item.display_name !== item.logical_path.split('/').at(-1) ||
+        typeof item.media_type !== 'string' || item.media_type.length < 1 || item.media_type.length > 128 ||
+        !Number.isInteger(item.size_bytes) || (item.size_bytes as number) < 0 ||
+        typeof item.collection_label !== 'string' || item.collection_label.length < 1 ||
+        item.collection_label.length > 512 || CONTROL.test(item.collection_label)) {
+      return null;
+    }
+    const expectedCollection = item.logical_path.includes('/')
+      ? item.logical_path.split('/', 1)[0]
+      : '\uac1c\ubcc4 \ud30c\uc77c';
+    if (item.collection_label !== expectedCollection || seen.has(item.logical_path)) return null;
+    seen.add(item.logical_path);
+    summaries.push(item as UploadedFileSummary);
+  }
+  return summaries;
+}
+
 function parseSnapshot(value: unknown): ProviderSnapshot {
+  const uploadedFiles = isRecord(value) ? parseUploadedFiles(value.uploaded_files) : null;
   if (!isRecord(value) || value.provider_kind !== "service" ||
       value.display_badge !== "실시간 AI 분석" || typeof value.run_id !== "string" ||
       !Number.isInteger(value.revision) || typeof value.workflow_status !== "string" ||
@@ -20,10 +61,11 @@ function parseSnapshot(value: unknown): ProviderSnapshot {
       !Array.isArray(value.allowed_actions) || typeof value.latest_event !== "string" ||
       !Number.isInteger(value.progress) ||
       !(value.result_ref === null || typeof value.result_ref === "string") ||
-      !(value.pending_approval_request_id === null || typeof value.pending_approval_request_id === "string")) {
+      !(value.pending_approval_request_id === null || typeof value.pending_approval_request_id === "string") ||
+      uploadedFiles === null) {
     throw new RemoteProviderError("CONTRACT_FAILURE", "분석 서비스 응답 형식이 올바르지 않습니다.", 502);
   }
-  return value as unknown as ProviderSnapshot;
+  return { ...value, uploaded_files: uploadedFiles } as unknown as ProviderSnapshot;
 }
 
 function errorBody(value: unknown): { code: ProviderErrorCode; message: string } {
@@ -167,11 +209,18 @@ export class RemoteAnalysisProvider implements AnalysisProvider {
     return this.mutation("/api/analysis/runs", body);
   }
 
-  async attachData(runId: string, expectedRevision: number, files: File[]): Promise<ProviderSnapshot> {
+  async attachData(
+    runId: string,
+    expectedRevision: number,
+    uploads: AnalysisUpload[],
+  ): Promise<ProviderSnapshot> {
     const form = new FormData();
     form.set("expected_revision", String(expectedRevision));
     form.set("idempotency_key", mutationKey("upload"));
-    for (const file of files) form.append("files", file, file.name);
+    for (const upload of uploads) {
+      form.append('files', upload.file, upload.file.name);
+      form.append('logical_paths', upload.logicalPath);
+    }
     return this.mutation(`/api/analysis/runs/${encodeURIComponent(runId)}/files`, form, runId);
   }
 

@@ -10,7 +10,10 @@ import type {
   BackendReport,
   BackendRunSnapshot,
 } from "@/lib/server/analysis/types";
-import { isRecord } from "@/lib/server/analysis/types";
+import {
+  isRecord,
+  normalizeUploadLogicalPath,
+} from "@/lib/server/analysis/types";
 import {
   CSRF_HEADER_NAME,
   LocalRequestSecurityError,
@@ -156,6 +159,19 @@ export async function handleAnalysisFiles(
     if (files.length < 1 || files.length > MAX_FILES || files.some((file) => !(file instanceof File))) {
       throw new AnalysisRequestError("업로드 파일 수가 올바르지 않습니다.", 422);
     }
+    const rawPaths = form.getAll('logical_paths');
+    if (rawPaths.length > 0 &&
+        (rawPaths.length !== files.length || rawPaths.some((value) => typeof value !== 'string'))) {
+      throw new AnalysisRequestError('파일마다 하나의 논리 경로가 필요합니다.', 422);
+    }
+    const logicalPaths = (files as File[]).map((file, index) => {
+      const raw = rawPaths.length === 0 ? file.name : rawPaths[index] as string;
+      const normalized = normalizeUploadLogicalPath(raw, file.name);
+      if (normalized === null) {
+        throw new AnalysisRequestError('안전하지 않은 업로드 경로가 포함되어 있습니다.', 422);
+      }
+      return normalized;
+    });
     let total = 0;
     for (const file of files as File[]) {
       if (file.size < 1 || file.size > MAX_FILE_BYTES) throw new AnalysisRequestError("파일 크기 제한을 초과했습니다.", 413);
@@ -165,7 +181,10 @@ export async function handleAnalysisFiles(
     const backendForm = new FormData();
     backendForm.set("expected_revision", expected);
     backendForm.set("idempotency_key", key);
-    for (const file of files as File[]) backendForm.append("files", file, file.name);
+    for (const [index, file] of (files as File[]).entries()) {
+      backendForm.append("files", file, file.name);
+      backendForm.append('logical_paths', logicalPaths[index]);
+    }
     return jsonResponse(browserSnapshot(await dependencies.backend.uploadFiles(runId, backendForm)));
   } catch (error) { return safeError(error); }
 }

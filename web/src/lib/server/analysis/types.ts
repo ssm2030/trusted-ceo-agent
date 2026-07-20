@@ -49,6 +49,15 @@ export type BackendHitlCard = Readonly<{
   sections: readonly BackendHitlSection[];
 }>;
 
+export type BackendUploadedFileSummary = Readonly<{
+  source_id: string;
+  logical_path: string;
+  display_name: string;
+  media_type: string;
+  size_bytes: number;
+  collection_label: string;
+}>;
+
 export type BackendRunSnapshot = Readonly<{
   provider_kind: "service";
   display_badge: "실시간 AI 분석";
@@ -67,6 +76,7 @@ export type BackendRunSnapshot = Readonly<{
     message: string;
     retryable: boolean;
   }>;
+  uploaded_files: readonly BackendUploadedFileSummary[];
 }>;
 
 export type BackendHealth = Readonly<{
@@ -150,6 +160,24 @@ const PENDING_ACTIONS = new Set([
   "human_response", "provider_work", "retry", "resume", "terminal",
 ]);
 const RUN_ID = /^run_[A-Za-z0-9_-]{8,200}$/u;
+const SOURCE_ID = /^source_[0-9a-f]{24}$/u;
+const URI_OR_DRIVE = /^[A-Za-z][A-Za-z0-9+.-]*:/u;
+const CONTROL = /[\u0000-\u001F\u007F]/u;
+
+export function normalizeUploadLogicalPath(
+  value: string,
+  filename: string,
+): string | null {
+  const logicalPath = value.normalize('NFC');
+  const parts = logicalPath.split('/');
+  if (!logicalPath || logicalPath.length > 512 || logicalPath.startsWith('/') ||
+      logicalPath.includes('\\') || URI_OR_DRIVE.test(logicalPath) ||
+      parts.some((part) => !part || part === '.' || part === '..' || CONTROL.test(part)) ||
+      parts.at(-1) !== filename.normalize('NFC')) {
+    return null;
+  }
+  return logicalPath;
+}
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -200,6 +228,40 @@ function parseHitlCard(value: unknown): BackendHitlCard | null {
   };
 }
 
+function parseUploadedFiles(value: unknown): BackendUploadedFileSummary[] {
+  if (!Array.isArray(value) || value.length > 64) {
+    throw new Error('invalid backend uploaded files');
+  }
+  const seen = new Set<string>();
+  return value.map((item) => {
+    if (!isRecord(item) || typeof item.source_id !== 'string' || !SOURCE_ID.test(item.source_id) ||
+        typeof item.logical_path !== 'string' || typeof item.display_name !== 'string' ||
+        normalizeUploadLogicalPath(item.logical_path, item.display_name) !== item.logical_path ||
+        typeof item.media_type !== 'string' || item.media_type.length < 1 || item.media_type.length > 128 ||
+        !Number.isInteger(item.size_bytes) || (item.size_bytes as number) < 0 ||
+        typeof item.collection_label !== 'string' || item.collection_label.length < 1 ||
+        item.collection_label.length > 512 || CONTROL.test(item.collection_label) ||
+        seen.has(item.logical_path)) {
+      throw new Error('invalid backend uploaded file');
+    }
+    const expectedCollection = item.logical_path.includes('/')
+      ? item.logical_path.split('/', 1)[0]
+      : '\uac1c\ubcc4 \ud30c\uc77c';
+    if (item.collection_label !== expectedCollection) {
+      throw new Error('invalid backend upload collection');
+    }
+    seen.add(item.logical_path);
+    return {
+      source_id: item.source_id,
+      logical_path: item.logical_path,
+      display_name: item.display_name,
+      media_type: item.media_type,
+      size_bytes: item.size_bytes as number,
+      collection_label: item.collection_label,
+    };
+  });
+}
+
 export function parseBackendRunSnapshot(value: unknown): BackendRunSnapshot {
   if (!isRecord(value) || value.provider_kind !== "service" ||
       value.display_badge !== "실시간 AI 분석" ||
@@ -214,6 +276,7 @@ export function parseBackendRunSnapshot(value: unknown): BackendRunSnapshot {
     throw new Error("invalid backend run snapshot");
   }
   const card = parseHitlCard(value.hitl_card);
+  const uploadedFiles = parseUploadedFiles(value.uploaded_files);
   let error: BackendRunSnapshot["error"] = null;
   if (value.error !== null) {
     if (!isRecord(value.error) || typeof value.error.code !== "string" ||
@@ -244,6 +307,7 @@ export function parseBackendRunSnapshot(value: unknown): BackendRunSnapshot {
     result_ref: value.result_ref as string | null,
     hitl_card: card,
     error,
+    uploaded_files: uploadedFiles,
   };
 }
 

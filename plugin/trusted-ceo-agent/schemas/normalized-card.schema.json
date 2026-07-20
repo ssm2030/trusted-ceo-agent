@@ -8,6 +8,7 @@
     "model_profile": {"type": "string"}, "assessment_status": {"enum": ["complete", "partial", "not_assessable"]},
     "used_fact_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "used_signal_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "used_document_evidence_ids": {"type": "array", "items": {"type": "string", "pattern": "^document_[0-9a-f]{24}$"}, "uniqueItems": true},
     "normalized_payload": {"type": "object"}, "evidence_link_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "evidence_links": {"type": "array", "items": {"type": "object"}},
     "validation_result": {"type": "object"}, "integrity": {"type": "object"}

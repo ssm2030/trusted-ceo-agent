@@ -1,9 +1,16 @@
+import copy
+import hashlib
+import tempfile
 import unittest
+from pathlib import Path
 
 from trusted_ceo_agent.errors import ContractError
+from trusted_ceo_agent.errors import IntegrityError
+from trusted_ceo_agent.evidence.core import EvidenceCoreValidator, assemble_evidence_core
 from trusted_ceo_agent.evidence.facts import build_calculated_fact, build_observed_fact
 from trusted_ceo_agent.evidence.links import build_evidence_link
 from trusted_ceo_agent.evidence.signals import build_signal
+from trusted_ceo_agent.intake.document_evidence import build_document_evidence
 
 
 SHA = "a" * 64
@@ -29,6 +36,134 @@ def source_ref() -> dict:
 
 
 class EvidenceBuilderTests(unittest.TestCase):
+    @staticmethod
+    def _document_core(
+        source: dict,
+        documents: list[dict],
+        links: list[dict] | None = None,
+    ) -> dict:
+        return assemble_evidence_core(
+            envelope={
+                'schema_version': '1.0.0',
+                'artifact_id': 'artifact_' + 'b' * 24,
+                'run_id': 'run_20260721T000000Z_0123456789abcdef',
+                'revision': 1,
+                'parent_artifact_hash': None,
+                'stage': 'evidence_ready',
+                'created_at': '2026-07-21T00:00:00Z',
+                'semantic_fingerprint': SHA,
+                'artifact_hash': SHA,
+            },
+            mission_contract_ref='mission_' + 'c' * 24,
+            pack_manifest={'pack_manifest_hash': SHA, 'pack_refs': []},
+            component_manifest={'component_refs': []},
+            source_registry=[source],
+            data_quality_register=[],
+            fact_register=[],
+            signal_register=[],
+            document_evidence_register=documents,
+            evidence_links=links or [],
+            capability_map={
+                'capability_map_id': 'capability_map_' + 'd' * 24,
+                'capabilities': [],
+            },
+        )
+
+    def test_document_evidence_must_match_its_source_blob_and_be_unique(self) -> None:
+        markdown = b'# Plan\nRevenue assumptions\n'
+        digest = hashlib.sha256(markdown).hexdigest()
+        source = {
+            'source_id': 'source_' + digest[:24],
+            'source_type': 'uploaded_file',
+            'access_policy': 'permitted',
+            'evidence_usage': 'primary',
+            'observation_roles': [],
+            'display_name': 'strategy/plan.md',
+            'media_type': 'text/markdown',
+            'sha256': digest,
+            'size_bytes': len(markdown),
+            'received_at': '2026-07-21T00:00:00Z',
+            'snapshot_ref': f'sources/blobs/{digest}',
+            'original_path_token': 'path_' + 'e' * 24,
+            'aliases': [],
+            'metadata': {},
+        }
+        documents = build_document_evidence(source, markdown.decode('utf-8'))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            blob = root / source['snapshot_ref']
+            blob.parent.mkdir(parents=True)
+            blob.write_bytes(markdown)
+            core = self._document_core(source, documents)
+            EvidenceCoreValidator().validate(core, source_root=root)
+
+            unknown = copy.deepcopy(documents)
+            unknown[0]['source_id'] = 'source_' + 'f' * 24
+            with self.assertRaises(IntegrityError):
+                EvidenceCoreValidator().validate(
+                    self._document_core(source, unknown), source_root=root,
+                )
+
+            changed_hash = copy.deepcopy(documents)
+            changed_hash[0]['content_sha256'] = '0' * 64
+            with self.assertRaises(IntegrityError):
+                EvidenceCoreValidator().validate(
+                    self._document_core(source, changed_hash), source_root=root,
+                )
+
+            changed_markdown = b'# Plan\nChanged assumptions\n'
+            changed_digest = hashlib.sha256(changed_markdown).hexdigest()
+            changed_source = {
+                **source,
+                'sha256': changed_digest,
+                'size_bytes': len(changed_markdown),
+                'snapshot_ref': f'sources/blobs/{changed_digest}',
+            }
+            changed_blob = root / changed_source['snapshot_ref']
+            changed_blob.write_bytes(changed_markdown)
+            with self.assertRaises(IntegrityError):
+                EvidenceCoreValidator().validate(
+                    self._document_core(changed_source, documents), source_root=root,
+                )
+
+            with self.assertRaises(IntegrityError):
+                EvidenceCoreValidator().validate(
+                    self._document_core(source, [documents[0], documents[0]]),
+                    source_root=root,
+                )
+
+            missing_document_link = {
+                'evidence_link_id': 'evidence_' + 'a' * 24,
+                'target_ref': 'claim_' + 'b' * 24,
+                'target_type': 'business_meaning',
+                'evidence_ref': 'document_' + 'f' * 24,
+                'evidence_kind': 'document',
+                'polarity': 'supports',
+                'role': 'corroboration',
+                'rationale_template': 'The document corroborates this claim.',
+                'value_refs': [],
+                'stage': 'lens',
+                'materialized_by': 'runtime_normalizer',
+                'origin': {
+                    'origin_type': 'model_proposal',
+                    'origin_job_id': 'job_' + 'c' * 24,
+                    'model_profile': 'balanced_structured',
+                    'prompt_hash': SHA,
+                    'proposal_hash': SHA,
+                },
+                'independence_group_id': 'independence_' + 'd' * 24,
+            }
+            with self.assertRaises(IntegrityError):
+                EvidenceCoreValidator().validate(
+                    self._document_core(
+                        source,
+                        documents,
+                        [missing_document_link],
+                    ),
+                    source_root=root,
+                )
+
     def test_observed_calculated_signal_and_link_are_deterministic(self) -> None:
         observed = build_observed_fact(
             fact_code="revenue.observed",

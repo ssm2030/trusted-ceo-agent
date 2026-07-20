@@ -1,3 +1,8 @@
+import type {
+  AnalysisUpload,
+  UploadedFileSummary,
+} from '@/features/analysis/analysis-model';
+
 export type PendingAction =
   | "human_response"
   | "terminal_approval"
@@ -63,6 +68,7 @@ export type ProviderSnapshot = {
     message: string;
     retryable?: boolean;
   };
+  uploaded_files: UploadedFileSummary[];
 };
 
 export interface AnalysisProvider {
@@ -70,7 +76,7 @@ export interface AnalysisProvider {
   attachData(
     runId: string,
     expectedRevision: number,
-    files: File[],
+    uploads: AnalysisUpload[],
   ): Promise<ProviderSnapshot>;
   submitHumanResponse(
     runId: string,
