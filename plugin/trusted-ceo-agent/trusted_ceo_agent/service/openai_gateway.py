@@ -180,6 +180,7 @@ class OpenAIReasoningGateway:
             random_value = random
         self.transport = transport
         self.schema_store = schema_store or SchemaStore()
+        self.contract_schema_store = SchemaStore()
         self.model = model
         self.max_transient_retries = max_transient_retries
         self.base_backoff_seconds = float(base_backoff_seconds)
@@ -295,6 +296,7 @@ class OpenAIReasoningGateway:
         rebuilt = build_reasoning_job(**fields)
         if rebuilt["job_id"] != job_id:
             raise ContractError("reasoning job_id does not match its payload")
+        self.contract_schema_store.validate('reasoning-job.schema.json', rebuilt)
         return rebuilt
 
     def _job_message(self, payload: Mapping[str, Any]) -> dict[str, Any]:

@@ -311,6 +311,7 @@ def merge_component_runs(
         data_quality_register=core["data_quality_register"],
         fact_register=list(facts.values()),
         signal_register=list(signals.values()),
+        document_evidence_register=core.get('document_evidence_register', []),
         evidence_links=core["evidence_links"],
         capability_map=core["capability_map"],
     )

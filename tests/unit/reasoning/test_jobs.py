@@ -1,10 +1,126 @@
 import unittest
 
 from trusted_ceo_agent.errors import ContractError
-from trusted_ceo_agent.reasoning.jobs import build_reasoning_job, shard_reasoning_items
+from trusted_ceo_agent.intake.document_evidence import build_document_evidence
+from trusted_ceo_agent.reasoning.jobs import (
+    build_reasoning_job,
+    compile_stage_jobs,
+    shard_reasoning_items,
+)
 
 
 class ReasoningJobTests(unittest.TestCase):
+    @staticmethod
+    def _lens_fields() -> dict:
+        return {
+            'stage': 'lens',
+            'artifact_ref': 'artifact_documents',
+            'mission_contract_hash': 'a' * 64,
+            'pack_manifest_hash': 'b' * 64,
+            'prompt_template_hash': 'c' * 64,
+            'model_profile': 'balanced_structured',
+            'output_schema_ref': 'lens-card-draft.schema.json',
+            'lens_id': 'financial',
+            'shard_index': 0,
+            'shard_count': 1,
+        }
+
+    @staticmethod
+    def _documents(text: str) -> list[dict]:
+        return build_document_evidence(
+            {
+                'source_id': 'source_' + 'd' * 24,
+                'display_name': 'strategy/plan.md',
+            },
+            text,
+        )
+
+    def test_document_context_is_exact_bounded_and_combined_with_fact_shards(self) -> None:
+        documents = self._documents('# One\nFirst\n# Two\nSecond\n')
+        work_items = [
+            {
+                'id': item['document_evidence_id'],
+                'kind': 'document',
+                'context': item,
+                'scope': item['logical_path'],
+                'period': item['line_start'],
+            }
+            for item in documents
+        ] + [
+            {
+                'id': f'fact_{index:03d}',
+                'kind': 'fact',
+                'scope': 'enterprise',
+                'period': '2026-01',
+            }
+            for index in range(47)
+        ]
+        fields = self._lens_fields()
+        jobs = compile_stage_jobs(
+            'lens',
+            artifact_ref=fields['artifact_ref'],
+            mission_contract_hash=fields['mission_contract_hash'],
+            pack_manifest_hash=fields['pack_manifest_hash'],
+            prompt_template_hash=fields['prompt_template_hash'],
+            model_profile=fields['model_profile'],
+            output_schema_ref=fields['output_schema_ref'],
+            lens_id=fields['lens_id'],
+            work_items=work_items,
+        )
+
+        self.assertEqual(2, len(jobs))
+        emitted_document_ids: set[str] = set()
+        for job in jobs:
+            document_ids = job.get('allowed_document_evidence_ids', [])
+            emitted_document_ids.update(document_ids)
+            contexts = job.get('document_evidence_context', [])
+            self.assertLessEqual(len(job['allowed_fact_ids']) + len(document_ids), 48)
+            self.assertEqual(
+                document_ids,
+                [item['document_evidence_id'] for item in contexts],
+            )
+            self.assertTrue(set(document_ids).issubset(job['untrusted_text_markers']))
+        self.assertEqual(
+            {item['document_evidence_id'] for item in documents},
+            emitted_document_ids,
+        )
+
+        legacy = build_reasoning_job(
+            stage='lens',
+            artifact_ref='artifact_legacy',
+            mission_contract_hash='a' * 64,
+            pack_manifest_hash='b' * 64,
+            prompt_template_hash='c' * 64,
+            model_profile='balanced_structured',
+            output_schema_ref='lens-card-draft.schema.json',
+            lens_id='financial',
+            shard_index=0,
+            shard_count=1,
+            allowed_fact_ids=['fact_legacy'],
+        )
+        self.assertEqual('job_9ef083e6d90ff108addbbb57', legacy['job_id'])
+        self.assertNotIn('document_evidence_context', legacy)
+
+        with self.assertRaisesRegex(ContractError, 'context IDs must match'):
+            build_reasoning_job(
+                **fields,
+                allowed_document_evidence_ids=['document_' + 'a' * 24],
+                document_evidence_context=[documents[0]],
+            )
+
+        oversized = sorted(
+            self._documents('# Large\n' + 'x' * 98_000),
+            key=lambda item: item['document_evidence_id'],
+        )
+        with self.assertRaisesRegex(ContractError, '96,000'):
+            build_reasoning_job(
+                **fields,
+                allowed_document_evidence_ids=[
+                    item['document_evidence_id'] for item in oversized
+                ],
+                document_evidence_context=oversized,
+            )
+
     def test_lens_job_is_order_invariant_and_requires_lens_fields(self) -> None:
         common = {
             "stage": "lens",
