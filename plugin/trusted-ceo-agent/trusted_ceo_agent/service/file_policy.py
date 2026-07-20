@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import os
+import re
 import secrets
 import stat
 import unicodedata
@@ -26,6 +27,15 @@ _CONTENT_TYPES: Mapping[str, frozenset[str]] = {
     ".json": frozenset({"application/json"}),
     ".xlsx": frozenset({
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+}
+_CONTENT_TYPES = {
+    **_CONTENT_TYPES,
+    '.md': frozenset({
+        'text/markdown',
+        'text/x-markdown',
+        'text/plain',
+        'application/octet-stream',
     }),
 }
 _FORBIDDEN_INTERMEDIATE_SUFFIXES = frozenset({
@@ -64,6 +74,7 @@ class IncomingUpload:
     filename: str
     content_type: str
     chunks: Iterable[bytes] = field(repr=False)
+    logical_path: str | None = None
 
     @classmethod
     def from_bytes(
@@ -71,21 +82,31 @@ class IncomingUpload:
         filename: str,
         content_type: str,
         payload: bytes,
+        *,
+        logical_path: str | None = None,
     ) -> IncomingUpload:
-        return cls(filename=filename, content_type=content_type, chunks=(payload,))
+        return cls(
+            filename=filename,
+            content_type=content_type,
+            chunks=(payload,),
+            logical_path=logical_path,
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class StagedUpload:
     opaque_token: str
     filename: str
+    logical_path: str
     content_type: str
     size: int
     sha256: str
     private_path: Path = field(repr=False)
+    normalized_text: str | None = field(default=None, repr=False)
 
     def public_metadata(self) -> dict[str, Any]:
         return {
+            'logical_path': self.logical_path,
             "opaque_token": self.opaque_token,
             "filename": self.filename,
             "content_type": self.content_type,
@@ -109,7 +130,7 @@ def _validated_name(filename: str) -> tuple[str, str]:
     path = Path(filename)
     suffixes = [suffix.casefold() for suffix in path.suffixes]
     if not suffixes or suffixes[-1] not in _CONTENT_TYPES:
-        raise ContractError("upload extension must end in .csv, .json, or .xlsx")
+        raise ContractError('upload extension must end in .csv, .json, .xlsx, or .md')
     if any(suffix in _FORBIDDEN_INTERMEDIATE_SUFFIXES for suffix in suffixes[:-1]):
         raise ContractError("executable, archive, or deceptive double extension is forbidden")
     stem = path.stem
@@ -120,6 +141,51 @@ def _validated_name(filename: str) -> tuple[str, str]:
     ):
         raise ContractError("upload filename is invalid")
     return filename, suffixes[-1]
+
+
+def _validated_logical_path(filename: str, value: str | None) -> str:
+    logical = unicodedata.normalize(
+        'NFC',
+        filename if value is None else value,
+    )
+    if (
+        not logical
+        or len(logical) > 512
+        or '\\' in logical
+        or logical.startswith('/')
+    ):
+        raise ContractError('upload logical path is invalid')
+    if re.match(r'^[A-Za-z][A-Za-z0-9+.-]*:', logical):
+        raise ContractError('upload logical path must be relative')
+    parts = logical.split('/')
+    if any(not part or part in {'.', '..'} for part in parts):
+        raise ContractError('upload logical path contains an unsafe segment')
+    if any(
+        unicodedata.category(character) == 'Cc'
+        for part in parts
+        for character in part
+    ):
+        raise ContractError('upload logical path contains control characters')
+    if parts[-1] != unicodedata.normalize('NFC', filename):
+        raise ContractError('upload logical path basename does not match filename')
+    return logical
+
+
+def _normalized_markdown(payload: bytes) -> str:
+    try:
+        text = payload.decode('utf-8-sig')
+    except UnicodeDecodeError as error:
+        raise ContractError('Markdown upload must be UTF-8') from error
+    normalized = text.replace('\r\n', '\n').replace('\r', '\n')
+    if not normalized.strip():
+        raise ContractError('empty Markdown upload is forbidden')
+    if any(
+        character not in {'\n', '\t'}
+        and unicodedata.category(character) == 'Cc'
+        for character in normalized
+    ):
+        raise ContractError('Markdown upload contains forbidden control characters')
+    return normalized
 
 
 def _validate_content_type(extension: str, content_type: str) -> None:
@@ -269,6 +335,7 @@ class UploadPolicy:
         already_staged_bytes: int,
     ) -> StagedUpload:
         filename, extension = _validated_name(upload.filename)
+        logical_path = _validated_logical_path(filename, upload.logical_path)
         _validate_content_type(extension, upload.content_type)
         token = "upload_" + secrets.token_urlsafe(24)
         token_root = ensure_within(
@@ -300,15 +367,24 @@ class UploadPolicy:
                 os.fsync(handle.fileno())
             if size == 0:
                 raise ContractError("empty upload is forbidden")
+            normalized_text = (
+                _normalized_markdown(destination.read_bytes())
+                if extension == '.md'
+                else None
+            )
             item = StagedUpload(
                 opaque_token=token,
                 filename=filename,
+                logical_path=logical_path,
                 content_type=upload.content_type,
                 size=size,
                 sha256=digest.hexdigest(),
                 private_path=destination,
+                normalized_text=normalized_text,
             )
             self.validate_staged(item)
+            if extension == '.md':
+                return item
             if extension == ".csv":
                 _validate_csv(destination)
             elif extension == ".json":

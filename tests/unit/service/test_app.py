@@ -279,6 +279,80 @@ class ServiceAppTests(unittest.TestCase):
             self.assertEqual("AI_AUTH_FAILURE", caught.exception.code)
             self.assertFalse(caught.exception.retryable)
 
+    def test_upload_route_preserves_logical_path_order_and_rejects_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            root = Path(directory)
+            settings = ServiceSettings(
+                host='127.0.0.1',
+                port=8765,
+                service_root=root / 'runtime',
+                internal_token=TOKEN,
+                openai_api_key=None,
+                model='gpt-5.6',
+            )
+            store = RunStore(settings.service_root)
+            application = TrustedCeoApplication(store.runs_root)
+            orchestrator = AnalysisOrchestrator(
+                application,
+                store,
+                KeylessFakeReasoningGateway(application.artifact_root),
+                report_root=root / 'reports',
+            )
+            client = TestClient(create_app(
+                settings,
+                application,
+                orchestrator,
+                StubQuestionService(),
+            ))
+            created = client.post(
+                '/v1/runs',
+                headers=AUTH,
+                json={
+                    'expected_revision': 0,
+                    'idempotency_key': 'create_logical_paths_0001',
+                },
+            ).json()
+            run_id = created['run_id']
+            files = [
+                ('files', ('a.csv', b'name,value\na,1\n', 'text/csv')),
+                ('files', ('b.json', b'{}', 'application/json')),
+            ]
+            with patch.object(
+                orchestrator,
+                'attach_files',
+                return_value=orchestrator.snapshot(run_id),
+            ) as attach:
+                response = client.post(
+                    f'/v1/runs/{run_id}/files',
+                    headers=AUTH,
+                    data={
+                        'expected_revision': '1',
+                        'idempotency_key': 'upload_logical_paths_0001',
+                        'logical_paths': ['folder-a/a.csv', 'folder-b/b.json'],
+                    },
+                    files=files,
+                )
+
+            self.assertEqual(200, response.status_code, response.text)
+            uploads = attach.call_args.args[2]
+            self.assertEqual(
+                ['folder-a/a.csv', 'folder-b/b.json'],
+                [item.logical_path for item in uploads],
+            )
+
+            mismatch = client.post(
+                f'/v1/runs/{run_id}/files',
+                headers=AUTH,
+                data={
+                    'expected_revision': '1',
+                    'idempotency_key': 'upload_logical_paths_0002',
+                    'logical_paths': ['folder-a/a.csv'],
+                },
+                files=files,
+            )
+            self.assertEqual(422, mismatch.status_code, mismatch.text)
+            self.assertEqual('INPUT_POLICY_FAILURE', mismatch.json()['code'])
+
     def test_idempotent_create_upload_controls_and_delete_are_http_safe(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             root = Path(directory)
