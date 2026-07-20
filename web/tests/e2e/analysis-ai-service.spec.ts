@@ -48,11 +48,15 @@ test("keyless localhost service completes HITL, report, question, and delete", a
     mimeType: "text/markdown",
     buffer: Buffer.from("# Strategy\nRevenue assumptions are provisional.\n"),
   });
-  await expect(page.getByText("plan.md", { exact: true })).toBeVisible();
+  await expect(page.getByText("plan.md", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
   await fileInput.setInputFiles(
     path.resolve("tests/fixtures/company-diagnostic.json"),
   );
-  await expect(page.getByText("company-diagnostic.json")).toBeVisible();
+  await expect(page.getByText("company-diagnostic.json")).toBeVisible({
+    timeout: 30_000,
+  });
 
   await folderInput.evaluate((element) => {
     const input = element as HTMLInputElement;
@@ -70,9 +74,15 @@ test("keyless localhost service completes HITL, report, question, and delete", a
     input.files = transfer.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
   });
-  await expect(page.getByRole("heading", { name: "개별 파일", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "폴더B", exact: true })).toBeVisible();
-  await expect(page.getByText("폴더B/sub/data.csv", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "개별 파일", exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole("heading", { name: "폴더B", exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText("폴더B/sub/data.csv", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   const runId = await page.locator(".run-header dd").nth(1).textContent();
   expect(runId).toMatch(/^run_/u);

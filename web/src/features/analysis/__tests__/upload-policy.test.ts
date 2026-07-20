@@ -19,7 +19,7 @@ describe("validateReplayFile", () => {
       }),
     ).toEqual({
       accepted: false,
-      message: "분석 자료는 CSV, JSON, XLSX 파일만 선택할 수 있습니다.",
+      message: "분석 자료는 CSV, JSON, XLSX, MD 파일만 선택할 수 있습니다.",
     });
   });
 });
