@@ -17,6 +17,9 @@ from trusted_ceo_agent.web_report.contracts import (
     validate_bundle_document,
     validate_eligibility_decision,
 )
+from trusted_ceo_agent.web_report.contract_semantics import (
+    validate_bundle_document as semantic_validator,
+)
 
 
 FIXTURES = (
@@ -26,6 +29,11 @@ FIXTURES = (
     / "v1"
     / "fixtures"
 )
+
+
+class WebReportContractModuleBoundaryTests(unittest.TestCase):
+    def test_semantic_validator_is_reexported_by_contract_facade(self) -> None:
+        self.assertIs(validate_bundle_document, semantic_validator)
 
 
 def _valid_bundle() -> dict:
