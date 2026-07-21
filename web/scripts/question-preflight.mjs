@@ -1,232 +1,35 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
 import {
   chmod,
   lstat,
   mkdir,
   mkdtemp,
-  open,
   readFile,
   realpath,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const REQUIRED_FLAGS = [
-  "--json",
-  "--ephemeral",
-  "--sandbox",
-  "--ignore-user-config",
-  "--skip-git-repo-check",
-  "--output-schema",
-  "--output-last-message",
-  "--cd",
-];
-const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
-const TIMEOUT_MS = 90_000;
+import {
+  REQUIRED_FLAGS,
+  parseArguments,
+  receiptHash,
+  seatbeltProfile,
+} from "./question-preflight-policy.mjs";
+import {
+  atomicReceipt,
+  hasFileBackedAuth,
+  runBounded,
+  writePrivate,
+} from "./question-preflight-io.mjs";
 
 function fail(message) {
   process.stderr.write(`${message}\n`);
   process.exitCode = 2;
 }
 
-function parseArguments(argv) {
-  const result = {};
-  for (let index = 0; index < argv.length; index += 2) {
-    const name = argv[index];
-    const value = argv[index + 1];
-    if (
-      !["--codex", "--codex-home", "--output"].includes(name) ||
-      typeof value !== "string"
-    ) {
-      throw new Error(
-        "usage: question-preflight.mjs --codex ABSOLUTE_PATH --codex-home ABSOLUTE_PATH --output ABSOLUTE_PATH",
-      );
-    }
-    result[name.slice(2)] = value;
-  }
-  if (
-    typeof result.codex !== "string" ||
-    typeof result["codex-home"] !== "string" ||
-    typeof result.output !== "string" ||
-    !path.isAbsolute(result.codex) ||
-    !path.isAbsolute(result["codex-home"]) ||
-    !path.isAbsolute(result.output)
-  ) {
-    throw new Error("all preflight paths must be absolute");
-  }
-  return {
-    codex: result.codex,
-    codexHome: result["codex-home"],
-    output: result.output,
-  };
-}
-
-function canonicalize(value) {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalize).join(",")}]`;
-  }
-  return `{${Object.keys(value)
-    .sort()
-    .map(
-      (key) =>
-        `${JSON.stringify(key)}:${canonicalize(value[key])}`,
-    )
-    .join(",")}}`;
-}
-
-function receiptHash(receipt) {
-  return createHash("sha256")
-    .update(canonicalize(receipt), "utf8")
-    .digest("hex");
-}
-
-async function runBounded(
-  executable,
-  args,
-  { cwd, env, timeoutMs = TIMEOUT_MS } = {},
-) {
-  return new Promise((resolve) => {
-    let child;
-    try {
-      child = spawn(executable, args, {
-        cwd,
-        env,
-        shell: false,
-        windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-    } catch {
-      resolve({ code: null, stdout: "", exceeded: false });
-      return;
-    }
-    const stdout = [];
-    let bytes = 0;
-    let exceeded = false;
-    let timedOut = false;
-    const accept = (chunk, keep) => {
-      bytes += chunk.byteLength;
-      if (bytes > MAX_OUTPUT_BYTES) {
-        exceeded = true;
-        child.kill("SIGKILL");
-      } else if (keep) {
-        stdout.push(chunk);
-      }
-    };
-    child.stdout.on("data", (chunk) => accept(chunk, true));
-    child.stderr.on("data", (chunk) => accept(chunk, false));
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, timeoutMs);
-    child.once("error", () => {
-      clearTimeout(timer);
-      resolve({
-        code: null,
-        stdout: "",
-        exceeded,
-        timedOut,
-      });
-    });
-    child.once("close", (code) => {
-      clearTimeout(timer);
-      resolve({
-        code,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        exceeded,
-        timedOut,
-      });
-    });
-  });
-}
-
-function seatbeltProfile({
-  codexExecutable,
-  questionRoot,
-  outputRoot,
-}) {
-  const literal = (value) => `(literal "${value}")`;
-  const subpath = (value) => `(subpath "${value}")`;
-  return [
-    "(version 1)",
-    "(deny default)",
-    "(allow process-exec",
-    `  ${literal(codexExecutable)}`,
-    '  (subpath "/usr/bin")',
-    '  (subpath "/bin"))',
-    "(allow process-fork)",
-    "(allow signal (target self))",
-    "(allow sysctl-read)",
-    "(allow network-outbound)",
-    "(allow mach-lookup",
-    '  (global-name "com.apple.SecurityServer")',
-    '  (global-name "com.apple.system.logger"))',
-    "(allow file-read*",
-    `  ${literal(codexExecutable)}`,
-    `  ${subpath(questionRoot)}`,
-    '  (subpath "/System")',
-    '  (subpath "/usr/lib")',
-    '  (subpath "/Library/Apple/System/Library"))',
-    "(allow file-write*",
-    `  ${subpath(outputRoot)})`,
-    "(deny file-write*",
-    `  ${subpath(questionRoot)})`,
-    "",
-  ].join("\n");
-}
-
-async function writePrivate(filePath, value) {
-  const handle = await open(filePath, "wx", 0o600);
-  try {
-    await handle.chmod(0o600);
-    await handle.writeFile(value);
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
-
-async function atomicReceipt(filePath, receipt) {
-  const parent = path.dirname(filePath);
-  await mkdir(parent, { recursive: true, mode: 0o700 });
-  const temporary = `${filePath}.${randomUUID()}.tmp`;
-  try {
-    await writePrivate(
-      temporary,
-      `${canonicalize(receipt)}\n`,
-    );
-    await rename(temporary, filePath);
-  } finally {
-    await rm(temporary, { force: true });
-  }
-}
-
-async function hasFileBackedAuth(codexHome) {
-  for (const name of ["auth.json", "credentials.json"]) {
-    try {
-      const details = await lstat(path.join(codexHome, name));
-      if (details.isFile()) {
-        return true;
-      }
-    } catch (error) {
-      if (
-        typeof error !== "object" ||
-        error === null ||
-        error.code !== "ENOENT"
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
 
 async function main() {
   if (process.platform !== "darwin") {

@@ -9,6 +9,7 @@ import type {
   AnalysisUpload,
   UploadedFileSummary,
 } from '@/features/analysis/analysis-model';
+import { isSafeUploadLogicalPath } from '@/lib/analysis-upload-path';
 
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -17,15 +18,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const SOURCE_ID = /^source_[0-9a-f]{24}$/u;
-const URI_OR_DRIVE = /^[A-Za-z][A-Za-z0-9+.-]*:/u;
 const CONTROL = /[\u0000-\u001F\u007F]/u;
-
-function safeLogicalPath(value: string): boolean {
-  const parts = value.split('/');
-  return value.length > 0 && value.length <= 512 && value.normalize('NFC') === value &&
-    !value.startsWith('/') && !value.includes('\\') && !URI_OR_DRIVE.test(value) &&
-    parts.every((part) => part.length > 0 && part !== '.' && part !== '..' && !CONTROL.test(part));
-}
 
 function parseUploadedFiles(value: unknown): UploadedFileSummary[] | null {
   if (!Array.isArray(value) || value.length > 64) return null;
@@ -33,7 +26,7 @@ function parseUploadedFiles(value: unknown): UploadedFileSummary[] | null {
   const summaries: UploadedFileSummary[] = [];
   for (const item of value) {
     if (!isRecord(item) || typeof item.source_id !== 'string' || !SOURCE_ID.test(item.source_id) ||
-        typeof item.logical_path !== 'string' || !safeLogicalPath(item.logical_path) ||
+        typeof item.logical_path !== 'string' || !isSafeUploadLogicalPath(item.logical_path) ||
         typeof item.display_name !== 'string' ||
         item.display_name !== item.logical_path.split('/').at(-1) ||
         typeof item.media_type !== 'string' || item.media_type.length < 1 || item.media_type.length > 128 ||

@@ -8,9 +8,16 @@ import {
   loadRootEnvironment,
   startAiDemo,
 } from "./start-ai-demo.mjs";
+import { buildLaunchPlan as plannedLaunch } from "./ai-launch-plan.mjs";
+import { childIsRunning } from "./child-supervisor.mjs";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "../..");
 const INTERNAL_TOKEN = "t".repeat(43);
+
+test("launcher facade reexports plan and supervision boundaries", () => {
+  assert.equal(buildLaunchPlan, plannedLaunch);
+  assert.equal(typeof childIsRunning, "function");
+});
 
 class FakeChild extends EventEmitter {
   constructor() {

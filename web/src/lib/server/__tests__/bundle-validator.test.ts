@@ -9,8 +9,15 @@ import { describe, expect, it } from "vitest";
 import type { WebReportBundleV1 } from "../../../../../contracts/web-report/v1/generated/types";
 import {
   MAX_REPORT_IMPORT_BYTES,
+  MAX_REPORT_JSON_DEPTH,
+  WebReportValidationError,
   validateBundleBytes,
 } from "@/lib/server/bundle-validator";
+import {
+  MAX_REPORT_JSON_DEPTH as POLICY_MAX_REPORT_JSON_DEPTH,
+  WebReportValidationError as PolicyValidationError,
+} from "@/lib/server/bundle-document-policy";
+import { validateBundleSemantics } from "@/lib/server/bundle-semantics";
 
 const fixtureRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -18,6 +25,12 @@ const fixtureRoot = path.resolve(
 );
 
 describe("bundle validator", () => {
+  it("keeps policy and semantic modules behind the public facade", () => {
+    expect(MAX_REPORT_JSON_DEPTH).toBe(POLICY_MAX_REPORT_JSON_DEPTH);
+    expect(WebReportValidationError).toBe(PolicyValidationError);
+    expect(validateBundleSemantics).toBeTypeOf("function");
+  });
+
   it("accepts the frozen valid bundle fixture", async () => {
     const bundle = await validateBundleBytes(
       await readFile(path.join(fixtureRoot, "valid-poc.json")),

@@ -13,6 +13,8 @@ import type {
   QuestionApi,
   QuestionRequestSnapshot,
 } from "@/features/questions/question-api";
+import { requestStatus } from "@/features/questions/question-experience-model";
+import { useQuestionExperience } from "@/features/questions/useQuestionExperience";
 import { QuestionDraftCache } from "@/features/questions/model/draft-cache";
 import type { ReportScope } from "@/features/report/report-model";
 
@@ -118,6 +120,11 @@ beforeEach(() => {
 });
 
 describe("QuestionExperience", () => {
+  it("exposes the model and state hook as focused modules", () => {
+    expect(requestStatus(null)).toBe("질문 대기 중");
+    expect(useQuestionExperience).toBeTypeOf("function");
+  });
+
   it("preserves an unsent draft and returns focus after close", async () => {
     const user = userEvent.setup();
     render(

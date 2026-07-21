@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeUploadSelection } from '@/features/analysis/upload-selection';
+import {
+  isSafeUploadLogicalPath,
+  normalizeUploadLogicalPath,
+  normalizeUploadSelection,
+} from '@/features/analysis/upload-selection';
 
 function withRelativePath(file: File, path: string): File {
   Object.defineProperty(file, 'webkitRelativePath', { value: path });
@@ -8,6 +12,15 @@ function withRelativePath(file: File, path: string): File {
 }
 
 describe('normalizeUploadSelection', () => {
+  it('exposes one canonical logical path policy for providers to reuse', () => {
+    expect(normalizeUploadLogicalPath('strategy/e\u0301.md', '\u00e9.md')).toBe(
+      'strategy/\u00e9.md',
+    );
+    expect(normalizeUploadLogicalPath('../plan.md', 'plan.md')).toBeNull();
+    expect(isSafeUploadLogicalPath('strategy/plan.md')).toBe(true);
+    expect(isSafeUploadLogicalPath('strategy/e\u0301.md')).toBe(false);
+  });
+
   it('keeps supported files recursively and reports skipped folder files', () => {
     const markdown = withRelativePath(
       new File(['# Plan'], 'plan.md', { type: 'text/markdown' }),

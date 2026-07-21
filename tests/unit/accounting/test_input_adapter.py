@@ -7,6 +7,7 @@ from decimal import getcontext
 from tests.support_accounting_multitable import (
     valid_accounting_multitable_document,
 )
+from trusted_ceo_agent.accounting import input_adapter, input_contracts, input_validation
 from trusted_ceo_agent.accounting.dispatcher import dispatch_accounting_suite
 from trusted_ceo_agent.accounting.input_adapter import build_accounting_request
 from trusted_ceo_agent.errors import ContractError
@@ -17,6 +18,12 @@ SOURCE_ID = "source_" + SNAPSHOT_SHA256[:24]
 RUN_ID = "run_fixture"
 REVISION = 4
 SCOPE_REF = "scope_fixture"
+
+
+class AccountingInputModuleBoundaryTests(unittest.TestCase):
+    def test_facade_reexports_validation_and_contract_objects(self) -> None:
+        self.assertIs(input_adapter._validate_rows, input_validation.validate_rows)
+        self.assertIs(input_adapter._TABLE_FIELDS, input_contracts.TABLE_FIELDS)
 
 
 def _build(
