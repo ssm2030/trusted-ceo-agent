@@ -5,6 +5,10 @@ import {
   SCOPE_KINDS,
   type ScopeKind,
 } from "@/lib/server/questions/types";
+import { normalizeUploadLogicalPath } from '@/lib/analysis-upload-path';
+
+export { normalizeUploadLogicalPath } from '@/lib/analysis-upload-path';
+
 export type BackendErrorCode =
   | "INPUT_POLICY_FAILURE"
   | "HUMAN_RESPONSE_REQUIRED"
@@ -161,23 +165,7 @@ const PENDING_ACTIONS = new Set([
 ]);
 const RUN_ID = /^run_[A-Za-z0-9_-]{8,200}$/u;
 const SOURCE_ID = /^source_[0-9a-f]{24}$/u;
-const URI_OR_DRIVE = /^[A-Za-z][A-Za-z0-9+.-]*:/u;
 const CONTROL = /[\u0000-\u001F\u007F]/u;
-
-export function normalizeUploadLogicalPath(
-  value: string,
-  filename: string,
-): string | null {
-  const logicalPath = value.normalize('NFC');
-  const parts = logicalPath.split('/');
-  if (!logicalPath || logicalPath.length > 512 || logicalPath.startsWith('/') ||
-      logicalPath.includes('\\') || URI_OR_DRIVE.test(logicalPath) ||
-      parts.some((part) => !part || part === '.' || part === '..' || CONTROL.test(part)) ||
-      parts.at(-1) !== filename.normalize('NFC')) {
-    return null;
-  }
-  return logicalPath;
-}
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

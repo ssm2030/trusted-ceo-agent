@@ -5,6 +5,7 @@ import type {
   ProviderSnapshot,
 } from "@/features/analysis/analysis-provider";
 import type { AnalysisUpload } from '@/features/analysis/analysis-model';
+import { normalizeUploadLogicalPath } from '@/lib/analysis-upload-path';
 import {
   createInitialReplaySnapshot,
   REPLAY_PHASE_EVENTS,
@@ -36,18 +37,6 @@ export function validateReplayFile(file: FileLike): FileValidation {
   }
 
   return { accepted: true };
-}
-
-const URI_OR_DRIVE = /^[A-Za-z][A-Za-z0-9+.-]*:/u;
-const CONTROL = /[\u0000-\u001F\u007F]/u;
-
-function validUploadPath(upload: AnalysisUpload): boolean {
-  const path = upload.logicalPath;
-  const parts = path.split('/');
-  return path.length > 0 && path.length <= 512 && path.normalize('NFC') === path &&
-    !path.startsWith('/') && !path.includes('\\') && !URI_OR_DRIVE.test(path) &&
-    parts.every((part) => part.length > 0 && part !== '.' && part !== '..' && !CONTROL.test(part)) &&
-    parts.at(-1) === upload.file.name.normalize('NFC');
 }
 
 function replaySourceId(file: File): string {
@@ -113,7 +102,7 @@ export class ReplayAnalysisProvider implements AnalysisProvider {
     const nextFiles = this.current.uploaded_files.map((item) => ({ ...item }));
     const byPath = new Map(nextFiles.map((item) => [item.logical_path, item]));
     for (const upload of uploads) {
-      if (!validUploadPath(upload)) {
+      if (normalizeUploadLogicalPath(upload.logicalPath, upload.file.name) !== upload.logicalPath) {
         return this.withError(
           'CONTRACT_FAILURE',
           '안전하지 않은 업로드 경로가 포함되어 있습니다.',

@@ -1,8 +1,12 @@
 import type { AnalysisUpload } from '@/features/analysis/analysis-model';
+import { normalizeUploadLogicalPath } from '@/lib/analysis-upload-path';
 
 const ALLOWED_EXTENSIONS = new Set(['csv', 'json', 'xlsx', 'md']);
-const URI_OR_DRIVE = /^[A-Za-z][A-Za-z0-9+.-]*:/u;
-const CONTROL = /[\u0000-\u001F\u007F]/u;
+
+export {
+  isSafeUploadLogicalPath,
+  normalizeUploadLogicalPath,
+} from '@/lib/analysis-upload-path';
 
 export function normalizeUploadSelection(
   files: Iterable<File>,
@@ -20,15 +24,11 @@ export function normalizeUploadSelection(
       throw new Error('분석 자료는 CSV, JSON, XLSX, MD 파일만 선택할 수 있습니다.');
     }
     const raw = mode === 'folder' ? file.webkitRelativePath : file.name;
-    const logicalPath = raw.normalize('NFC');
-    const parts = logicalPath.split('/');
-    const unsafe = !logicalPath || logicalPath.length > 512 || logicalPath.startsWith('/') ||
-      logicalPath.includes('\\') || URI_OR_DRIVE.test(logicalPath) ||
-      parts.some((part) => !part || part === '.' || part === '..' || CONTROL.test(part)) ||
-      parts.at(-1) !== file.name.normalize('NFC');
-    if (unsafe) {
+    const logicalPath = normalizeUploadLogicalPath(raw, file.name);
+    if (logicalPath === null) {
       throw new Error('안전하지 않은 폴더 경로가 포함되어 있습니다.');
     }
+    const parts = logicalPath.split('/');
     uploads.push({
       file,
       logicalPath,
