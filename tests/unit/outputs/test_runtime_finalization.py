@@ -5,6 +5,7 @@ import unittest
 from trusted_ceo_agent.canonical import canonical_bytes
 from trusted_ceo_agent.evidence.core import assemble_evidence_core
 from trusted_ceo_agent.runtime_finalization import build_delivery_package, prepare_finalization
+from trusted_ceo_agent.runtime_delivery import build_delivery_package as delivery_builder
 from trusted_ceo_agent.runtime_scan import _pack_artifacts
 from tests.support import confirmed_mission
 
@@ -14,6 +15,9 @@ RUN_ID = "run_20260717T000000Z_0123456789abcdef"
 
 
 class RuntimeFinalizationTests(unittest.TestCase):
+    def test_delivery_builder_is_reexported_from_finalization_facade(self) -> None:
+        self.assertIs(build_delivery_package, delivery_builder)
+
     def setUp(self) -> None:
         core = assemble_evidence_core(
             envelope={
