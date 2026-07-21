@@ -13,14 +13,23 @@ from trusted_ceo_agent.canonical import strict_loads
 from trusted_ceo_agent.errors import ContractError
 from trusted_ceo_agent.service.contracts import HitlDecisionRequest, MutationBase
 from trusted_ceo_agent.service.file_policy import IncomingUpload
+from trusted_ceo_agent.service.hitl_views import build_hitl_card, pending_gate
 from trusted_ceo_agent.service.orchestrator import AnalysisOrchestrator
 from trusted_ceo_agent.service.run_store import RunStore
+from trusted_ceo_agent.service.snapshot_views import build_run_snapshot
 from trusted_ceo_agent.trust.artifact_store import ArtifactStore
 from tests.support import confirmed_mission, mission_body
 
 
 ROOT = Path(__file__).resolve().parents[3]
 FINGERPRINT = "b" * 64
+
+
+class OrchestratorViewModuleBoundaryTests(unittest.TestCase):
+    def test_view_builders_are_separate_importable_functions(self) -> None:
+        self.assertTrue(callable(build_hitl_card))
+        self.assertTrue(callable(pending_gate))
+        self.assertTrue(callable(build_run_snapshot))
 
 
 class FakeGateway:
