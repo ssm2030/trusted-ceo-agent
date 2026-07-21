@@ -14,6 +14,18 @@ from trusted_ceo_agent.application.models import (
     SourceUpload,
 )
 from trusted_ceo_agent.application.run_application import TrustedCeoApplication
+from trusted_ceo_agent.application.mutation_commands import (
+    analysis,
+    approvals,
+    lifecycle,
+    reasoning,
+)
+from trusted_ceo_agent.application.mutation_components import accounting_component_artifacts
+from trusted_ceo_agent.application.mutation_contracts import validate_parameters
+from trusted_ceo_agent.application.mutation_reasoning import (
+    validate_reasoning_draft as reasoning_validator,
+)
+from trusted_ceo_agent.application.mutations import validate_reasoning_draft
 from trusted_ceo_agent.canonical import canonical_bytes
 from trusted_ceo_agent.errors import ContractError, RevisionConflict
 from trusted_ceo_agent.trust.artifact_store import ArtifactStore
@@ -22,6 +34,15 @@ from tests.support import confirmed_mission
 
 ROOT = Path(__file__).resolve().parents[3]
 DRAFT_MISSION = {"confirmed": False, "objective": "", "customer_claims": []}
+
+
+class MutationModuleBoundaryTests(unittest.TestCase):
+    def test_mutation_facade_uses_split_contract_and_command_modules(self) -> None:
+        self.assertIs(validate_reasoning_draft, reasoning_validator)
+        self.assertTrue(callable(validate_parameters))
+        self.assertTrue(callable(accounting_component_artifacts))
+        for module in (analysis, approvals, lifecycle, reasoning):
+            self.assertTrue(callable(module.handle))
 
 
 def _snapshot_files(store: ArtifactStore, revision: int) -> dict[str, bytes]:
