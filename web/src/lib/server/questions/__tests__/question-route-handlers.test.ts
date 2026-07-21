@@ -17,6 +17,11 @@ import {
   handleQuestionSubmit,
   type QuestionRouteDependencies,
 } from "@/lib/server/questions/question-route-handlers";
+import {
+  conversationKeyFromUrl,
+  parseSubmitBody,
+  questionRateKey,
+} from "@/lib/server/questions/question-request-policy";
 import type { QuestionRunContext } from "@/lib/server/questions/types";
 import {
   CSRF_HEADER_NAME,
@@ -28,6 +33,14 @@ import {
 const security = createLocalSecurityConfig({
   port: 3000,
   sessionSecret: new Uint8Array(32).fill(7),
+});
+
+describe("question request policy boundary", () => {
+  it("exposes pure request parsing helpers", () => {
+    expect(parseSubmitBody).toBeTypeOf("function");
+    expect(questionRateKey).toBeTypeOf("function");
+    expect(conversationKeyFromUrl).toBeTypeOf("function");
+  });
 });
 const context: QuestionRunContext = {
   registrationId: "representative",
