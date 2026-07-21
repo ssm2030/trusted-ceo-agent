@@ -88,7 +88,7 @@ export function useQuestionExperience({
   useEffect(() => {
     currentKeyRef.current = serializedKey;
   }, [serializedKey]);
-  
+
   const [draftEnvelope, setDraftEnvelope] = useState<DraftEnvelope>({
     key: serializedKey,
     state: EMPTY_DRAFT,
@@ -105,7 +105,7 @@ export function useQuestionExperience({
   const [consentGranted, setConsentGranted] = useState(false);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  
+
   const draft =
     draftEnvelope.key === serializedKey
       ? draftEnvelope.state
@@ -121,7 +121,7 @@ export function useQuestionExperience({
     activeRequest?.key === serializedKey
       ? activeRequest.snapshot
       : null;
-  
+
   const updateDraft = useCallback(
     (update: Partial<QuestionDraftState>) => {
       interactionVersion.current += 1;
@@ -137,7 +137,7 @@ export function useQuestionExperience({
     },
     [serializedKey],
   );
-  
+
   useEffect(() => {
     const loadVersion = interactionVersion.current;
     let active = true;
@@ -150,7 +150,7 @@ export function useQuestionExperience({
       active = false;
     };
   }, [conversationKey, draftCache, serializedKey]);
-  
+
   useEffect(() => {
     if (draftEnvelope.key === serializedKey) {
       void draftCache.save(conversationKey, draftEnvelope.state);
@@ -161,7 +161,7 @@ export function useQuestionExperience({
     draftEnvelope,
     serializedKey,
   ]);
-  
+
   useEffect(() => {
     if (
       !draft.drawerOpen ||
@@ -179,7 +179,7 @@ export function useQuestionExperience({
       previousKey === null
         ? Promise.resolve({ key: conversationKey, records: [] })
         : resolvedApi.getConversation(previousKey);
-  
+
     void Promise.all([
       resolvedApi.getCapability(),
       resolvedApi.getConversation(conversationKey),
@@ -214,7 +214,7 @@ export function useQuestionExperience({
     revision,
     serializedKey,
   ]);
-  
+
   useEffect(() => {
     if (previousKeyRef.current === serializedKey) {
       return;
@@ -234,7 +234,7 @@ export function useQuestionExperience({
     }
     previousKeyRef.current = serializedKey;
   }, [resolvedApi, serializedKey]);
-  
+
   useEffect(
     () => () => {
       if (pollTimerRef.current !== null) {
@@ -243,12 +243,12 @@ export function useQuestionExperience({
     },
     [],
   );
-  
+
   const setRequest = (envelope: RequestEnvelope) => {
     activeRequestRef.current = envelope;
     setActiveRequest(envelope);
   };
-  
+
   const refreshConversation = async (key: string) => {
     if (resolvedApi === null || currentKeyRef.current !== key) {
       return;
@@ -267,7 +267,7 @@ export function useQuestionExperience({
       // A verified transient answer remains visible if refresh is delayed.
     }
   };
-  
+
   const pollRequest = async (requestId: string, key: string) => {
     if (resolvedApi === null || currentKeyRef.current !== key) {
       return;
@@ -292,7 +292,7 @@ export function useQuestionExperience({
       setLoadFailed(true);
     }
   };
-  
+
   const performSubmit = async (question: string) => {
     if (resolvedApi === null || submitting) {
       return;
@@ -322,7 +322,7 @@ export function useQuestionExperience({
       setSubmitting(false);
     }
   };
-  
+
   const canAsk =
     enabled &&
     resolvedApi !== null &&
