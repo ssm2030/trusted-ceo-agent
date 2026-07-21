@@ -6,6 +6,9 @@ import unittest
 from pathlib import Path
 
 from trusted_ceo_agent import cli
+from trusted_ceo_agent.cli_commands import dispatch
+from trusted_ceo_agent.cli_context import store_for
+from trusted_ceo_agent.cli_parser import build_parser as parser_builder
 from tests.support import confirmed_mission
 
 
@@ -13,6 +16,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class CliCommandTests(unittest.TestCase):
+    def test_cli_facade_uses_split_parser_context_and_dispatch_modules(self) -> None:
+        self.assertIs(cli.build_parser, parser_builder)
+        self.assertTrue(callable(store_for))
+        self.assertTrue(callable(dispatch))
+
     def test_parser_exposes_the_approved_commands(self) -> None:
         parser = cli.build_parser()
         subparsers = next(action for action in parser._actions if action.dest == "command")
