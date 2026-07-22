@@ -11,6 +11,7 @@ from trusted_ceo_agent.service.app import create_app
 from trusted_ceo_agent.service.orchestrator import AnalysisOrchestrator
 from trusted_ceo_agent.service.questions import QuestionService
 from trusted_ceo_agent.service.run_store import RunStore
+from trusted_ceo_agent.service.service_lease import ServiceRootLease
 from trusted_ceo_agent.service.settings import ServiceSettings
 from trusted_ceo_agent.service.testing.fake_openai import (
     KeylessFakeReasoningGateway,
@@ -20,21 +21,27 @@ from trusted_ceo_agent.service.testing.fake_openai import (
 def build_app():
     configured = ServiceSettings.from_environment()
     settings = replace(configured, openai_api_key="keyless-e2e-ready")
-    store = RunStore(settings.service_root)
-    application = TrustedCeoApplication(store.runs_root)
-    gateway = KeylessFakeReasoningGateway(application.artifact_root)
-    orchestrator = AnalysisOrchestrator(
-        application,
-        store,
-        gateway,
-    )
-    questions = QuestionService(application, store, gateway)
-    return settings, create_app(
-        settings,
-        application,
-        orchestrator,
-        questions,
-    )
+    lease = ServiceRootLease.acquire(settings.service_root)
+    try:
+        store = RunStore(settings.service_root)
+        application = TrustedCeoApplication(store.runs_root)
+        gateway = KeylessFakeReasoningGateway(application.artifact_root)
+        orchestrator = AnalysisOrchestrator(
+            application,
+            store,
+            gateway,
+        )
+        questions = QuestionService(application, store, gateway)
+        return settings, create_app(
+            settings,
+            application,
+            orchestrator,
+            questions,
+            service_lease=lease,
+        )
+    except Exception:
+        lease.close()
+        raise
 
 
 def main() -> None:

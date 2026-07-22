@@ -43,6 +43,20 @@ type UseQuestionExperienceOptions = {
   scope: ReportScope;
 };
 
+function cancelRequestSafely(
+  api: QuestionApi | null,
+  requestId: string,
+): void {
+  if (api === null) {
+    return;
+  }
+  try {
+    void api.cancelRequest(requestId).catch(() => undefined);
+  } catch {
+    // Cancellation is best effort and must not block local teardown.
+  }
+}
+
 
 export function useQuestionExperience({
   api,
@@ -81,13 +95,19 @@ export function useQuestionExperience({
   );
   const launcherRef = useRef<HTMLButtonElement>(null);
   const interactionVersion = useRef(0);
+  const lifecycleActiveRef = useRef(true);
+  const submissionVersionRef = useRef(0);
   const currentKeyRef = useRef(serializedKey);
+  const resolvedApiRef = useRef(resolvedApi);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousKeyRef = useRef(serializedKey);
   const activeRequestRef = useRef<RequestEnvelope | null>(null);
   useEffect(() => {
     currentKeyRef.current = serializedKey;
   }, [serializedKey]);
+  useEffect(() => {
+    resolvedApiRef.current = resolvedApi;
+  }, [resolvedApi]);
 
   const [draftEnvelope, setDraftEnvelope] = useState<DraftEnvelope>({
     key: serializedKey,
@@ -219,14 +239,24 @@ export function useQuestionExperience({
     if (previousKeyRef.current === serializedKey) {
       return;
     }
+    submissionVersionRef.current += 1;
+    setSubmitting(false);
     const request = activeRequestRef.current;
     if (
       request !== null &&
       request.key !== serializedKey &&
-      !TERMINAL_STATES.has(request.snapshot.state) &&
-      resolvedApi !== null
+      !TERMINAL_STATES.has(request.snapshot.state)
     ) {
-      void resolvedApi.cancelRequest(request.snapshot.requestId);
+      const cancelledRequest: RequestEnvelope = {
+        key: request.key,
+        snapshot: {
+          ...request.snapshot,
+          state: "cancelled",
+        },
+      };
+      activeRequestRef.current = cancelledRequest;
+      setActiveRequest(cancelledRequest);
+      cancelRequestSafely(resolvedApi, request.snapshot.requestId);
     }
     if (pollTimerRef.current !== null) {
       clearTimeout(pollTimerRef.current);
@@ -235,27 +265,56 @@ export function useQuestionExperience({
     previousKeyRef.current = serializedKey;
   }, [resolvedApi, serializedKey]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    lifecycleActiveRef.current = true;
+    return () => {
+      lifecycleActiveRef.current = false;
+      submissionVersionRef.current += 1;
+      const request = activeRequestRef.current;
+      if (
+        request !== null &&
+        !TERMINAL_STATES.has(request.snapshot.state)
+      ) {
+        activeRequestRef.current = {
+          key: request.key,
+          snapshot: {
+            ...request.snapshot,
+            state: "cancelled",
+          },
+        };
+        cancelRequestSafely(
+          resolvedApiRef.current,
+          request.snapshot.requestId,
+        );
+      }
       if (pollTimerRef.current !== null) {
         clearTimeout(pollTimerRef.current);
       }
-    },
-    [],
-  );
+    };
+  }, []);
 
   const setRequest = (envelope: RequestEnvelope) => {
+    if (!lifecycleActiveRef.current) {
+      return;
+    }
     activeRequestRef.current = envelope;
     setActiveRequest(envelope);
   };
 
   const refreshConversation = async (key: string) => {
-    if (resolvedApi === null || currentKeyRef.current !== key) {
+    if (
+      !lifecycleActiveRef.current ||
+      resolvedApi === null ||
+      currentKeyRef.current !== key
+    ) {
       return;
     }
     try {
       const current = await resolvedApi.getConversation(conversationKey);
-      if (currentKeyRef.current === key) {
+      if (
+        lifecycleActiveRef.current &&
+        currentKeyRef.current === key
+      ) {
         setConversation((existing) => ({
           current: current.records,
           key,
@@ -269,12 +328,24 @@ export function useQuestionExperience({
   };
 
   const pollRequest = async (requestId: string, key: string) => {
-    if (resolvedApi === null || currentKeyRef.current !== key) {
+    if (
+      !lifecycleActiveRef.current ||
+      resolvedApi === null ||
+      currentKeyRef.current !== key
+    ) {
       return;
     }
     try {
       const snapshot = await resolvedApi.getRequest(requestId);
-      if (currentKeyRef.current !== key) {
+      const request = activeRequestRef.current;
+      if (
+        !lifecycleActiveRef.current ||
+        currentKeyRef.current !== key ||
+        request === null ||
+        request.key !== key ||
+        request.snapshot.requestId !== requestId ||
+        TERMINAL_STATES.has(request.snapshot.state)
+      ) {
         return;
       }
       setRequest({ key, snapshot });
@@ -289,15 +360,29 @@ export function useQuestionExperience({
         700,
       );
     } catch {
-      setLoadFailed(true);
+      const request = activeRequestRef.current;
+      if (
+        lifecycleActiveRef.current &&
+        currentKeyRef.current === key &&
+        request?.key === key &&
+        request.snapshot.requestId === requestId &&
+        !TERMINAL_STATES.has(request.snapshot.state)
+      ) {
+        setLoadFailed(true);
+      }
     }
   };
 
   const performSubmit = async (question: string) => {
-    if (resolvedApi === null || submitting) {
+    if (
+      !lifecycleActiveRef.current ||
+      resolvedApi === null ||
+      submitting
+    ) {
       return;
     }
     const keyAtSubmit = serializedKey;
+    const submissionVersion = ++submissionVersionRef.current;
     setSubmitting(true);
     try {
       const accepted = await resolvedApi.submitQuestion({
@@ -310,16 +395,32 @@ export function useQuestionExperience({
         scopeInstanceId: scope.scopeInstanceId,
         scopeKind: scope.scopeKind,
       });
-      if (currentKeyRef.current !== keyAtSubmit) {
+      if (
+        !lifecycleActiveRef.current ||
+        currentKeyRef.current !== keyAtSubmit ||
+        submissionVersionRef.current !== submissionVersion
+      ) {
+        cancelRequestSafely(resolvedApi, accepted.request.requestId);
         return;
       }
       setRequest({ key: keyAtSubmit, snapshot: accepted.request });
       updateDraft({ text: "" });
       await pollRequest(accepted.request.requestId, keyAtSubmit);
     } catch {
-      setLoadFailed(true);
+      if (
+        lifecycleActiveRef.current &&
+        currentKeyRef.current === keyAtSubmit &&
+        submissionVersionRef.current === submissionVersion
+      ) {
+        setLoadFailed(true);
+      }
     } finally {
-      setSubmitting(false);
+      if (
+        lifecycleActiveRef.current &&
+        submissionVersionRef.current === submissionVersion
+      ) {
+        setSubmitting(false);
+      }
     }
   };
 

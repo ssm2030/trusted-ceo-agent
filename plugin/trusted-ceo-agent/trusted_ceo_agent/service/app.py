@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, Response
 from trusted_ceo_agent.application.models import CreateRunRequest
 from trusted_ceo_agent.application.run_application import TrustedCeoApplication
 from trusted_ceo_agent.errors import ContractError, IntegrityError, RevisionConflict
+from trusted_ceo_agent.service.analysis_coordinator import AnalysisCoordinator
 from trusted_ceo_agent.service.contracts import (
     HitlDecisionRequest,
     MutationBase,
@@ -24,6 +25,7 @@ from trusted_ceo_agent.service.questions import (
 )
 from trusted_ceo_agent.service.file_policy import IncomingUpload
 from trusted_ceo_agent.service.run_store import ServiceStoreError
+from trusted_ceo_agent.service.service_lease import ServiceRootLease
 from trusted_ceo_agent.service.settings import ServiceSettings
 
 
@@ -93,9 +95,12 @@ def create_app(
     application: TrustedCeoApplication,
     orchestrator: AnalysisOrchestrator,
     questions: QuestionService,
+    *,
+    service_lease: ServiceRootLease | None = None,
 ) -> FastAPI:
     if application.artifact_root.resolve() != orchestrator.application.artifact_root.resolve():
         raise ValueError("application and orchestrator roots must match")
+    coordinator = AnalysisCoordinator(orchestrator)
 
     async def authenticate(
         token: str | None = Header(
@@ -112,7 +117,16 @@ def create_app(
         try:
             yield
         finally:
-            questions.close()
+            try:
+                questions.close()
+            finally:
+                coordinator.close(
+                    on_drained=(
+                        service_lease.close
+                        if service_lease is not None
+                        else None
+                    ),
+                )
 
     app = FastAPI(
         title="Trusted CEO Agent Local Service",
@@ -122,6 +136,8 @@ def create_app(
         dependencies=[Depends(authenticate)],
         lifespan=lifespan,
     )
+    app.state.analysis_coordinator = coordinator
+    app.state.service_lease = service_lease
 
     @app.middleware("http")
     async def secure_response_headers(request, call_next):
@@ -222,6 +238,7 @@ def create_app(
 
     @app.post("/v1/runs", response_model=RunSnapshot)
     async def create_run(body: CreateAnalysisRequest) -> RunSnapshot:
+        coordinator.assert_mutation_allowed()
         return orchestrator.create_run(
             CreateRunRequest(
                 mission=body.mission or _draft_mission(),
@@ -239,6 +256,7 @@ def create_app(
         idempotency_key: str = Form(...),
         logical_paths: list[str] | None = Form(default=None),
     ) -> RunSnapshot:
+        coordinator.assert_mutation_allowed()
         request = MutationBase(
             expected_revision=expected_revision,
             idempotency_key=idempotency_key,
@@ -259,26 +277,28 @@ def create_app(
 
     @app.get("/v1/runs/{run_id}", response_model=RunSnapshot)
     async def run_status(run_id: str) -> RunSnapshot:
-        return orchestrator.snapshot(run_id)
+        return coordinator.snapshot(run_id)
 
     @app.post("/v1/runs/{run_id}/actions/continue", response_model=RunSnapshot)
     async def continue_run(run_id: str, body: MutationBase) -> RunSnapshot:
-        return orchestrator.continue_run(run_id, body)
+        return coordinator.start(run_id, 'continue', body)
 
     @app.post("/v1/runs/{run_id}/actions/retry", response_model=RunSnapshot)
     async def retry_run(run_id: str, body: MutationBase) -> RunSnapshot:
-        return orchestrator.control_run(run_id, "retry", body)
+        return coordinator.start(run_id, 'retry', body)
 
     @app.post("/v1/runs/{run_id}/actions/resume", response_model=RunSnapshot)
     async def resume_run(run_id: str, body: MutationBase) -> RunSnapshot:
-        return orchestrator.control_run(run_id, "resume", body)
+        return coordinator.start(run_id, 'resume', body)
 
     @app.post("/v1/runs/{run_id}/actions/stop", response_model=RunSnapshot)
     async def stop_run(run_id: str, body: MutationBase) -> RunSnapshot:
+        coordinator.assert_mutation_allowed()
         return orchestrator.control_run(run_id, "stop", body)
 
     @app.post("/v1/runs/{run_id}/actions/cancel", response_model=RunSnapshot)
     async def cancel_run(run_id: str, body: MutationBase) -> RunSnapshot:
+        coordinator.assert_mutation_allowed()
         return orchestrator.control_run(run_id, "cancel", body)
 
     @app.post("/v1/runs/{run_id}/human-responses", response_model=RunSnapshot)
@@ -289,6 +309,7 @@ def create_app(
             alias="X-Trusted-Ceo-Browser-Fingerprint",
         ),
     ) -> RunSnapshot:
+        coordinator.assert_mutation_allowed()
         return orchestrator.submit_hitl(
             run_id,
             body,
@@ -304,6 +325,7 @@ def create_app(
         run_id: str,
         body: QuestionRequest,
     ) -> QuestionSnapshot:
+        coordinator.assert_mutation_allowed()
         return questions.start(run_id, body)
 
     @app.get(
@@ -321,6 +343,7 @@ def create_app(
 
     @app.delete("/v1/runs/{run_id}", status_code=204)
     async def delete_run(run_id: str, body: DeleteRunRequest) -> Response:
+        coordinator.assert_mutation_allowed()
         orchestrator.delete_run(
             run_id,
             body,

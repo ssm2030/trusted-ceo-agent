@@ -10,11 +10,16 @@ import {
   DEFAULT_HEALTH_ATTEMPTS,
   defaultDependencies,
   spawnChild,
-  terminateChild,
   waitForAuthenticatedHealth,
 } from "./child-supervisor.mjs";
 
 export { buildLaunchPlan, loadRootEnvironment };
+
+export function launchFailureExitCode(currentExitCode) {
+  return Number.isInteger(currentExitCode) && currentExitCode > 0
+    ? currentExitCode
+    : 1;
+}
 
 export async function startAiDemo(options = {}, dependencyOverrides = {}) {
   const dependencies = defaultDependencies(dependencyOverrides);
@@ -28,6 +33,7 @@ export async function startAiDemo(options = {}, dependencyOverrides = {}) {
   const pythonChild = spawnChild(plan.python, dependencies, "Python");
   let nextChild;
   let stopping = false;
+  let stopPromise;
   let detachRuntimeListeners = () => undefined;
   const signalHandlers = new Map();
 
@@ -39,24 +45,48 @@ export async function startAiDemo(options = {}, dependencyOverrides = {}) {
   };
 
   const stop = (exitCode) => {
-    if (stopping) {
-      return;
+    if (stopPromise !== undefined) {
+      return stopPromise;
     }
     stopping = true;
-    removeSignalHandlers();
     detachRuntimeListeners();
-    terminateChild(nextChild);
-    terminateChild(pythonChild);
     if (exitCode !== undefined) {
       dependencies.setExitCode(exitCode);
     }
+    const terminate = (child) => {
+      try {
+        return Promise.resolve(dependencies.terminateProcessTree(child));
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    };
+    stopPromise = Promise.allSettled([
+      terminate(nextChild),
+      terminate(pythonChild),
+    ])
+      .then((results) => {
+        const failure = results.find((result) => result.status === "rejected");
+        if (failure !== undefined) {
+          throw failure.reason;
+        }
+      })
+      .finally(removeSignalHandlers);
+    return stopPromise;
+  };
+
+  const stopAfterRuntimeEvent = (exitCode) => {
+    const stoppingNow = stop(exitCode);
+    void stoppingNow.catch(() => {
+      dependencies.setExitCode(launchFailureExitCode(exitCode));
+    });
+    return stoppingNow;
   };
 
   for (const [signal, exitCode] of [
     ["SIGINT", 130],
     ["SIGTERM", 143],
   ]) {
-    const handler = () => stop(exitCode);
+    const handler = () => stopAfterRuntimeEvent(exitCode);
     signalHandlers.set(signal, handler);
     dependencies.registerSignal(signal, handler);
   }
@@ -79,10 +109,12 @@ export async function startAiDemo(options = {}, dependencyOverrides = {}) {
     }
     nextChild = spawnChild(plan.next, dependencies, "Next");
 
-    const onPythonStop = () => stop(1);
-    const onNextError = () => stop(1);
+    const onPythonStop = () => stopAfterRuntimeEvent(1);
+    const onNextError = () => stopAfterRuntimeEvent(1);
     const onNextExit = (code) =>
-      stop(Number.isInteger(code) && code >= 0 ? code : 1);
+      stopAfterRuntimeEvent(
+        Number.isInteger(code) && code >= 0 ? code : 1,
+      );
     pythonChild.once("error", onPythonStop);
     pythonChild.once("exit", onPythonStop);
     nextChild.once("error", onNextError);
@@ -98,7 +130,7 @@ export async function startAiDemo(options = {}, dependencyOverrides = {}) {
       onNextExit(nextChild.exitCode);
     }
   } catch (error) {
-    stop();
+    await stop();
     throw error;
   }
 
@@ -123,6 +155,6 @@ const isMain =
 if (isMain) {
   main().catch(() => {
     process.stderr.write("Trusted CEO Agent demo launcher could not start.\n");
-    process.exitCode = 1;
+    process.exitCode = launchFailureExitCode(process.exitCode);
   });
 }

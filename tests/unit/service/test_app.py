@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -27,6 +28,19 @@ ROOT = Path(__file__).resolve().parents[3]
 TOKEN = "internal_token_for_local_test_1234567890"
 AUTH = {"X-Trusted-Ceo-Internal-Token": TOKEN}
 FINGERPRINT = "d" * 64
+
+
+def _wait_for_snapshot(client: TestClient, run_id: str, predicate):
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        response = client.get(f'/v1/runs/{run_id}', headers=AUTH)
+        if response.status_code != 200:
+            raise AssertionError(response.text)
+        snapshot = response.json()
+        if predicate(snapshot):
+            return snapshot
+        time.sleep(0.01)
+    raise AssertionError('analysis worker did not publish its checkpoint')
 
 
 class StubQuestionService:
@@ -134,8 +148,14 @@ class ServiceAppTests(unittest.TestCase):
                 },
             )
             self.assertEqual(200, pending.status_code, pending.text)
-            self.assertEqual("human_response", pending.json()["pending_action"])
-            self.assertNotIn("nonce", pending.text.casefold())
+            self.assertEqual("provider_work", pending.json()["pending_action"])
+            self.assertEqual([], pending.json()["allowed_actions"])
+            pending_snapshot = _wait_for_snapshot(
+                client,
+                run_id,
+                lambda value: value["pending_action"] == "human_response",
+            )
+            self.assertNotIn("nonce", str(pending_snapshot).casefold())
 
             approved = client.post(
                 f"/v1/runs/{run_id}/human-responses",
@@ -144,7 +164,7 @@ class ServiceAppTests(unittest.TestCase):
                     "X-Trusted-Ceo-Browser-Fingerprint": FINGERPRINT,
                 },
                 json={
-                    "expected_revision": 2,
+                    "expected_revision": pending_snapshot["revision"],
                     "idempotency_key": "approve_browser_run_0001",
                     "decision": "approve",
                     "edits": {},
@@ -267,17 +287,64 @@ class ServiceAppTests(unittest.TestCase):
                 settings, app = build_app()
 
             self.assertFalse(settings.ai_ready)
-            response = TestClient(app).post(
-                "/v1/runs/run_keyless_questions_12345678/questions",
-                headers=AUTH,
-                json={},
-            )
+            with TestClient(app) as client:
+                response = client.post(
+                    "/v1/runs/run_keyless_questions_12345678/questions",
+                    headers=AUTH,
+                    json={},
+                )
             self.assertEqual(422, response.status_code, response.text)
 
             with self.assertRaises(AIServiceError) as caught:
                 MissingApiKeyGateway().execute_question({})
             self.assertEqual("AI_AUTH_FAILURE", caught.exception.code)
             self.assertFalse(caught.exception.retryable)
+
+    def test_build_app_preserves_an_idle_run_across_service_restart(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            run_id = "run_service_restart_12345678"
+            store = RunStore(Path(directory))
+            manifest = store.create_manifest(run_id, engine_revision=2)
+            store.save_manifest(
+                manifest.model_copy(update={
+                    "status": "running",
+                    "stage": "lens",
+                }),
+                expected_revision=2,
+            )
+            environment = {
+                "TRUSTED_CEO_INTERNAL_TOKEN": TOKEN,
+                "TRUSTED_CEO_SERVICE_ROOT": directory,
+            }
+
+            with patch.dict(os.environ, environment, clear=True):
+                settings, app = build_app()
+            with TestClient(app) as client:
+                self.assertEqual(200, client.get("/health", headers=AUTH).status_code)
+
+            recovered = RunStore(settings.service_root).read_manifest(run_id)
+            self.assertEqual("running", recovered.status)
+            self.assertIsNone(recovered.error_code)
+
+    def test_build_app_holds_an_exclusive_service_root_lease(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            environment = {
+                "TRUSTED_CEO_INTERNAL_TOKEN": TOKEN,
+                "TRUSTED_CEO_SERVICE_ROOT": directory,
+            }
+            with patch.dict(os.environ, environment, clear=True):
+                _, first = build_app()
+                try:
+                    with self.assertRaisesRegex(RuntimeError, "already in use"):
+                        build_app()
+                finally:
+                    lease = getattr(first.state, "service_lease", None)
+                    if lease is not None:
+                        lease.close()
+                _, restarted = build_app()
+                lease = getattr(restarted.state, "service_lease", None)
+                if lease is not None:
+                    lease.close()
 
     def test_upload_route_preserves_logical_path_order_and_rejects_mismatch(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
@@ -461,13 +528,19 @@ class ServiceAppTests(unittest.TestCase):
             )
             self.assertEqual(200, resumed.status_code, resumed.text)
             self.assertEqual("provider_work", resumed.json()["pending_action"])
+            self.assertEqual([], resumed.json()["allowed_actions"])
+            resumed_snapshot = _wait_for_snapshot(
+                client,
+                run_id,
+                lambda value: value["pending_action"] == "human_response",
+            )
 
             deleted = client.request(
                 "DELETE",
                 f"/v1/runs/{run_id}",
                 headers=AUTH,
                 json={
-                    "expected_revision": 2,
+                    "expected_revision": resumed_snapshot["revision"],
                     "idempotency_key": "delete_browser_run_0001",
                     "confirmed": True,
                 },
@@ -478,7 +551,7 @@ class ServiceAppTests(unittest.TestCase):
                 f"/v1/runs/{run_id}",
                 headers=AUTH,
                 json={
-                    "expected_revision": 2,
+                    "expected_revision": resumed_snapshot["revision"],
                     "idempotency_key": "delete_browser_run_0001",
                     "confirmed": True,
                 },
@@ -560,9 +633,10 @@ class ServiceAppTests(unittest.TestCase):
             self.assertEqual(200, uploaded.status_code, uploaded.text)
 
             snapshot = uploaded.json()
-            unavailable = None
+            failed_snapshot = None
             approval_count = 0
             for sequence in range(12):
+                provider_started = False
                 if snapshot["pending_action"] == "human_response":
                     approval_count += 1
                     advanced = client.post(
@@ -583,6 +657,7 @@ class ServiceAppTests(unittest.TestCase):
                     )
                 else:
                     self.assertEqual("provider_work", snapshot["pending_action"])
+                    provider_started = True
                     advanced = client.post(
                         f"/v1/runs/{run_id}/actions/continue",
                         headers=AUTH,
@@ -593,30 +668,44 @@ class ServiceAppTests(unittest.TestCase):
                             ),
                         },
                     )
-                if advanced.status_code == 503:
-                    unavailable = advanced
-                    break
                 self.assertEqual(200, advanced.status_code, advanced.text)
                 snapshot = advanced.json()
+                if provider_started:
+                    self.assertEqual("provider_work", snapshot["pending_action"])
+                    self.assertEqual([], snapshot["allowed_actions"])
+                    snapshot = _wait_for_snapshot(
+                        client,
+                        run_id,
+                        lambda value: (
+                            value["pending_action"] != "provider_work"
+                            or bool(value["allowed_actions"])
+                        ),
+                    )
+                if snapshot["pending_action"] == "retry":
+                    failed_snapshot = snapshot
+                    break
             self.assertEqual(1, approval_count)
-            self.assertIsNotNone(unavailable)
-            self.assertEqual(503, unavailable.status_code, unavailable.text)
-            self.assertEqual("AI_AUTH_FAILURE", unavailable.json()["code"])
-            self.assertNotIn(str(root), unavailable.text)
+            self.assertIsNotNone(failed_snapshot)
+            self.assertEqual("AI_AUTH_FAILURE", failed_snapshot["error"]["code"])
+            self.assertNotIn(str(root), str(failed_snapshot))
 
-            failed = client.get(f"/v1/runs/{run_id}", headers=AUTH)
-            self.assertEqual("retry", failed.json()["pending_action"])
-            self.assertEqual("AI_AUTH_FAILURE", failed.json()["error"]["code"])
             retried = client.post(
                 f"/v1/runs/{run_id}/actions/retry",
                 headers=AUTH,
                 json={
-                    "expected_revision": failed.json()["revision"],
+                    "expected_revision": failed_snapshot["revision"],
                     "idempotency_key": "retry_missing_key_0001",
                 },
             )
             self.assertEqual(200, retried.status_code, retried.text)
             self.assertEqual("provider_work", retried.json()["pending_action"])
+            self.assertEqual([], retried.json()["allowed_actions"])
+            retry_failed = _wait_for_snapshot(
+                client,
+                run_id,
+                lambda value: value["pending_action"] == "retry",
+            )
+            self.assertEqual("AI_AUTH_FAILURE", retry_failed["error"]["code"])
 
 
 if __name__ == "__main__":

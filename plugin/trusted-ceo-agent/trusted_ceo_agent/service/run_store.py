@@ -7,7 +7,7 @@ import os
 import re
 import shutil
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -395,9 +395,161 @@ class RunStore:
                 )
             return receipt
 
-    def recover_interrupted(self) -> list[str]:
+    def complete_idempotency_receipt(
+        self,
+        run_id: str,
+        *,
+        idempotency_key: str,
+        request_body: Mapping[str, Any],
+        status_code: int,
+        response: Mapping[str, Any],
+    ) -> IdempotencyReceipt:
+        """Atomically replace a matching pending receipt with its final response."""
+        if _IDEMPOTENCY_KEY.fullmatch(idempotency_key) is None:
+            raise ServiceStoreError("IDEMPOTENCY_CONFLICT", "invalid idempotency key")
+        request_hash = _hash_document(request_body)
+        return self.complete_pending_idempotency_receipt(
+            run_id,
+            idempotency_key=idempotency_key,
+            expected_request_hash=request_hash,
+            status_code=status_code,
+            response=response,
+        )
+
+    def complete_pending_idempotency_receipt(
+        self,
+        run_id: str,
+        *,
+        idempotency_key: str,
+        expected_request_hash: str,
+        status_code: int,
+        response: Mapping[str, Any],
+    ) -> IdempotencyReceipt:
+        if _IDEMPOTENCY_KEY.fullmatch(idempotency_key) is None:
+            raise ServiceStoreError("IDEMPOTENCY_CONFLICT", "invalid idempotency key")
+        if re.fullmatch(r"[0-9a-f]{64}", expected_request_hash) is None:
+            raise IntegrityError("pending idempotency request hash is invalid")
+        key_hash = hashlib.sha256(idempotency_key.encode("ascii")).hexdigest()
+        run_root = self.run_root(run_id)
+        receipt_path = ensure_within(
+            run_root,
+            run_root / "service" / "idempotency" / f"{key_hash}.json",
+        )
+        lock = _lock_for(run_root)
+        with lock:
+            if not receipt_path.is_file():
+                raise IntegrityError("pending idempotency receipt is missing")
+            try:
+                payload = receipt_path.read_bytes()
+                _canonical_json(payload, label="idempotency receipt")
+                existing = IdempotencyReceipt.model_validate_json(payload)
+            except (TypeError, ValueError) as error:
+                raise IntegrityError("idempotency receipt is invalid") from error
+            if not hmac.compare_digest(existing.idempotency_key, idempotency_key):
+                raise IntegrityError("idempotency receipt key does not match its path")
+            if not hmac.compare_digest(
+                existing.request_hash,
+                expected_request_hash,
+            ):
+                raise ServiceStoreError(
+                    "IDEMPOTENCY_CONFLICT",
+                    "idempotency key was reused for a different request",
+                )
+            if existing.status_code != 202:
+                raise IntegrityError("idempotency receipt is not pending")
+            completed = existing.model_copy(update={
+                "status_code": status_code,
+                "response": dict(response),
+            })
+            atomic_write(
+                receipt_path,
+                canonical_bytes(completed.model_dump(mode="json")),
+            )
+            return completed
+
+    def discard_pending_idempotency_receipt(
+        self,
+        run_id: str,
+        *,
+        idempotency_key: str,
+        request_body: Mapping[str, Any],
+    ) -> None:
+        if _IDEMPOTENCY_KEY.fullmatch(idempotency_key) is None:
+            raise ServiceStoreError("IDEMPOTENCY_CONFLICT", "invalid idempotency key")
+        request_hash = _hash_document(request_body)
+        key_hash = hashlib.sha256(idempotency_key.encode("ascii")).hexdigest()
+        run_root = self.run_root(run_id)
+        receipt_path = ensure_within(
+            run_root,
+            run_root / "service" / "idempotency" / f"{key_hash}.json",
+        )
+        lock = _lock_for(run_root)
+        with lock:
+            if not receipt_path.is_file():
+                return
+            try:
+                payload = receipt_path.read_bytes()
+                _canonical_json(payload, label="idempotency receipt")
+                receipt = IdempotencyReceipt.model_validate_json(payload)
+            except (TypeError, ValueError) as error:
+                raise IntegrityError("idempotency receipt is invalid") from error
+            if not hmac.compare_digest(receipt.request_hash, request_hash):
+                raise ServiceStoreError(
+                    "IDEMPOTENCY_CONFLICT",
+                    "idempotency key was reused for a different request",
+                )
+            if receipt.status_code != 202:
+                raise IntegrityError("idempotency receipt is not pending")
+            receipt_path.unlink()
+
+    def pending_analysis_receipts(
+        self,
+    ) -> tuple[tuple[str, IdempotencyReceipt], ...]:
+        pending: list[tuple[str, IdempotencyReceipt]] = []
+        for manifest_path in sorted(self.runs_root.glob("run_*/service-manifest.json")):
+            run_id = manifest_path.parent.name
+            receipt_root = ensure_within(
+                self.run_root(run_id),
+                self.run_root(run_id) / "service" / "idempotency",
+            )
+            if not receipt_root.is_dir():
+                continue
+            for receipt_path in sorted(receipt_root.glob("*.json")):
+                ensure_within(receipt_root, receipt_path)
+                try:
+                    payload = receipt_path.read_bytes()
+                    _canonical_json(payload, label="idempotency receipt")
+                    receipt = IdempotencyReceipt.model_validate_json(payload)
+                except (TypeError, ValueError) as error:
+                    raise IntegrityError("idempotency receipt is invalid") from error
+                expected_name = (
+                    hashlib.sha256(receipt.idempotency_key.encode("ascii")).hexdigest()
+                    + ".json"
+                )
+                if not hmac.compare_digest(receipt_path.name, expected_name):
+                    raise IntegrityError("idempotency receipt key does not match its path")
+                if (
+                    receipt.status_code == 202
+                    and receipt.response.get("provider_kind") == "service"
+                    and receipt.response.get("pending_action") == "provider_work"
+                    and receipt.response.get("allowed_actions") == []
+                ):
+                    pending.append((run_id, receipt))
+        return tuple(pending)
+
+    def recover_interrupted(
+        self,
+        run_ids: Iterable[str] | None = None,
+        *,
+        recover_stopped: bool = False,
+    ) -> list[str]:
         recovered: list[str] = []
-        for path in sorted(self.runs_root.glob("run_*/service-manifest.json")):
+        paths = (
+            sorted(self.runs_root.glob("run_*/service-manifest.json"))
+            if run_ids is None
+            else [self._manifest_path(run_id) for run_id in sorted(set(run_ids))]
+        )
+        for path in paths:
             run_id = path.parent.name
             manifest = self.read_manifest(run_id)
             engine_revision = self._engine_revision(run_id)
@@ -415,7 +567,9 @@ class RunStore:
                 self.save_manifest(updated, expected_revision=manifest.engine_revision)
                 recovered.append(run_id)
                 continue
-            if manifest.status == "running":
+            if manifest.status == "running" or (
+                recover_stopped and manifest.status == "stopped"
+            ):
                 updated = manifest.model_copy(update={
                     "status": "retryable_failure",
                     "error_code": "AI_TRANSIENT_FAILURE",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type {
   AnalysisProvider,
@@ -52,6 +52,7 @@ export function LiveAnalysisCommandCenter({
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [deleted, setDeleted] = useState(false);
+  const mutationGeneration = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -80,17 +81,21 @@ export function LiveAnalysisCommandCenter({
   }, [provider]);
 
   useEffect(() => {
-    if (snapshot?.pending_action !== "provider_work") return;
+    if (
+      snapshot?.pending_action !== "provider_work" ||
+      snapshot.allowed_actions.length > 0
+    ) return;
     let active = true;
+    const generation = mutationGeneration.current;
     void (async () => {
       let delay = 500;
       let current = snapshot;
       while (active && current.pending_action === "provider_work") {
         await wait(delay);
-        if (!active) return;
+        if (!active || mutationGeneration.current !== generation) return;
         try {
           current = await provider.getStatus(current.run_id);
-          if (!active) return;
+          if (!active || mutationGeneration.current !== generation) return;
           setSnapshot(current);
           delay = Math.min(delay * 2, 2_000);
         } catch {
@@ -110,6 +115,7 @@ export function LiveAnalysisCommandCenter({
     operation: () => Promise<ProviderSnapshot>,
   ): Promise<ProviderSnapshot | null> {
     if (busy) return null;
+    mutationGeneration.current += 1;
     setBusy(true);
     setLocalError(null);
     try {
@@ -298,14 +304,16 @@ export function LiveAnalysisCommandCenter({
             {snapshot.pending_action === "provider_work" ? (
               <div className="provider-work live-provider-work">
                 <p>{snapshot.latest_event}</p>
-                <button
-                  className="primary-action"
-                  disabled={busy}
-                  onClick={() => void handleAction("continue")}
-                  type="button"
-                >
-                  분석 계속
-                </button>
+                {snapshot.allowed_actions.includes("continue") ? (
+                  <button
+                    className="primary-action"
+                    disabled={busy}
+                    onClick={() => void handleAction("continue")}
+                    type="button"
+                  >
+                    분석 계속
+                  </button>
+                ) : null}
               </div>
             ) : null}
             {snapshot.pending_action === "retry" ? (

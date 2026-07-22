@@ -168,6 +168,67 @@ describe("analysis BFF route handlers", () => {
     expect(vi.mocked(service.uploadFiles)).toHaveBeenCalledTimes(1);
   });
 
+  it("normalizes Unicode upload paths before forwarding them", async () => {
+    const service = backend();
+    vi.mocked(service.uploadFiles).mockResolvedValue(snapshot());
+    const form = new FormData();
+    form.set("expected_revision", "1");
+    form.set("idempotency_key", "upload_route_unicode_0001");
+    form.append(
+      "files",
+      new File(["# Plan"], "\u00e9.md", { type: "text/markdown" }),
+    );
+    form.append("logical_paths", "strategy/e\u0301.md");
+    const headers = mutationHeaders();
+    headers.delete("content-type");
+
+    const response = await handleAnalysisFiles(
+      new Request(
+        "http://127.0.0.1:3000/api/analysis/runs/run_20260719T000000Z_0123456789abcdef/files",
+        { method: "POST", headers, body: form },
+      ),
+      "run_20260719T000000Z_0123456789abcdef",
+      { backend: service, security, activateReport: vi.fn() },
+    );
+
+    expect(response.status).toBe(200);
+    const forwarded = vi.mocked(service.uploadFiles).mock.calls[0][1];
+    expect(forwarded.getAll("logical_paths")).toEqual([
+      "strategy/\u00e9.md",
+    ]);
+  });
+
+  it.each([
+    "../plan.md",
+    "/absolute/plan.md",
+    "C:/private/plan.md",
+    "folder\\plan.md",
+  ])("rejects unsafe upload path %s before calling the backend", async (path) => {
+    const service = backend();
+    const form = new FormData();
+    form.set("expected_revision", "1");
+    form.set("idempotency_key", "upload_route_unsafe_0001");
+    form.append(
+      "files",
+      new File(["# Plan"], "plan.md", { type: "text/markdown" }),
+    );
+    form.append("logical_paths", path);
+    const headers = mutationHeaders();
+    headers.delete("content-type");
+
+    const response = await handleAnalysisFiles(
+      new Request(
+        "http://127.0.0.1:3000/api/analysis/runs/run_20260719T000000Z_0123456789abcdef/files",
+        { method: "POST", headers, body: form },
+      ),
+      "run_20260719T000000Z_0123456789abcdef",
+      { backend: service, security, activateReport: vi.fn() },
+    );
+
+    expect(response.status).toBe(422);
+    expect(service.uploadFiles).not.toHaveBeenCalled();
+  });
+
   it("activates a validated service report before returning it", async () => {
     const service = backend();
     const report = {

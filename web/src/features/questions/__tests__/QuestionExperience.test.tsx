@@ -1,6 +1,12 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ResultAnswerV1 } from "../../../../../contracts/web-report/v1/generated/types";
 
@@ -12,6 +18,7 @@ import type {
   ConversationRecord,
   QuestionApi,
   QuestionRequestSnapshot,
+  SubmitQuestionResponse,
 } from "@/features/questions/question-api";
 import { requestStatus } from "@/features/questions/question-experience-model";
 import { useQuestionExperience } from "@/features/questions/useQuestionExperience";
@@ -24,6 +31,21 @@ const SCOPE: ReportScope = {
   scopeInstanceId: "evidence_main",
   scopeKind: "evidence",
 };
+
+const SECOND_SCOPE: ReportScope = {
+  activeRef: "claim_secondary",
+  issueId: "issue_secondary",
+  scopeInstanceId: "claim_secondary",
+  scopeKind: "claim",
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
 
 const ANSWER: ResultAnswerV1 = {
   answer_version: "1.0.0",
@@ -67,6 +89,19 @@ function completedRequest(): QuestionRequestSnapshot {
     requestId: "request_main",
     scopeSuggestions: [],
     state: "completed",
+  };
+}
+
+function queuedRequest(
+  requestId = "request_main",
+  clientRequestId = "client_main",
+): QuestionRequestSnapshot {
+  return {
+    ...completedRequest(),
+    answer: null,
+    clientRequestId,
+    requestId,
+    state: "queued",
   };
 }
 
@@ -115,8 +150,30 @@ function makeCache(): QuestionDraftCache {
   });
 }
 
+function renderQuestionExperienceHook(api: QuestionApi) {
+  const draftCache = makeCache();
+  return renderHook(
+    ({ scope }: { scope: ReportScope }) =>
+      useQuestionExperience({
+        api,
+        csrfToken: "csrf_test",
+        draftCache,
+        enabled: true,
+        previousRevision: 2,
+        revision: 3,
+        runId: "run_main",
+        scope,
+      }),
+    { initialProps: { scope: SCOPE } },
+  );
+}
+
 beforeEach(() => {
   sessionStorage.clear();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("QuestionExperience", () => {
@@ -269,6 +326,296 @@ describe("QuestionExperience", () => {
     );
     expect(await screen.findByText("이전 질문")).toBeInTheDocument();
     expect(screen.getByText("이전 리비전 2")).toBeInTheDocument();
+  });
+
+  it("cancels the previous request and allows a new question after returning to its scope", async () => {
+    const user = userEvent.setup();
+    const pendingRequest = deferred<QuestionRequestSnapshot>();
+    const returnedRequest = deferred<QuestionRequestSnapshot>();
+    const cache = makeCache();
+    const submitQuestion = vi
+      .fn<QuestionApi["submitQuestion"]>()
+      .mockResolvedValueOnce({
+        request: {
+          ...completedRequest(),
+          answer: null,
+          state: "queued",
+        },
+      })
+      .mockResolvedValueOnce({
+        request: {
+          ...completedRequest(),
+          answer: null,
+          clientRequestId: "client_returned",
+          requestId: "request_returned",
+          state: "queued",
+        },
+      });
+    const api = createApi({
+      getConversation: vi.fn().mockImplementation(async (key) => ({
+        key,
+        records: [],
+      })),
+      getRequest: vi.fn().mockImplementation((requestId) =>
+        requestId === "request_main"
+          ? pendingRequest.promise
+          : returnedRequest.promise,
+      ),
+      submitQuestion,
+    });
+    const { rerender } = render(
+      <QuestionExperience
+        api={api}
+        csrfToken="csrf_test"
+        draftCache={cache}
+        enabled
+        onReferenceSelect={vi.fn()}
+        previousRevision={2}
+        revision={3}
+        runId="run_main"
+        scope={SCOPE}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "결과에 질문하기" }),
+    );
+    await user.type(
+      await screen.findByLabelText("결과 질문"),
+      "이전 범위의 질문",
+    );
+    await user.click(screen.getByRole("button", { name: "질문 보내기" }));
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: "원격 처리 안내를 확인하고 동의합니다",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "동의하고 질문 보내기" }),
+    );
+    await waitFor(() =>
+      expect(api.getRequest).toHaveBeenCalledWith("request_main"),
+    );
+
+    rerender(
+      <QuestionExperience
+        api={api}
+        csrfToken="csrf_test"
+        draftCache={cache}
+        enabled
+        onReferenceSelect={vi.fn()}
+        previousRevision={2}
+        revision={3}
+        runId="run_main"
+        scope={SECOND_SCOPE}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(api.cancelRequest).toHaveBeenCalledWith("request_main"),
+    );
+
+    rerender(
+      <QuestionExperience
+        api={api}
+        csrfToken="csrf_test"
+        draftCache={cache}
+        enabled
+        onReferenceSelect={vi.fn()}
+        previousRevision={2}
+        revision={3}
+        runId="run_main"
+        scope={SCOPE}
+      />,
+    );
+
+    expect(
+      await screen.findByText("질문이 취소되었습니다"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "검증된 근거에 따르면 관찰값을 확인할 수 있습니다.",
+      ),
+    ).not.toBeInTheDocument();
+    const composer = await screen.findByLabelText("결과 질문");
+    expect(composer).toBeEnabled();
+    await user.clear(composer);
+    await user.type(composer, "돌아온 범위의 새 질문");
+    expect(
+      screen.getByRole("button", { name: "질문 보내기" }),
+    ).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "질문 보내기" }));
+
+    await waitFor(() =>
+      expect(submitQuestion).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          question: "돌아온 범위의 새 질문",
+          scopeInstanceId: "evidence_main",
+          scopeKind: "evidence",
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(api.getRequest).toHaveBeenCalledWith("request_returned"),
+    );
+
+    await act(async () => {
+      pendingRequest.resolve(completedRequest());
+      await pendingRequest.promise;
+    });
+    expect(
+      screen.queryByText(
+        "검증된 근거에 따르면 관찰값을 확인할 수 있습니다.",
+      ),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      returnedRequest.resolve({
+        ...completedRequest(),
+        answer: null,
+        clientRequestId: "client_returned",
+        requestId: "request_returned",
+        state: "cancelled",
+      });
+      await returnedRequest.promise;
+    });
+  });
+
+  it("cancels an accepted request that arrives after switching scopes", async () => {
+    const pendingSubmit = deferred<SubmitQuestionResponse>();
+    const getRequest = vi.fn<QuestionApi["getRequest"]>();
+    const api = createApi({
+      getRequest,
+      submitQuestion: vi.fn().mockReturnValue(pendingSubmit.promise),
+    });
+    const { result, rerender } = renderQuestionExperienceHook(api);
+    let submission!: Promise<void>;
+
+    act(() => {
+      submission = result.current.performSubmit("전환 전 질문");
+    });
+    expect(api.submitQuestion).toHaveBeenCalledOnce();
+
+    rerender({ scope: SECOND_SCOPE });
+    await act(async () => {
+      pendingSubmit.resolve({ request: queuedRequest() });
+      await submission;
+    });
+
+    expect(api.cancelRequest).toHaveBeenCalledWith("request_main");
+    expect(getRequest).not.toHaveBeenCalled();
+    rerender({ scope: SCOPE });
+    expect(result.current.currentRequest).toBeNull();
+  });
+
+  it("cancels an accepted request that arrives after unmount", async () => {
+    const pendingSubmit = deferred<SubmitQuestionResponse>();
+    const getRequest = vi.fn<QuestionApi["getRequest"]>();
+    const api = createApi({
+      getRequest,
+      submitQuestion: vi.fn().mockReturnValue(pendingSubmit.promise),
+    });
+    const { result, unmount } = renderQuestionExperienceHook(api);
+    let submission!: Promise<void>;
+
+    act(() => {
+      submission = result.current.performSubmit("언마운트 전 질문");
+    });
+    unmount();
+    await act(async () => {
+      pendingSubmit.resolve({ request: queuedRequest() });
+      await submission;
+    });
+
+    expect(api.cancelRequest).toHaveBeenCalledWith("request_main");
+    expect(getRequest).not.toHaveBeenCalled();
+  });
+
+  it("does not restart polling when a pending poll resolves after unmount", async () => {
+    vi.useFakeTimers();
+    const pendingRequest = deferred<QuestionRequestSnapshot>();
+    const getRequest = vi
+      .fn<QuestionApi["getRequest"]>()
+      .mockReturnValue(pendingRequest.promise);
+    const api = createApi({ getRequest });
+    const { result, unmount } = renderQuestionExperienceHook(api);
+    let submission!: Promise<void>;
+
+    await act(async () => {
+      submission = result.current.performSubmit("폴링 중 질문");
+      await Promise.resolve();
+    });
+    expect(getRequest).toHaveBeenCalledOnce();
+
+    unmount();
+    await act(async () => {
+      pendingRequest.resolve({
+        ...queuedRequest(),
+        state: "asking",
+      });
+      await submission;
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(700);
+    });
+
+    expect(getRequest).toHaveBeenCalledOnce();
+  });
+
+  it("absorbs cancellation failures and keeps the original scope reusable", async () => {
+    const pendingRequest = deferred<QuestionRequestSnapshot>();
+    const submitQuestion = vi
+      .fn<QuestionApi["submitQuestion"]>()
+      .mockResolvedValueOnce({ request: queuedRequest() })
+      .mockResolvedValueOnce({
+        request: queuedRequest("request_returned", "client_returned"),
+      });
+    const getRequest = vi
+      .fn<QuestionApi["getRequest"]>()
+      .mockImplementation((requestId) =>
+        requestId === "request_main"
+          ? pendingRequest.promise
+          : Promise.resolve({
+              ...queuedRequest("request_returned", "client_returned"),
+              state: "cancelled",
+            }),
+      );
+    const cancellationFailure = Promise.reject(new Error("cancel failed"));
+    void cancellationFailure.then(undefined, () => undefined);
+    const cancellationCatch = vi.spyOn(cancellationFailure, "catch");
+    const api = createApi({
+      cancelRequest: vi.fn().mockReturnValue(cancellationFailure),
+      getRequest,
+      submitQuestion,
+    });
+    const { result, rerender } = renderQuestionExperienceHook(api);
+    let initialSubmission!: Promise<void>;
+    await act(async () => {
+      initialSubmission = result.current.performSubmit("취소될 질문");
+      await Promise.resolve();
+    });
+    expect(getRequest).toHaveBeenCalledWith("request_main");
+
+    rerender({ scope: SECOND_SCOPE });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    rerender({ scope: SCOPE });
+
+    expect(cancellationCatch).toHaveBeenCalledOnce();
+    expect(result.current.currentRequest?.state).toBe("cancelled");
+    expect(result.current.submitting).toBe(false);
+    await act(async () => {
+      await result.current.performSubmit("돌아온 범위의 질문");
+    });
+    expect(submitQuestion).toHaveBeenLastCalledWith(
+      expect.objectContaining({ question: "돌아온 범위의 질문" }),
+    );
+
+    await act(async () => {
+      pendingRequest.resolve(completedRequest());
+      await initialSubmission;
+    });
   });
 
   it("keeps text input visible while new questions are disabled", async () => {

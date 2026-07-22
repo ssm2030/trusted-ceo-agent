@@ -51,6 +51,8 @@ describe("secure local AI demo launcher boundary", () => {
         NEXT_PUBLIC_OPENAI_API_KEY: openAiApiKey,
         NEXT_PUBLIC_TRUSTED_CEO_INTERNAL_TOKEN: "public-token",
         NEXT_PUBLIC_THEME: "dark",
+        AWS_SECRET_ACCESS_KEY: "cloud-secret",
+        AUTH_SECRET: "auth-secret",
       },
       repositoryRoot,
     });
@@ -62,7 +64,9 @@ describe("secure local AI demo launcher boundary", () => {
     expect(plan.next.options.env.TRUSTED_CEO_INTERNAL_TOKEN).toBe(plan.internalToken);
     expect(plan.next.options.env.NEXT_PUBLIC_OPENAI_API_KEY).toBeUndefined();
     expect(plan.next.options.env.NEXT_PUBLIC_TRUSTED_CEO_INTERNAL_TOKEN).toBeUndefined();
-    expect(plan.next.options.env.NEXT_PUBLIC_THEME).toBe("dark");
+    expect(plan.next.options.env.NEXT_PUBLIC_THEME).toBeUndefined();
+    expect(plan.next.options.env.AWS_SECRET_ACCESS_KEY).toBeUndefined();
+    expect(plan.next.options.env.AUTH_SECRET).toBeUndefined();
   });
 
   it("pins both children and authenticated health to exact IPv4 loopback without a shell", async () => {

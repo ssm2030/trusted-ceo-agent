@@ -118,6 +118,13 @@ class FakeSmokeClient:
 
     @staticmethod
     def _snapshot(revision, workflow_status, pending_action):
+        allowed_actions = (
+            ["approve"]
+            if pending_action == "human_response"
+            else ["continue"]
+            if pending_action == "provider_work"
+            else []
+        )
         return {
             "provider_kind": "service",
             "display_badge": "실시간 AI 분석",
@@ -126,7 +133,7 @@ class FakeSmokeClient:
             "workflow_status": workflow_status,
             "ui_phase": 7 if workflow_status == "finalized" else 1,
             "pending_action": pending_action,
-            "allowed_actions": ["approve"] if pending_action == "human_response" else [],
+            "allowed_actions": allowed_actions,
             "latest_event": workflow_status,
             "progress": 100 if workflow_status == "finalized" else 10,
             "result_ref": "result_smoke" if workflow_status == "finalized" else None,
@@ -159,6 +166,27 @@ class FakeSmokeClient:
             "error_code": None,
             "retryable": False,
         }
+
+
+class AsyncFakeSmokeClient(FakeSmokeClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.continue_calls = 0
+        self.run_polls = 0
+
+    def continue_run(self, run_id, revision):
+        self._bound(run_id)
+        self.continue_calls += 1
+        if self.continue_calls > 1 or revision != 2:
+            raise AssertionError("async provider work was submitted more than once")
+        active = self._snapshot(2, "context_ready", "provider_work")
+        active["allowed_actions"] = []
+        return active
+
+    def get_run(self, run_id):
+        self._bound(run_id)
+        self.run_polls += 1
+        return self._snapshot(3, "finalized", "terminal")
 
 
 class LiveServiceSmokeTests(unittest.TestCase):
@@ -202,6 +230,21 @@ class LiveServiceSmokeTests(unittest.TestCase):
         )
         self.assertNotIn(RUN_ID, output.getvalue())
         self.assertNotIn("company-diagnostic", output.getvalue())
+
+    def test_async_provider_work_is_polled_without_duplicate_mutation(self) -> None:
+        smoke = load_smoke_module()
+        client = AsyncFakeSmokeClient()
+
+        summary = smoke.execute_smoke(
+            FIXTURE_ROOT,
+            client,
+            monotonic_values=iter((10.0, 12.5)),
+            pause=lambda _seconds: None,
+        )
+
+        self.assertEqual(1, client.continue_calls)
+        self.assertEqual(1, client.run_polls)
+        self.assertEqual(2, summary["stage_count"])
 
     def test_http_metrics_are_relative_to_the_initial_health_check(self) -> None:
         smoke = load_smoke_module()
@@ -254,6 +297,28 @@ class LiveServiceSmokeTests(unittest.TestCase):
         }
 
         self.assertIs(bundle, client.get_report(RUN_ID))
+
+    def test_http_run_status_uses_the_bound_authenticated_get_path(self) -> None:
+        smoke = load_smoke_module()
+        client = smoke.HttpSmokeClient(
+            "http://127.0.0.1:8765",
+            "internal_token_for_local_test_1234567890",
+        )
+        captured = {}
+
+        def capture(method, path, **_kwargs):
+            captured["method"] = method
+            captured["path"] = path
+            return FakeSmokeClient._snapshot(3, "finalized", "terminal")
+
+        client._request = capture
+
+        self.assertTrue(hasattr(client, "get_run"), "run status adapter is required")
+        snapshot = client.get_run(RUN_ID)
+
+        self.assertEqual("GET", captured["method"])
+        self.assertEqual(f"/v1/runs/{RUN_ID}", captured["path"])
+        self.assertEqual(3, snapshot["revision"])
     def test_http_hitl_payload_matches_the_strict_service_contract(self) -> None:
         smoke = load_smoke_module()
         client = smoke.HttpSmokeClient(
