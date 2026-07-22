@@ -14,17 +14,26 @@ import {
   TIMEOUT_MS,
   canonicalize,
 } from "./question-preflight-policy.mjs";
+import { terminateChild } from "./child-supervisor.mjs";
 
 export async function runBounded(
   executable,
   args,
-  { cwd, env, timeoutMs = TIMEOUT_MS } = {},
+  {
+    cwd,
+    env,
+    platform = process.platform,
+    spawnProcess = spawn,
+    terminateProcessTree = terminateChild,
+    timeoutMs = TIMEOUT_MS,
+  } = {},
 ) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn(executable, args, {
+      child = spawnProcess(executable, args, {
         cwd,
+        detached: platform !== "win32",
         env,
         shell: false,
         windowsHide: true,
@@ -38,24 +47,63 @@ export async function runBounded(
     let bytes = 0;
     let exceeded = false;
     let timedOut = false;
+    let settled = false;
+    let termination;
+    let timer;
+    const stopProcessTree = () => {
+      if (termination === undefined) {
+        termination = Promise.resolve().then(() =>
+          terminateProcessTree(child, { platform }),
+        );
+      }
+      return termination;
+    };
+    const settle = async (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      try {
+        await termination;
+        resolve(result);
+      } catch {
+        reject(new Error("Preflight process tree could not be terminated."));
+      }
+    };
+    const settleAfterTermination = (result) => {
+      void stopProcessTree().then(
+        () => settle(result),
+        () => settle(result),
+      );
+    };
     const accept = (chunk, keep) => {
       bytes += chunk.byteLength;
       if (bytes > MAX_OUTPUT_BYTES) {
         exceeded = true;
-        child.kill("SIGKILL");
+        settleAfterTermination({
+          code: null,
+          stdout: Buffer.concat(stdout).toString("utf8"),
+          exceeded,
+          timedOut,
+        });
       } else if (keep) {
         stdout.push(chunk);
       }
     };
     child.stdout.on("data", (chunk) => accept(chunk, true));
     child.stderr.on("data", (chunk) => accept(chunk, false));
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      settleAfterTermination({
+        code: null,
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        exceeded,
+        timedOut,
+      });
     }, timeoutMs);
     child.once("error", () => {
-      clearTimeout(timer);
-      resolve({
+      void settle({
         code: null,
         stdout: "",
         exceeded,
@@ -63,8 +111,7 @@ export async function runBounded(
       });
     });
     child.once("close", (code) => {
-      clearTimeout(timer);
-      resolve({
+      void settle({
         code,
         stdout: Buffer.concat(stdout).toString("utf8"),
         exceeded,

@@ -33,6 +33,7 @@ _RUN_ID = re.compile(r"^run_[A-Za-z0-9_-]{8,200}$")
 _QUESTION_ID = re.compile(r"^questionrequest_[0-9a-f]{24}$")
 _MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 _MAX_STEPS = 128
+_MAX_RUN_POLLS = 1_200
 _MAX_QUESTION_POLLS = 1_200
 
 
@@ -59,6 +60,7 @@ class SmokeClient(Protocol):
     def continue_run(self, run_id: str, revision: int) -> Mapping[str, Any]: ...
     def retry_run(self, run_id: str, revision: int) -> Mapping[str, Any]: ...
     def resume_run(self, run_id: str, revision: int) -> Mapping[str, Any]: ...
+    def get_run(self, run_id: str) -> Mapping[str, Any]: ...
     def get_report(self, run_id: str) -> Mapping[str, Any]: ...
     def start_question(self, run_id: str, revision: int) -> Mapping[str, Any]: ...
     def get_question(self, run_id: str, request_id: str) -> Mapping[str, Any]: ...
@@ -104,11 +106,17 @@ def _next_time(values: Iterator[float] | None) -> float:
     return time.monotonic() if values is None else float(next(values))
 
 
-def _drive_run(client: SmokeClient, initial: Mapping[str, Any]) -> tuple[dict[str, Any], int]:
+def _drive_run(
+    client: SmokeClient,
+    initial: Mapping[str, Any],
+    *,
+    pause: Callable[[float], None],
+) -> tuple[dict[str, Any], int]:
     snapshot = _validated_snapshot(initial)
     run_id = snapshot["run_id"]
     stage_count = 0
-    for _step in range(_MAX_STEPS):
+    provider_polls = 0
+    while stage_count < _MAX_STEPS:
         if snapshot["workflow_status"] == "finalized":
             if snapshot["pending_action"] != "terminal" or snapshot["error"] is not None:
                 raise SmokeFailure("FINAL_STATE_INVALID")
@@ -123,6 +131,8 @@ def _drive_run(client: SmokeClient, initial: Mapping[str, Any]) -> tuple[dict[st
                 continue
             raise SmokeFailure(str(error["code"]))
         pending = snapshot["pending_action"]
+        if pending != "provider_work" or "continue" in snapshot["allowed_actions"]:
+            provider_polls = 0
         if pending == "human_response":
             card = snapshot["hitl_card"]
             if card is None or "approve" not in card["allowed_decisions"]:
@@ -130,10 +140,17 @@ def _drive_run(client: SmokeClient, initial: Mapping[str, Any]) -> tuple[dict[st
             snapshot = _validated_snapshot(client.submit_hitl(run_id, snapshot))
             stage_count += 1
         elif pending == "provider_work":
-            snapshot = _validated_snapshot(
-                client.continue_run(run_id, snapshot["revision"]),
-            )
-            stage_count += 1
+            if "continue" in snapshot["allowed_actions"]:
+                snapshot = _validated_snapshot(
+                    client.continue_run(run_id, snapshot["revision"]),
+                )
+                stage_count += 1
+            else:
+                provider_polls += 1
+                if provider_polls > _MAX_RUN_POLLS:
+                    raise SmokeFailure("SMOKE_PROVIDER_TIMEOUT")
+                pause(0.25)
+                snapshot = _validated_snapshot(client.get_run(run_id))
         elif pending == "retry" and "retry" in snapshot["allowed_actions"]:
             snapshot = _validated_snapshot(
                 client.retry_run(run_id, snapshot["revision"]),
@@ -210,7 +227,7 @@ def execute_smoke(
     )
     if uploaded["run_id"] != run_id:
         raise SmokeFailure("SERVICE_CONTRACT_INVALID")
-    final, stage_count = _drive_run(client, uploaded)
+    final, stage_count = _drive_run(client, uploaded, pause=pause)
     report = client.get_report(run_id)
     _validate_report(report, run_id, final["revision"])
     _complete_question(
@@ -467,6 +484,9 @@ class HttpSmokeClient:
 
     def resume_run(self, run_id: str, revision: int) -> Mapping[str, Any]:
         return self._action(run_id, revision, "resume")
+
+    def get_run(self, run_id: str) -> Mapping[str, Any]:
+        return self._request("GET", self._run_path(run_id))
 
     def get_report(self, run_id: str) -> Mapping[str, Any]:
         value = self._request("GET", self._run_path(run_id) + "/report")

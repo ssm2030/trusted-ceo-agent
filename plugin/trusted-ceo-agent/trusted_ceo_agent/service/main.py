@@ -11,6 +11,7 @@ from trusted_ceo_agent.service.openai_gateway import AIServiceError, OpenAIReaso
 from trusted_ceo_agent.service.orchestrator import AnalysisOrchestrator
 from trusted_ceo_agent.service.questions import QuestionService
 from trusted_ceo_agent.service.run_store import RunStore
+from trusted_ceo_agent.service.service_lease import ServiceRootLease
 from trusted_ceo_agent.service.settings import ServiceSettings
 
 
@@ -40,21 +41,27 @@ class MissingApiKeyGateway:
 
 def build_app():
     settings = ServiceSettings.from_environment()
-    store = RunStore(settings.service_root)
-    application = TrustedCeoApplication(store.runs_root)
-    gateway = (
-        OpenAIReasoningGateway.from_settings(settings)
-        if settings.ai_ready
-        else MissingApiKeyGateway()
-    )
-    orchestrator = AnalysisOrchestrator(application, store, gateway)
-    questions = QuestionService(application, store, gateway)
-    return settings, create_app(
-        settings,
-        application,
-        orchestrator,
-        questions,
-    )
+    lease = ServiceRootLease.acquire(settings.service_root)
+    try:
+        store = RunStore(settings.service_root)
+        application = TrustedCeoApplication(store.runs_root)
+        gateway = (
+            OpenAIReasoningGateway.from_settings(settings)
+            if settings.ai_ready
+            else MissingApiKeyGateway()
+        )
+        orchestrator = AnalysisOrchestrator(application, store, gateway)
+        questions = QuestionService(application, store, gateway)
+        return settings, create_app(
+            settings,
+            application,
+            orchestrator,
+            questions,
+            service_lease=lease,
+        )
+    except Exception:
+        lease.close()
+        raise
 
 
 def main() -> None:

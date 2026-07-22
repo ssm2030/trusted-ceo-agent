@@ -110,6 +110,66 @@ describe("LiveAnalysisCommandCenter", () => {
     expect(service.createRun).not.toHaveBeenCalled();
   });
 
+  it("does not offer another continue action while provider work is active", async () => {
+    const active = snapshot({
+      pending_action: "provider_work",
+      pending_approval_request_id: null,
+      allowed_actions: [],
+      hitl_card: null,
+      latest_event: "AI 분석 단계가 실행 중입니다.",
+    });
+    const service = provider(active);
+
+    render(<LiveAnalysisCommandCenter provider={service} />);
+
+    expect(
+      (await screen.findAllByText("AI 분석 단계가 실행 중입니다.")).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "분석 계속" })).not.toBeInTheDocument();
+    expect(service.startOrContinue).not.toHaveBeenCalled();
+  });
+
+  it("does not let an old status poll race a continue mutation", async () => {
+    const user = userEvent.setup();
+    const actionable = snapshot({
+      pending_action: "provider_work",
+      pending_approval_request_id: null,
+      allowed_actions: ["continue"],
+      hitl_card: null,
+    });
+    const active = snapshot({
+      pending_action: "provider_work",
+      pending_approval_request_id: null,
+      allowed_actions: [],
+      hitl_card: null,
+      latest_event: "AI 분석 단계가 실행 중입니다.",
+    });
+    let finishMutation!: (value: ProviderSnapshot) => void;
+    let finishPoll!: (value: ProviderSnapshot) => void;
+    const mutation = new Promise<ProviderSnapshot>((resolve) => {
+      finishMutation = resolve;
+    });
+    const oldPoll = new Promise<ProviderSnapshot>((resolve) => {
+      finishPoll = resolve;
+    });
+    const service = provider(actionable);
+    service.startOrContinue.mockReturnValueOnce(mutation);
+    service.getStatus.mockReturnValueOnce(oldPoll);
+
+    render(<LiveAnalysisCommandCenter provider={service} />);
+    await user.click(await screen.findByRole("button", { name: "분석 계속" }));
+    await waitFor(() => expect(service.startOrContinue).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 550));
+
+    finishMutation(active);
+    finishPoll(actionable);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "분석 계속" })).not.toBeInTheDocument();
+    });
+    expect(service.getStatus).not.toHaveBeenCalled();
+  });
+
   it("shows a keyless disabled state without starting a run", async () => {
     const service = provider();
     service.getHealth.mockResolvedValue({

@@ -54,6 +54,36 @@ class RunStoreTests(unittest.TestCase):
                 )
             self.assertEqual("IDEMPOTENCY_CONFLICT", caught.exception.code)
 
+    def test_only_a_pending_receipt_can_be_completed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(Path(directory))
+            run_id = "run_receipt_cas_12345678"
+            body = {"action": "continue", "expected_revision": 0}
+            store.create_manifest(run_id, engine_revision=0)
+            original = store.store_idempotency_receipt(
+                run_id,
+                idempotency_key="receipt_cas_action_0001",
+                request_body=body,
+                status_code=200,
+                response={"revision": 1},
+            )
+
+            with self.assertRaisesRegex(IntegrityError, "not pending"):
+                store.complete_idempotency_receipt(
+                    run_id,
+                    idempotency_key=original.idempotency_key,
+                    request_body=body,
+                    status_code=200,
+                    response={"revision": 2},
+                )
+
+            replay = store.read_idempotency_receipt(
+                run_id,
+                idempotency_key=original.idempotency_key,
+                request_body=body,
+            )
+            self.assertEqual(original, replay)
+
     def test_restart_recovers_running_but_preserves_human_checkpoint(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(Path(directory))
